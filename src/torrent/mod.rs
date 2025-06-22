@@ -70,3 +70,29 @@ pub enum TorrentError {
     #[error("Protocol error: {message}")]
     ProtocolError { message: String },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_info_hash_display() {
+        let hash = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67];
+        let info_hash = InfoHash::new(hash);
+        assert_eq!(info_hash.to_string(), "0123456789abcdef0123456789abcdef01234567");
+    }
+    
+    #[test]
+    fn test_piece_index_ordering() {
+        let piece1 = PieceIndex::new(5);
+        let piece2 = PieceIndex::new(10);
+        assert!(piece1 < piece2);
+        assert_eq!(piece1.as_u32(), 5);
+    }
+    
+    #[test]
+    fn test_piece_index_display() {
+        let piece = PieceIndex::new(42);
+        assert_eq!(piece.to_string(), "42");
+    }
+}

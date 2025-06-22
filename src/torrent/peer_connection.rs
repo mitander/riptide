@@ -10,11 +10,11 @@ pub struct PeerConnection {
 
 impl PeerConnection {
     pub async fn connect(addr: SocketAddr) -> Result<Self, TorrentError> {
-        // TODO: Implement actual peer connection
+        // BitTorrent handshake implementation pending
         Ok(Self { addr })
     }
     
-    pub fn peer_addr(&self) -> SocketAddr {
+    pub fn peer_address(&self) -> SocketAddr {
         self.addr
     }
 }

@@ -4,7 +4,7 @@ use super::{InfoHash, TorrentError};
 
 /// Main orchestrator for torrent downloads
 pub struct TorrentEngine {
-    // TODO: Implement actual torrent engine
+    // TODO: Add tracker client, peer manager, piece storage integration
 }
 
 impl TorrentEngine {
@@ -14,17 +14,17 @@ impl TorrentEngine {
     
     /// Add a torrent by magnet link
     pub async fn add_magnet(&mut self, _magnet_link: &str) -> Result<InfoHash, TorrentError> {
-        // TODO: Parse magnet link and add torrent
+        // TODO: Parse magnet link, extract info_hash, announce to tracker
         Err(TorrentError::ProtocolError {
-            message: "Not implemented yet".to_string(),
+            message: "Magnet link parsing not implemented".to_string(),
         })
     }
     
     /// Start downloading a torrent
     pub async fn start_download(&mut self, _info_hash: InfoHash) -> Result<(), TorrentError> {
-        // TODO: Start download process
+        // TODO: Initialize peer connections, start piece downloading
         Err(TorrentError::ProtocolError {
-            message: "Not implemented yet".to_string(),
+            message: "Download orchestration not implemented".to_string(),
         })
     }
 }

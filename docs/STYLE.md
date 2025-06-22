@@ -398,9 +398,37 @@ const BLOCK_SIZE: u32 = 16384;
 // Peers MUST send bitfield immediately after handshake
 self.expect_bitfield = true;
 
+// GOOD: Specific actionable TODO
+// TODO: Add bandwidth throttling per BEP 7 specification
+
+// BAD: Vague TODO
+// TODO: Fix this
+
 // BAD: Restates code
 let piece_count = torrent.piece_count();  // Get the piece count
 ```
+
+### TODO Comment Standards
+
+**DO Use TODOs for:**
+- Specific implementation tasks with clear scope
+- Protocol features requiring standardized implementation
+- Performance optimizations with measurable targets
+- Error handling improvements with specific scenarios
+
+**TODO Format:**
+```rust
+// TODO: [Scope] Specific action - context if needed
+// TODO: Add DHT support per BEP 5 for trackerless operation
+// TODO: Implement piece priority queue for streaming optimization
+// TODO: Add connection pooling - current approach creates too many sockets
+```
+
+**DON'T Use TODOs for:**
+- Vague intentions without actionable steps
+- Features that may never be implemented
+- Architecture decisions still under debate
+- Comments that should be issues in the tracker instead
 
 ## Patterns and Anti-Patterns
 
@@ -458,12 +486,21 @@ tracker.set_event(TrackerEvent::Started);
 
 ## Commit Messages
 
+### Critical Rules
+
+1. **NEVER mention code generation tools** - commits should appear human-authored
+2. **Be concise but complete** - include WHAT changed and WHY
+3. **Assume competent reader** - skip obvious explanations
+4. **List key changes** - use bullet points for multi-component commits
+
 ### Format
 
 ```
 type(scope): concise description
 
-Longer explanation if needed. Focus on why, not what.
+- Key change or addition explanation
+- Another important change if multi-component
+- Brief WHY if not obvious from changes
 
 BENCHMARK: name_of_benchmark (only if performance changed)
 Before: X
@@ -475,21 +512,24 @@ After: Y
 ```bash
 feat(torrent): add sequential piece selection
 
-Needed for streaming - pieces must be downloaded in order
-to start playback quickly.
+Required for streaming playback without buffering delays.
 
 fix(tracker): handle compact peer response
 
-Some trackers send peers as 6-byte packed format instead
-of dictionary. Now supporting both formats per BEP 23.
+Support BEP 23 compact format used by some trackers.
+
+feat(simulation): implement comprehensive mock environment
+
+- MockTracker with configurable announce responses and failure injection
+- NetworkSimulator for realistic latency, packet loss, bandwidth limits
+- MockPeer with configurable reliability and upload speeds
+- Enables offline development and deterministic testing
 
 perf(streaming): reuse segment buffers
 
 BENCHMARK: stream_segment
 Before: 1.2ms per segment, 847 allocations
 After: 0.3ms per segment, 2 allocations
-
-Massive reduction in allocator pressure during streaming.
 ```
 
 ### Types

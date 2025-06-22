@@ -111,3 +111,53 @@ pub enum TrackerError {
     #[error("Invalid response from tracker")]
     InvalidResponse,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_mock_tracker_successful_announce() {
+        let tracker = MockTracker::builder()
+            .with_seeders(5)
+            .with_leechers(3)
+            .build();
+            
+        let info_hash = [0u8; 20];
+        let response = tracker.announce(&info_hash).await.unwrap();
+        
+        assert_eq!(response.seeders, 5);
+        assert_eq!(response.leechers, 3);
+        assert_eq!(response.peers.len(), 8);
+        assert_eq!(response.interval, 1800);
+    }
+    
+    #[tokio::test]
+    async fn test_mock_tracker_failure_injection() {
+        let tracker = MockTracker::builder()
+            .with_failure_rate(1.0) // Always fail
+            .build();
+            
+        let info_hash = [0u8; 20];
+        let result = tracker.announce(&info_hash).await;
+        
+        assert!(result.is_err());
+        matches!(result.unwrap_err(), TrackerError::ConnectionFailed);
+    }
+    
+    #[test]
+    fn test_tracker_builder_generates_valid_peers() {
+        let tracker = MockTracker::builder()
+            .with_seeders(2)
+            .with_leechers(1)
+            .build();
+            
+        assert_eq!(tracker.peers.len(), 3);
+        
+        // Verify all peers have valid socket addresses
+        for peer in &tracker.peers {
+            assert!(peer.ip().is_ipv4());
+            assert!(peer.port() >= 6881);
+        }
+    }
+}

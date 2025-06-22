@@ -1,3 +1,13 @@
 cognitive-complexity-threshold = 20
 too-many-lines-threshold = 400
 too-many-arguments-threshold = 5
+
+# Enforce naming conventions
+disallowed-names = ["utils", "helpers", "common", "shared", "data", "info", "tmp", "temp"]
+
+# Require documentation for public items  
+missing-docs-in-private-items = false
+
+# Additional code quality
+enum-variant-names = true
+redundant-field-names = true
