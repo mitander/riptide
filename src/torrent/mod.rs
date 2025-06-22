@@ -1,11 +1,17 @@
 //! BitTorrent protocol implementation optimized for streaming
 
 pub mod engine;
+pub mod parsing;
 pub mod piece_picker;
 pub mod peer_connection;
+pub mod protocol;
+pub mod tracker;
 
 pub use engine::TorrentEngine;
+pub use parsing::{TorrentParser, BencodeTorrentParser, TorrentMetadata, MagnetLink};
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
+pub use protocol::{PeerProtocol, BitTorrentPeerProtocol, PeerMessage, PeerId};
+pub use tracker::{TrackerClient, HttpTrackerClient, UdpTrackerClient, AnnounceRequest, AnnounceResponse};
 
 use std::fmt;
 

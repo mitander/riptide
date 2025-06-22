@@ -16,12 +16,15 @@ Riptide downloads torrents and streams media content with a focus on zero-buffer
 - Async storage abstraction with file-based backend
 - Complete BitTorrent simulation environment (MockTracker, MockPeer, NetworkSimulator)
 - CLI interface with working simulation mode
+- **Trait abstractions for swappable implementations** (TorrentParser, TrackerClient, PeerProtocol)
+- **Controlled external dependencies** (bencode-rs, magnet-url)
 - Comprehensive test suite with unit and integration tests
 
 **Next Development Phase:**
-- BitTorrent protocol implementation
+- Torrent file parsing implementation using bencode-rs
+- HTTP/UDP tracker communication with reqwest/tokio
+- BitTorrent wire protocol for peer communication
 - Sequential piece picker for streaming optimization
-- Peer connection management
 - Direct HTTP streaming with range requests
 
 ## Usage
@@ -42,17 +45,22 @@ riptide --help
 ### Planned API (In Development)
 
 ```rust
-use riptide::{TorrentEngine, storage::FileStorage};
+use riptide::{
+    TorrentEngine, 
+    storage::FileStorage,
+    torrent::{BencodeTorrentParser, HttpTrackerClient, BitTorrentPeerProtocol}
+};
 
-// Initialize engine with async storage
-let storage = FileStorage::new(
-    "/media/downloads".into(),
-    "/media/library".into()
-);
+// Initialize with trait implementations
+let parser = BencodeTorrentParser::new();
+let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
+let storage = FileStorage::new("/media/downloads".into(), "/media/library".into());
+
 let mut engine = TorrentEngine::new();
 
-// Add and start download (TODO: Implementation pending)
-let info_hash = engine.add_magnet("magnet:?xt=urn:btih:...").await?;
+// Parse and add torrent using trait abstractions
+let metadata = parser.parse_magnet_link("magnet:?xt=urn:btih:...").await?;
+let info_hash = engine.add_torrent(metadata).await?;
 engine.start_download(info_hash).await?;
 ```
 

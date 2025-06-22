@@ -19,9 +19,20 @@ Subtitle Service → OpenSubtitles integration, sync adjustment
 
 ### 1. Torrent Implementation
 
-**Choice**: Build on `bittorrent-protocol` crate, extend for streaming.
+**Choice**: Trait abstractions with controlled external dependencies for non-streaming components.
 
-**Rationale**: Pure Rust, modern async, no FFI issues. Implement streaming-specific piece selection algorithm for sequential playback.
+**Components**:
+- **Bencode Parsing**: Own `bencode-rs` crate for full control and streaming optimization
+- **Magnet Links**: `magnet-url` crate (zero dependencies, ultra-fast)
+- **Tracker Client**: Custom implementation using `reqwest` for HTTP, `tokio` for UDP
+- **Peer Protocol**: Custom implementation optimized for streaming piece selection
+- **Piece Selection**: Custom streaming-optimized algorithms with deadline-based prioritization
+
+**Rationale**: Trait abstractions enable swappable implementations while maintaining full control over streaming-critical components. External dependencies used only for non-streaming functionality.
+
+**Future Considerations**: 
+- `bencode-rs` may be enhanced and published to crates.io as a standalone library once streaming optimizations are proven. Current git dependency provides maximum development flexibility.
+- Upgrade to nightly Rust to enable automatic import grouping in rustfmt for better code organization.
 
 ### 2. Storage Architecture
 
