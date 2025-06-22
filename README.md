@@ -46,7 +46,7 @@ riptide --help
 
 ```rust
 use riptide::{
-    TorrentEngine, 
+    TorrentEngine,
     storage::FileStorage,
     torrent::{BencodeTorrentParser, HttpTrackerClient, BitTorrentPeerProtocol}
 };
@@ -90,7 +90,7 @@ cargo bench
 src/
 ├── torrent/          # BitTorrent protocol implementation
 │   ├── engine.rs     # Download orchestration
-│   ├── piece_picker.rs # Streaming-optimized piece selection  
+│   ├── piece_picker.rs # Streaming-optimized piece selection
 │   └── peer_connection.rs # Wire protocol handling
 ├── storage/          # Async storage abstraction
 │   └── file_storage.rs # Directory-based implementation
@@ -143,7 +143,7 @@ cargo run -- simulate --peers 5 /tmp/test.torrent
 - Direct streaming capabilities
 
 **Planned Features:**
-- Web UI for library management  
+- Web UI for library management
 - Automatic transcoding for device compatibility
 - VPN integration and kill switch
 - Bandwidth scheduling and QoS
