@@ -1,13 +1,17 @@
 //! Simulation framework for rapid BitTorrent development
 
+pub mod deterministic;
 pub mod network;
 pub mod peer;
+pub mod scenarios;
 pub mod tracker;
 
 use std::time::Duration;
 
+pub use deterministic::{DeterministicClock, DeterministicSimulation, EventType, SimulationEvent};
 pub use network::NetworkSimulator;
 pub use peer::MockPeer;
+pub use scenarios::{ScenarioResults, ScenarioRunner, SimulationScenarios};
 pub use tracker::MockTracker;
 
 /// Complete simulation environment for BitTorrent development.
