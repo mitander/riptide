@@ -4,8 +4,8 @@
 //! Supports automatic URL encoding, compact peer list parsing, and error handling.
 
 use super::{InfoHash, TorrentError};
+use crate::config::NetworkConfig;
 use std::net::SocketAddr;
-use std::time::Duration;
 use url::Url;
 
 // Type aliases for complex types
@@ -104,9 +104,9 @@ impl HttpTrackerClient {
     /// Creates HTTP tracker client with automatic scrape URL derivation.
     ///
     /// Attempts to derive scrape URL by replacing "/announce" with "/scrape"
-    /// following BEP 48 convention. Configures HTTP client with 30-second timeout
-    /// and Riptide user agent for tracker compatibility.
-    pub fn new(announce_url: String) -> Self {
+    /// following BEP 48 convention. Uses network configuration for timeout
+    /// and user agent settings.
+    pub fn new(announce_url: String, config: &NetworkConfig) -> Self {
         // BEP 48: Derive scrape URL by replacing "/announce" with "/scrape"
         let scrape_url = announce_url.replace("/announce", "/scrape");
         let scrape_url = if scrape_url != announce_url {
@@ -119,8 +119,8 @@ impl HttpTrackerClient {
             announce_url,
             scrape_url,
             client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(30))
-                .user_agent("riptide/0.1.0")
+                .timeout(config.tracker_timeout)
+                .user_agent(config.user_agent)
                 .build()
                 .expect("HTTP client creation should not fail"),
         }
@@ -356,6 +356,7 @@ impl TrackerClient for HttpTrackerClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::NetworkConfig;
 
     #[test]
     fn test_announce_request_structure() {
@@ -375,7 +376,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_tracker_interface() {
-        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
         assert_eq!(tracker.tracker_url(), "http://tracker.example.com/announce");
 
@@ -396,7 +398,8 @@ mod tests {
 
     #[test]
     fn test_scrape_url_derivation() {
-        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
         // Scrape URL should be derived correctly
         assert!(tracker.scrape_url.is_some());
@@ -454,7 +457,8 @@ mod tests {
 
     #[test]
     fn test_announce_url_building() {
-        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
         let request = AnnounceRequest {
             info_hash: InfoHash::new([0u8; 20]),
@@ -481,7 +485,8 @@ mod tests {
 
     #[test]
     fn test_tracker_response_parsing() {
-        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string());
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string(), &config);
 
         // Create a mock bencode tracker response
         let response_data =
@@ -494,7 +499,8 @@ mod tests {
 
     #[test]
     fn test_tracker_response_with_failure() {
-        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string());
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string(), &config);
 
         // Create a bencode response with failure reason
         let response_data = b"d14:failure reason19:Torrent not registerede";
