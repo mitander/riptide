@@ -12,11 +12,11 @@ use std::path::PathBuf;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
-    
+
     /// Configuration file path
     #[arg(short, long, default_value = "~/.config/riptide/config.toml")]
     pub config: PathBuf,
-    
+
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
@@ -28,76 +28,67 @@ pub enum Commands {
     Add {
         /// Magnet link or path to .torrent file
         source: String,
-        
+
         /// Download directory override
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    
+
     /// Start downloading a torrent
     Start {
         /// Info hash or torrent name
         torrent: String,
     },
-    
+
     /// Stop downloading a torrent
     Stop {
         /// Info hash or torrent name
         torrent: String,
     },
-    
+
     /// Show status of all or specific torrents
     Status {
         /// Specific torrent to show (optional)
         torrent: Option<String>,
     },
-    
+
     /// List all torrents
     List,
-    
+
     /// Start the simulation environment for testing
     Simulate {
         /// Number of peers to simulate
         #[arg(short, long, default_value = "10")]
         peers: usize,
-        
+
         /// Torrent file to simulate downloading
         torrent: PathBuf,
     },
 }
 
+/// Main CLI entry point
+///
+/// # Errors
+/// - Command parsing errors from clap
+/// - Individual command execution errors
 pub async fn run_cli() -> crate::Result<()> {
     let cli = Cli::parse();
-    
+
     // Initialize tracing
     let level = if cli.verbose {
         tracing::Level::DEBUG
     } else {
         tracing::Level::INFO
     };
-    
-    tracing_subscriber::fmt()
-        .with_max_level(level)
-        .init();
-    
+
+    tracing_subscriber::fmt().with_max_level(level).init();
+
     match cli.command {
-        Commands::Add { source, output } => {
-            commands::add_torrent(source, output).await
-        }
-        Commands::Start { torrent } => {
-            commands::start_torrent(torrent).await
-        }
-        Commands::Stop { torrent } => {
-            commands::stop_torrent(torrent).await
-        }
-        Commands::Status { torrent } => {
-            commands::show_status(torrent).await
-        }
-        Commands::List => {
-            commands::list_torrents().await
-        }
-        Commands::Simulate { peers, torrent } => {
-            commands::run_simulation(peers, torrent).await
-        }
+        Commands::Add { source, output } => commands::add_torrent(source, output).await,
+        Commands::Start { torrent } => commands::start_torrent(torrent).await,
+        Commands::Stop { torrent } => commands::stop_torrent(torrent).await,
+        Commands::Status { torrent } => commands::show_status(torrent).await,
+        Commands::List => commands::list_torrents().await,
+        Commands::Simulate { peers, torrent } => commands::run_simulation(peers, torrent).await,
     }
 }

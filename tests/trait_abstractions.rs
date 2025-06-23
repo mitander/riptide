@@ -1,10 +1,10 @@
 //! Integration tests for trait abstractions and swappable implementations
 
-use riptide::torrent::{
-    BencodeTorrentParser, TorrentParser, HttpTrackerClient, TrackerClient,
-    BitTorrentPeerProtocol, PeerProtocol, InfoHash, PeerId, AnnounceRequest
-};
 use riptide::torrent::tracker::AnnounceEvent;
+use riptide::torrent::{
+    AnnounceRequest, BencodeTorrentParser, BitTorrentPeerProtocol, HttpTrackerClient, InfoHash,
+    PeerId, PeerProtocol, TorrentParser, TrackerClient,
+};
 
 #[tokio::test]
 async fn test_swappable_torrent_parser_implementations() {
@@ -13,7 +13,7 @@ async fn test_swappable_torrent_parser_implementations() {
         Box::new(BencodeTorrentParser::new()),
         // Future implementations can be added here
     ];
-    
+
     for parser in parsers {
         // All implementations should handle the same interface
         let result = parser.parse_magnet_link("magnet:?xt=urn:btih:test").await;
@@ -25,10 +25,10 @@ async fn test_swappable_torrent_parser_implementations() {
 #[tokio::test]
 async fn test_swappable_tracker_client_implementations() {
     // Test that different tracker implementations are interchangeable
-    let clients: Vec<Box<dyn TrackerClient>> = vec![
-        Box::new(HttpTrackerClient::new("http://tracker.example.com/announce".to_string())),
-    ];
-    
+    let clients: Vec<Box<dyn TrackerClient>> = vec![Box::new(HttpTrackerClient::new(
+        "http://tracker.example.com/announce".to_string(),
+    ))];
+
     let request = AnnounceRequest {
         info_hash: InfoHash::new([0u8; 20]),
         peer_id: [1u8; 20],
@@ -38,13 +38,13 @@ async fn test_swappable_tracker_client_implementations() {
         left: 1000,
         event: AnnounceEvent::Started,
     };
-    
+
     for client in clients {
         // All implementations should handle the same interface
         let result = client.announce(request.clone()).await;
         // Currently returns error with stub implementation
         assert!(result.is_err());
-        
+
         // URL should be accessible
         assert!(!client.tracker_url().is_empty());
     }
@@ -57,18 +57,18 @@ async fn test_swappable_peer_protocol_implementations() {
         Box::new(BitTorrentPeerProtocol::new()),
         // Future implementations can be added here
     ];
-    
+
     let info_hash = InfoHash::new([0u8; 20]);
     let peer_id = PeerId::generate();
     let handshake = riptide::torrent::protocol::PeerHandshake::new(info_hash, peer_id);
-    
+
     for protocol in &mut protocols {
         // All implementations should handle the same interface
         let addr = "127.0.0.1:6881".parse().unwrap();
         let result = protocol.connect(addr, handshake.clone()).await;
         // Currently returns error with stub implementation
         assert!(result.is_err());
-        
+
         // State should be accessible
         let _state = protocol.peer_state();
     }
@@ -79,7 +79,7 @@ fn test_type_safety_across_abstractions() {
     // Test that our domain types work consistently across all abstractions
     let info_hash = InfoHash::new([42u8; 20]);
     let peer_id = PeerId::generate();
-    
+
     // InfoHash should be usable in all contexts
     let _request = AnnounceRequest {
         info_hash,
@@ -90,7 +90,7 @@ fn test_type_safety_across_abstractions() {
         left: 1000,
         event: AnnounceEvent::Started,
     };
-    
+
     // Domain types should have consistent display behavior
     assert_eq!(info_hash.to_string().len(), 40); // 20 bytes as hex
 }
@@ -98,16 +98,16 @@ fn test_type_safety_across_abstractions() {
 #[test]
 fn test_trait_isolation() {
     // Test that trait implementations can be used independently
-    
+
     // Parser can be used standalone
     let _parser = BencodeTorrentParser::new();
-    
+
     // Tracker clients can be created independently
     let _http_tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
-    
+
     // Peer protocol can be instantiated independently
     let _peer_protocol = BitTorrentPeerProtocol::new();
-    
+
     // All types are Send + Sync for async contexts
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<BencodeTorrentParser>();

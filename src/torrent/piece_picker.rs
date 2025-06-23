@@ -9,21 +9,16 @@ use super::PieceIndex;
 pub trait PiecePicker: Send + Sync {
     /// Select the next piece to download
     fn next_piece(&mut self) -> Option<PieceIndex>;
-    
+
     /// Mark a piece as completed
     fn mark_completed(&mut self, index: PieceIndex);
 }
 
 /// Sequential piece picker optimized for streaming
+#[derive(Default)]
 pub struct StreamingPiecePicker {
     next_index: u32,
     total_pieces: u32,
-}
-
-impl Default for StreamingPiecePicker {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl StreamingPiecePicker {
@@ -33,7 +28,7 @@ impl StreamingPiecePicker {
             total_pieces: 0,
         }
     }
-    
+
     pub fn with_total_pieces(mut self, total: u32) -> Self {
         self.total_pieces = total;
         self
@@ -50,7 +45,7 @@ impl PiecePicker for StreamingPiecePicker {
             None
         }
     }
-    
+
     fn mark_completed(&mut self, _index: PieceIndex) {
         // Completion tracking implementation pending
     }
@@ -63,7 +58,7 @@ mod tests {
     #[test]
     fn test_streaming_picker_sequential_order() {
         let mut picker = StreamingPiecePicker::new().with_total_pieces(5);
-        
+
         assert_eq!(picker.next_piece(), Some(PieceIndex::new(0)));
         assert_eq!(picker.next_piece(), Some(PieceIndex::new(1)));
         assert_eq!(picker.next_piece(), Some(PieceIndex::new(2)));
@@ -71,13 +66,13 @@ mod tests {
         assert_eq!(picker.next_piece(), Some(PieceIndex::new(4)));
         assert_eq!(picker.next_piece(), None);
     }
-    
+
     #[test]
     fn test_streaming_picker_empty_torrent() {
         let mut picker = StreamingPiecePicker::new().with_total_pieces(0);
         assert_eq!(picker.next_piece(), None);
     }
-    
+
     #[test]
     fn test_mark_completed_no_panic() {
         let mut picker = StreamingPiecePicker::new();

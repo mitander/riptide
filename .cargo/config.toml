@@ -1,0 +1,12 @@
+[alias]
+# Enforcement commands
+check-standards = [
+    "clippy", "--workspace", "--", "-D", "warnings", "-D", "clippy::wildcard_imports"
+]
+
+# Quick standards check before commit
+pre-commit = [
+    "fmt", "--check",
+    "clippy", "--workspace", "--", "-D", "warnings", "-D", "clippy::wildcard_imports",
+    "test", "--workspace"
+]

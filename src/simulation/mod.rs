@@ -1,12 +1,12 @@
 //! Simulation framework for rapid BitTorrent development
 
-pub mod tracker;
 pub mod network;
 pub mod peer;
+pub mod tracker;
 
-pub use tracker::MockTracker;
 pub use network::NetworkSimulator;
 pub use peer::MockPeer;
+pub use tracker::MockTracker;
 
 use std::time::Duration;
 
@@ -32,26 +32,26 @@ impl SimulationEnvironment {
             peers: Vec::new(),
         }
     }
-    
+
     /// Create environment optimized for streaming development
     pub fn for_streaming() -> Self {
         let mut env = Self::new();
-        
+
         // Configure network for realistic streaming conditions
         env.network = NetworkSimulator::builder()
             .latency(10..100) // 10-100ms typical home internet
             .packet_loss(0.001) // 0.1% loss
             .bandwidth_limit(50_000_000) // 50 Mbps
             .build();
-            
+
         // Add mix of fast and slow peers
         env.add_fast_peers(10);
         env.add_slow_peers(5);
         env.add_unreliable_peers(2);
-        
+
         env
     }
-    
+
     /// Add fast, reliable peers to the simulation
     pub fn add_fast_peers(&mut self, count: usize) {
         for i in 0..count {
@@ -64,7 +64,7 @@ impl SimulationEnvironment {
             self.peers.push(peer);
         }
     }
-    
+
     /// Add slow peers that simulate real-world conditions
     pub fn add_slow_peers(&mut self, count: usize) {
         for i in 0..count {
@@ -77,7 +77,7 @@ impl SimulationEnvironment {
             self.peers.push(peer);
         }
     }
-    
+
     /// Add unreliable peers for testing error handling
     pub fn add_unreliable_peers(&mut self, count: usize) {
         for i in 0..count {

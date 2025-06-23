@@ -24,22 +24,23 @@ impl NetworkSimulator {
             bandwidth_limit: u64::MAX,
         }
     }
-    
+
     pub fn builder() -> NetworkSimulatorBuilder {
         NetworkSimulatorBuilder::new()
     }
-    
+
     /// Simulate network latency
     pub async fn simulate_latency(&self) {
-        let delay_ms = rand::random::<u64>() % (self.latency.end - self.latency.start) + self.latency.start;
+        let delay_ms =
+            rand::random::<u64>() % (self.latency.end - self.latency.start) + self.latency.start;
         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
     }
-    
+
     /// Check if packet should be dropped
     pub fn should_drop_packet(&self) -> bool {
         rand::random::<f32>() < self.packet_loss
     }
-    
+
     /// Calculate bandwidth delay for data transfer
     pub fn bandwidth_delay(&self, bytes: usize) -> Duration {
         if self.bandwidth_limit == u64::MAX {
@@ -65,22 +66,22 @@ impl NetworkSimulatorBuilder {
             bandwidth_limit: u64::MAX,
         }
     }
-    
+
     pub fn latency(mut self, range: Range<u64>) -> Self {
         self.latency = range;
         self
     }
-    
+
     pub fn packet_loss(mut self, rate: f32) -> Self {
         self.packet_loss = rate;
         self
     }
-    
+
     pub fn bandwidth_limit(mut self, bytes_per_second: u64) -> Self {
         self.bandwidth_limit = bytes_per_second;
         self
     }
-    
+
     pub fn build(self) -> NetworkSimulator {
         NetworkSimulator {
             latency: self.latency,

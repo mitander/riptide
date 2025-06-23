@@ -78,7 +78,7 @@ pub trait TrackerClient: Send + Sync {
     /// - `TorrentError::TrackerConnectionFailed` - Network or protocol error
     /// - `TorrentError::ProtocolError` - Invalid tracker response format
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError>;
-    
+
     /// Retrieves torrent statistics from tracker without announcing.
     ///
     /// Queries tracker for seeder/leecher counts and download statistics
@@ -88,7 +88,7 @@ pub trait TrackerClient: Send + Sync {
     /// - `TorrentError::TrackerConnectionFailed` - Network or protocol error
     /// - `TorrentError::ProtocolError` - Invalid scrape response format
     async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError>;
-    
+
     /// Returns tracker URL for debugging and logging purposes.
     fn tracker_url(&self) -> &str;
 }
@@ -114,7 +114,7 @@ impl HttpTrackerClient {
         } else {
             None
         };
-        
+
         Self {
             announce_url,
             scrape_url,
@@ -128,15 +128,17 @@ impl HttpTrackerClient {
 
     /// Build announce URL with query parameters
     fn build_announce_url(&self, request: &AnnounceRequest) -> Result<String, TorrentError> {
-        let mut url = Url::parse(&self.announce_url).map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
+        let mut url =
+            Url::parse(&self.announce_url).map_err(|e| TorrentError::TrackerConnectionFailed {
                 url: format!("Invalid tracker URL: {}", e),
-            }
-        })?;
+            })?;
 
         // Add required parameters
         url.query_pairs_mut()
-            .append_pair("info_hash", &Self::url_encode_bytes(request.info_hash.as_bytes()))
+            .append_pair(
+                "info_hash",
+                &Self::url_encode_bytes(request.info_hash.as_bytes()),
+            )
             .append_pair("peer_id", &Self::url_encode_bytes(&request.peer_id))
             .append_pair("port", &request.port.to_string())
             .append_pair("uploaded", &request.uploaded.to_string())
@@ -150,17 +152,17 @@ impl HttpTrackerClient {
 
     /// Build scrape URL from announce URL
     fn build_scrape_url(&self, request: &ScrapeRequest) -> Result<String, TorrentError> {
-        let scrape_url = self.scrape_url.as_ref().ok_or_else(|| {
-            TorrentError::TrackerConnectionFailed {
-                url: "No scrape URL available".to_string(),
-            }
-        })?;
+        let scrape_url =
+            self.scrape_url
+                .as_ref()
+                .ok_or_else(|| TorrentError::TrackerConnectionFailed {
+                    url: "No scrape URL available".to_string(),
+                })?;
 
-        let mut url = Url::parse(scrape_url).map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
+        let mut url =
+            Url::parse(scrape_url).map_err(|e| TorrentError::TrackerConnectionFailed {
                 url: format!("Invalid scrape URL: {}", e),
-            }
-        })?;
+            })?;
 
         // Add info_hash parameters
         {
@@ -175,16 +177,14 @@ impl HttpTrackerClient {
 
     /// URL encode bytes for tracker communication per RFC 3986.
     fn url_encode_bytes(bytes: &[u8]) -> String {
-        bytes.iter()
-            .map(|&b| format!("%{:02X}", b))
-            .collect()
+        bytes.iter().map(|&b| format!("%{:02X}", b)).collect()
     }
 
     /// Convert announce event to tracker protocol string.
     fn event_to_string(event: AnnounceEvent) -> &'static str {
         match event {
             AnnounceEvent::Started => "started",
-            AnnounceEvent::Stopped => "stopped", 
+            AnnounceEvent::Stopped => "stopped",
             AnnounceEvent::Completed => "completed",
         }
     }
@@ -208,7 +208,10 @@ impl HttpTrackerClient {
     }
 
     /// Parse tracker response from bencode data
-    fn parse_announce_response(&self, response_bytes: &[u8]) -> Result<AnnounceResponse, TorrentError> {
+    fn parse_announce_response(
+        &self,
+        response_bytes: &[u8],
+    ) -> Result<AnnounceResponse, TorrentError> {
         let parsed = bencode_rs::Value::parse(response_bytes).map_err(|e| {
             TorrentError::TrackerConnectionFailed {
                 url: format!("Failed to parse tracker response: {:?}", e),
@@ -223,7 +226,9 @@ impl HttpTrackerClient {
 
         if let bencode_rs::Value::Dictionary(dict) = &parsed[0] {
             // Check for failure reason
-            if let Some(bencode_rs::Value::Bytes(failure_reason)) = dict.get(b"failure reason".as_slice()) {
+            if let Some(bencode_rs::Value::Bytes(failure_reason)) =
+                dict.get(b"failure reason".as_slice())
+            {
                 return Err(TorrentError::TrackerConnectionFailed {
                     url: format!("Tracker error: {}", String::from_utf8_lossy(failure_reason)),
                 });
@@ -232,9 +237,11 @@ impl HttpTrackerClient {
             // Extract required fields
             let interval = match dict.get(b"interval".as_slice()) {
                 Some(bencode_rs::Value::Integer(val)) => *val as u32,
-                _ => return Err(TorrentError::TrackerConnectionFailed {
-                    url: "Missing interval in tracker response".to_string(),
-                }),
+                _ => {
+                    return Err(TorrentError::TrackerConnectionFailed {
+                        url: "Missing interval in tracker response".to_string(),
+                    });
+                }
             };
 
             let complete = match dict.get(b"complete".as_slice()) {
@@ -261,9 +268,7 @@ impl HttpTrackerClient {
 
             // Parse peers (compact format)
             let peers = match dict.get(b"peers".as_slice()) {
-                Some(bencode_rs::Value::Bytes(peer_data)) => {
-                    Self::parse_compact_peers(peer_data)?
-                }
+                Some(bencode_rs::Value::Bytes(peer_data)) => Self::parse_compact_peers(peer_data)?,
                 _ => Vec::new(),
             };
 
@@ -287,7 +292,7 @@ impl HttpTrackerClient {
 impl TrackerClient for HttpTrackerClient {
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError> {
         let url = self.build_announce_url(&request)?;
-        
+
         let response = self.client.get(&url).send().await.map_err(|e| {
             TorrentError::TrackerConnectionFailed {
                 url: format!("HTTP request failed: {}", e),
@@ -300,18 +305,19 @@ impl TrackerClient for HttpTrackerClient {
             });
         }
 
-        let body = response.bytes().await.map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
+        let body = response
+            .bytes()
+            .await
+            .map_err(|e| TorrentError::TrackerConnectionFailed {
                 url: format!("Failed to read response body: {}", e),
-            }
-        })?;
+            })?;
 
         self.parse_announce_response(&body)
     }
-    
+
     async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError> {
         let url = self.build_scrape_url(&request)?;
-        
+
         let response = self.client.get(&url).send().await.map_err(|e| {
             TorrentError::TrackerConnectionFailed {
                 url: format!("HTTP scrape request failed: {}", e),
@@ -320,15 +326,20 @@ impl TrackerClient for HttpTrackerClient {
 
         if !response.status().is_success() {
             return Err(TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP scrape error {}: {}", response.status(), self.announce_url),
+                url: format!(
+                    "HTTP scrape error {}: {}",
+                    response.status(),
+                    self.announce_url
+                ),
             });
         }
 
-        let _body = response.bytes().await.map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
+        let _body = response
+            .bytes()
+            .await
+            .map_err(|e| TorrentError::TrackerConnectionFailed {
                 url: format!("Failed to read scrape response: {}", e),
-            }
-        })?;
+            })?;
 
         // TODO: Parse scrape response from bencode data
         // For now, return empty response to enable testing
@@ -336,12 +347,11 @@ impl TrackerClient for HttpTrackerClient {
             files: std::collections::HashMap::new(),
         })
     }
-    
+
     fn tracker_url(&self) -> &str {
         &self.announce_url
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -358,17 +368,17 @@ mod tests {
             left: 8192,
             event: AnnounceEvent::Started,
         };
-        
+
         assert_eq!(request.port, 6881);
         assert_eq!(request.event, AnnounceEvent::Started);
     }
-    
+
     #[tokio::test]
     async fn test_http_tracker_interface() {
         let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
-        
+
         assert_eq!(tracker.tracker_url(), "http://tracker.example.com/announce");
-        
+
         let request = AnnounceRequest {
             info_hash: InfoHash::new([0u8; 20]),
             peer_id: [1u8; 20],
@@ -378,19 +388,22 @@ mod tests {
             left: 1000,
             event: AnnounceEvent::Started,
         };
-        
+
         // Should fail with stub implementation
         let result = tracker.announce(request).await;
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_scrape_url_derivation() {
         let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
-        
+
         // Scrape URL should be derived correctly
         assert!(tracker.scrape_url.is_some());
-        assert_eq!(tracker.scrape_url.unwrap(), "http://tracker.example.com/scrape");
+        assert_eq!(
+            tracker.scrape_url.unwrap(),
+            "http://tracker.example.com/scrape"
+        );
     }
 
     #[test]
@@ -402,22 +415,31 @@ mod tests {
 
     #[test]
     fn test_event_to_string() {
-        assert_eq!(HttpTrackerClient::event_to_string(AnnounceEvent::Started), "started");
-        assert_eq!(HttpTrackerClient::event_to_string(AnnounceEvent::Stopped), "stopped");
-        assert_eq!(HttpTrackerClient::event_to_string(AnnounceEvent::Completed), "completed");
+        assert_eq!(
+            HttpTrackerClient::event_to_string(AnnounceEvent::Started),
+            "started"
+        );
+        assert_eq!(
+            HttpTrackerClient::event_to_string(AnnounceEvent::Stopped),
+            "stopped"
+        );
+        assert_eq!(
+            HttpTrackerClient::event_to_string(AnnounceEvent::Completed),
+            "completed"
+        );
     }
 
     #[test]
     fn test_parse_compact_peers() {
         // Test valid compact peer data (2 peers)
         let peer_data = [
-            192, 168, 1, 100, 0x1A, 0xE1,  // 192.168.1.100:6881
-            10, 0, 0, 1, 0x1A, 0xE2,       // 10.0.0.1:6882
+            192, 168, 1, 100, 0x1A, 0xE1, // 192.168.1.100:6881
+            10, 0, 0, 1, 0x1A, 0xE2, // 10.0.0.1:6882
         ];
-        
+
         let peers = HttpTrackerClient::parse_compact_peers(&peer_data).unwrap();
         assert_eq!(peers.len(), 2);
-        
+
         assert_eq!(peers[0].to_string(), "192.168.1.100:6881");
         assert_eq!(peers[1].to_string(), "10.0.0.1:6882");
     }
@@ -433,7 +455,7 @@ mod tests {
     #[test]
     fn test_announce_url_building() {
         let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
-        
+
         let request = AnnounceRequest {
             info_hash: InfoHash::new([0u8; 20]),
             peer_id: [1u8; 20],
@@ -443,9 +465,9 @@ mod tests {
             left: 4096,
             event: AnnounceEvent::Started,
         };
-        
+
         let url = tracker.build_announce_url(&request).unwrap();
-        
+
         // Verify URL contains required parameters
         assert!(url.contains("info_hash="));
         assert!(url.contains("peer_id="));
@@ -457,14 +479,14 @@ mod tests {
         assert!(url.contains("compact=1"));
     }
 
-
     #[test]
     fn test_tracker_response_parsing() {
         let tracker = HttpTrackerClient::new("http://test.com/announce".to_string());
-        
+
         // Create a mock bencode tracker response
-        let response_data = b"d8:intervali1800e5:peers12:\xC0\xA8\x01\x64\x1A\xE1\xC0\xA8\x01\x65\x1A\xE2e";
-        
+        let response_data =
+            b"d8:intervali1800e5:peers12:\xC0\xA8\x01\x64\x1A\xE1\xC0\xA8\x01\x65\x1A\xE2e";
+
         let response = tracker.parse_announce_response(response_data).unwrap();
         assert_eq!(response.interval, 1800);
         assert_eq!(response.peers.len(), 2);
@@ -473,10 +495,10 @@ mod tests {
     #[test]
     fn test_tracker_response_with_failure() {
         let tracker = HttpTrackerClient::new("http://test.com/announce".to_string());
-        
-        // Create a bencode response with failure reason  
+
+        // Create a bencode response with failure reason
         let response_data = b"d14:failure reason19:Torrent not registerede";
-        
+
         let result = tracker.parse_announce_response(response_data);
         assert!(result.is_err());
         match result {

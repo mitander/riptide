@@ -4,8 +4,8 @@
 //! Supports both .torrent files and magnet links with error handling and validation.
 
 use super::{InfoHash, TorrentError};
-use std::path::Path;
 use sha1::{Digest, Sha1};
+use std::path::Path;
 
 // Type aliases for complex bencode types
 type BencodeDict<'a> = std::collections::HashMap<&'a [u8], bencode_rs::Value<'a>>;
@@ -55,7 +55,7 @@ pub trait TorrentParser: Send + Sync {
     /// # Errors
     /// - `TorrentError::InvalidTorrentFile` - Malformed bencode or missing fields
     async fn parse_torrent_data(&self, data: &[u8]) -> Result<TorrentMetadata, TorrentError>;
-    
+
     /// Parses torrent file from filesystem path.
     ///
     /// Reads file from disk and delegates to parse_torrent_data for processing.
@@ -64,7 +64,7 @@ pub trait TorrentParser: Send + Sync {
     /// # Errors  
     /// - `TorrentError::InvalidTorrentFile` - File I/O error or parsing failure
     async fn parse_torrent_file(&self, path: &Path) -> Result<TorrentMetadata, TorrentError>;
-    
+
     /// Parses magnet link to extract torrent information.
     ///
     /// Extracts info hash, display name, and tracker URLs from magnet URI.
@@ -76,13 +76,8 @@ pub trait TorrentParser: Send + Sync {
 }
 
 /// Reference implementation using bencode-rs and magnet-url
+#[derive(Default)]
 pub struct BencodeTorrentParser;
-
-impl Default for BencodeTorrentParser {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl BencodeTorrentParser {
     pub fn new() -> Self {
@@ -119,20 +114,21 @@ impl BencodeTorrentParser {
         original_data: &[u8],
     ) -> ParseResult<TorrentMetadata> {
         // Extract info dictionary
-        let info_dict = dict.get(b"info".as_slice())
-            .ok_or_else(|| TorrentError::InvalidTorrentFile {
-                reason: "Missing 'info' field".to_string(),
-            })?;
+        let info_dict =
+            dict.get(b"info".as_slice())
+                .ok_or_else(|| TorrentError::InvalidTorrentFile {
+                    reason: "Missing 'info' field".to_string(),
+                })?;
 
         let info_hash = Self::calculate_info_hash(info_dict, original_data)?;
-        
+
         if let bencode_rs::Value::Dictionary(info_dict_map) = info_dict {
             // Extract name
             let name = Self::extract_bytes_as_string(info_dict_map, b"name")?;
-            
+
             // Extract piece length
             let piece_length = Self::extract_integer(info_dict_map, b"piece length")? as u32;
-            
+
             // Extract pieces (concatenated SHA1 hashes)
             let pieces_bytes = Self::extract_bytes(info_dict_map, b"pieces")?;
             if pieces_bytes.len() % 20 != 0 {
@@ -140,7 +136,7 @@ impl BencodeTorrentParser {
                     reason: "Invalid pieces length".to_string(),
                 });
             }
-            
+
             let piece_hashes: Vec<[u8; 20]> = pieces_bytes
                 .chunks(20)
                 .map(|chunk| {
@@ -151,23 +147,27 @@ impl BencodeTorrentParser {
                 .collect();
 
             // Extract files and total length
-            let (files, total_length) = if let Ok(length) = Self::extract_integer(info_dict_map, b"length") {
-                // Single file torrent
-                let files = vec![TorrentFile {
-                    path: vec![name.clone()],
-                    length: length as u64,
-                }];
-                (files, length as u64)
-            } else if let Ok(bencode_rs::Value::List(files_list)) = info_dict_map.get(b"files".as_slice()).ok_or_else(|| TorrentError::InvalidTorrentFile {
-                reason: "Missing 'files' or 'length' field".to_string(),
-            }) {
-                // Multi-file torrent
-                Self::extract_files_info(files_list)?
-            } else {
-                return Err(TorrentError::InvalidTorrentFile {
-                    reason: "Invalid files structure".to_string(),
-                });
-            };
+            let (files, total_length) =
+                if let Ok(length) = Self::extract_integer(info_dict_map, b"length") {
+                    // Single file torrent
+                    let files = vec![TorrentFile {
+                        path: vec![name.clone()],
+                        length: length as u64,
+                    }];
+                    (files, length as u64)
+                } else if let Ok(bencode_rs::Value::List(files_list)) = info_dict_map
+                    .get(b"files".as_slice())
+                    .ok_or_else(|| TorrentError::InvalidTorrentFile {
+                        reason: "Missing 'files' or 'length' field".to_string(),
+                    })
+                {
+                    // Multi-file torrent
+                    Self::extract_files_info(files_list)?
+                } else {
+                    return Err(TorrentError::InvalidTorrentFile {
+                        reason: "Invalid files structure".to_string(),
+                    });
+                };
 
             // Extract announce URLs
             let announce_urls = Self::extract_announce_urls(dict)?;
@@ -195,69 +195,66 @@ impl BencodeTorrentParser {
     ) -> Result<InfoHash, TorrentError> {
         // Find the start and end of the info dictionary in the original data
         // TODO: Implement proper bencode encoding of just the info dict
-        let info_start = original_data.windows(b"4:info".len())
+        let info_start = original_data
+            .windows(b"4:info".len())
             .position(|window| window == b"4:info")
             .ok_or_else(|| TorrentError::InvalidTorrentFile {
                 reason: "Could not find info dictionary in data".to_string(),
             })?;
-        
+
         // Skip "4:info" to get to the actual dictionary
         let info_data_start = info_start + 6;
-        
+
         // For now, use a placeholder hash calculation
         // TODO: Implement proper bencode encoding of just the info dict
         let mut hasher = Sha1::new();
-        hasher.update(&original_data[info_data_start..info_data_start + 100.min(original_data.len() - info_data_start)]);
+        hasher.update(
+            &original_data
+                [info_data_start..info_data_start + 100.min(original_data.len() - info_data_start)],
+        );
         let hash_result = hasher.finalize();
         let mut hash = [0u8; 20];
         hash.copy_from_slice(&hash_result);
-        
+
         Ok(InfoHash::new(hash))
     }
 
     /// Extract string from bencode dictionary
-    fn extract_bytes_as_string(
-        dict: &BencodeDict<'_>,
-        key: &[u8],
-    ) -> ParseResult<String> {
+    fn extract_bytes_as_string(dict: &BencodeDict<'_>, key: &[u8]) -> ParseResult<String> {
         let bytes = Self::extract_bytes(dict, key)?;
-        String::from_utf8(bytes.to_vec()).map_err(|_| {
-            TorrentError::InvalidTorrentFile {
-                reason: format!("Invalid UTF-8 in field: {:?}", String::from_utf8_lossy(key)),
-            }
+        String::from_utf8(bytes.to_vec()).map_err(|_| TorrentError::InvalidTorrentFile {
+            reason: format!("Invalid UTF-8 in field: {:?}", String::from_utf8_lossy(key)),
         })
     }
 
     /// Extract bytes from bencode dictionary
-    fn extract_bytes<'a>(
-        dict: &'a BencodeDict<'_>,
-        key: &[u8],
-    ) -> BytesResult<'a> {
+    fn extract_bytes<'a>(dict: &'a BencodeDict<'_>, key: &[u8]) -> BytesResult<'a> {
         match dict.get(key) {
             Some(bencode_rs::Value::Bytes(bytes)) => Ok(bytes),
             _ => Err(TorrentError::InvalidTorrentFile {
-                reason: format!("Missing or invalid field: {:?}", String::from_utf8_lossy(key)),
+                reason: format!(
+                    "Missing or invalid field: {:?}",
+                    String::from_utf8_lossy(key)
+                ),
             }),
         }
     }
 
     /// Extract integer from bencode dictionary
-    fn extract_integer(
-        dict: &BencodeDict<'_>,
-        key: &[u8],
-    ) -> ParseResult<i64> {
+    fn extract_integer(dict: &BencodeDict<'_>, key: &[u8]) -> ParseResult<i64> {
         match dict.get(key) {
             Some(bencode_rs::Value::Integer(value)) => Ok(*value),
             _ => Err(TorrentError::InvalidTorrentFile {
-                reason: format!("Missing or invalid integer field: {:?}", String::from_utf8_lossy(key)),
+                reason: format!(
+                    "Missing or invalid integer field: {:?}",
+                    String::from_utf8_lossy(key)
+                ),
             }),
         }
     }
 
     /// Extract files information from multi-file torrent
-    fn extract_files_info(
-        files_list: &[bencode_rs::Value<'_>],
-    ) -> FilesResult {
+    fn extract_files_info(files_list: &[bencode_rs::Value<'_>]) -> FilesResult {
         let mut files = Vec::new();
         let mut total_length = 0u64;
 
@@ -268,19 +265,22 @@ impl BencodeTorrentParser {
 
                 let path_list = match file_dict.get(b"path".as_slice()) {
                     Some(bencode_rs::Value::List(path_list)) => path_list,
-                    _ => return Err(TorrentError::InvalidTorrentFile {
-                        reason: "Missing or invalid path in file".to_string(),
-                    }),
+                    _ => {
+                        return Err(TorrentError::InvalidTorrentFile {
+                            reason: "Missing or invalid path in file".to_string(),
+                        });
+                    }
                 };
 
                 let mut path = Vec::new();
                 for path_component in path_list {
                     if let bencode_rs::Value::Bytes(component) = path_component {
-                        let component_str = String::from_utf8(component.to_vec()).map_err(|_| {
-                            TorrentError::InvalidTorrentFile {
-                                reason: "Invalid UTF-8 in file path".to_string(),
-                            }
-                        })?;
+                        let component_str =
+                            String::from_utf8(component.to_vec()).map_err(|_| {
+                                TorrentError::InvalidTorrentFile {
+                                    reason: "Invalid UTF-8 in file path".to_string(),
+                                }
+                            })?;
                         path.push(component_str);
                     } else {
                         return Err(TorrentError::InvalidTorrentFile {
@@ -301,9 +301,7 @@ impl BencodeTorrentParser {
     }
 
     /// Extract announce URLs from torrent dictionary
-    fn extract_announce_urls(
-        dict: &BencodeDict<'_>,
-    ) -> ParseResult<Vec<String>> {
+    fn extract_announce_urls(dict: &BencodeDict<'_>) -> ParseResult<Vec<String>> {
         let mut announce_urls = Vec::new();
 
         // Primary announce URL
@@ -312,7 +310,8 @@ impl BencodeTorrentParser {
         }
 
         // Announce list (optional)
-        if let Some(bencode_rs::Value::List(announce_list)) = dict.get(b"announce-list".as_slice()) {
+        if let Some(bencode_rs::Value::List(announce_list)) = dict.get(b"announce-list".as_slice())
+        {
             for tier in announce_list {
                 if let bencode_rs::Value::List(tier_urls) = tier {
                     for url_value in tier_urls {
@@ -336,13 +335,14 @@ impl BencodeTorrentParser {
     }
 }
 
-
 impl BencodeTorrentParser {
     /// Extract info hash from magnet link
-    fn extract_info_hash_from_magnet(magnet: &magnet_url::Magnet) -> Result<InfoHash, TorrentError> {
+    fn extract_info_hash_from_magnet(
+        magnet: &magnet_url::Magnet,
+    ) -> Result<InfoHash, TorrentError> {
         // Simple approach: parse the URL string manually since API methods are unclear
         let url_str = magnet.to_string();
-        
+
         // Look for xt parameter with btih hash
         for param in url_str.split('&') {
             if let Some(xt_value) = param.strip_prefix("xt=urn:btih:") {
@@ -350,7 +350,7 @@ impl BencodeTorrentParser {
                 return Self::parse_hash_from_string(xt_value);
             }
         }
-        
+
         // Also check after the initial '?'
         for param in url_str.split('?').skip(1) {
             for sub_param in param.split('&') {
@@ -359,21 +359,21 @@ impl BencodeTorrentParser {
                 }
             }
         }
-        
+
         Err(TorrentError::InvalidTorrentFile {
             reason: format!("Missing or invalid info hash in magnet link: {}", url_str),
         })
     }
-    
+
     /// Parse hex string to 20-byte hash
     fn parse_hash_from_string(hash_str: &str) -> Result<InfoHash, TorrentError> {
         if hash_str.len() == 40 {
             let mut hash = [0u8; 20];
             for (i, chunk) in hash_str.as_bytes().chunks(2).enumerate() {
-                if i >= 20 { break; }
-                if let Ok(byte) = u8::from_str_radix(
-                    &String::from_utf8_lossy(chunk), 16
-                ) {
+                if i >= 20 {
+                    break;
+                }
+                if let Ok(byte) = u8::from_str_radix(&String::from_utf8_lossy(chunk), 16) {
                     hash[i] = byte;
                 } else {
                     return Err(TorrentError::InvalidTorrentFile {
@@ -392,26 +392,29 @@ impl BencodeTorrentParser {
 
 #[async_trait::async_trait]
 impl TorrentParser for BencodeTorrentParser {
-    async fn parse_torrent_data(&self, torrent_bytes: &[u8]) -> Result<TorrentMetadata, TorrentError> {
+    async fn parse_torrent_data(
+        &self,
+        torrent_bytes: &[u8],
+    ) -> Result<TorrentMetadata, TorrentError> {
         Self::parse_bencode_data(torrent_bytes)
     }
-    
+
     async fn parse_torrent_file(&self, path: &Path) -> Result<TorrentMetadata, TorrentError> {
-        let file_contents = tokio::fs::read(path).await.map_err(|e| {
-            TorrentError::InvalidTorrentFile {
-                reason: format!("Failed to read file: {}", e),
-            }
-        })?;
-        
+        let file_contents =
+            tokio::fs::read(path)
+                .await
+                .map_err(|e| TorrentError::InvalidTorrentFile {
+                    reason: format!("Failed to read file: {}", e),
+                })?;
+
         self.parse_torrent_data(&file_contents).await
     }
-    
+
     async fn parse_magnet_link(&self, magnet_url: &str) -> Result<MagnetLink, TorrentError> {
-        let magnet = magnet_url::Magnet::new(magnet_url).map_err(|e| {
-            TorrentError::InvalidTorrentFile {
+        let magnet =
+            magnet_url::Magnet::new(magnet_url).map_err(|e| TorrentError::InvalidTorrentFile {
                 reason: format!("Invalid magnet link: {}", e),
-            }
-        })?;
+            })?;
 
         // Extract info hash from exact topic (xt) parameter
         let info_hash = Self::extract_info_hash_from_magnet(&magnet)?;
@@ -431,11 +434,11 @@ mod tests {
     #[tokio::test]
     async fn test_magnet_link_parsing() {
         let parser = BencodeTorrentParser::new();
-        
+
         // Valid magnet link
         let magnet_url = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test%20Torrent&tr=http://tracker.example.com/announce";
         let result = parser.parse_magnet_link(magnet_url).await;
-        
+
         assert!(result.is_ok());
         let magnet = result.unwrap();
         assert_eq!(magnet.display_name, Some("Test%20Torrent".to_string()));
@@ -445,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_magnet_link() {
         let parser = BencodeTorrentParser::new();
-        
+
         let result = parser.parse_magnet_link("invalid://not-a-magnet").await;
         assert!(result.is_err());
     }
@@ -453,12 +456,12 @@ mod tests {
     #[tokio::test]
     async fn test_torrent_data_parsing() {
         let parser = BencodeTorrentParser::new();
-        
+
         // For now, test our implementation with a simple structure
         // and focus on the valid parsing path rather than complex bencode
         let torrent_data = b"d8:announce9:test:80804:infod6:lengthi1000e4:name8:test.txt12:piece lengthi32768e6:pieces20:12345678901234567890ee";
         let result = parser.parse_torrent_data(torrent_data).await;
-        
+
         assert!(result.is_ok());
         let metadata = result.unwrap();
         assert_eq!(metadata.name, "test.txt");
@@ -467,31 +470,31 @@ mod tests {
         assert_eq!(metadata.piece_hashes.len(), 1);
     }
 
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_invalid_torrent_data() {
         let parser = BencodeTorrentParser::new();
-        
+
         // Invalid bencode data (doesn't start with 'd')
         let invalid_data = b"invalid torrent data";
         let result = parser.parse_torrent_data(invalid_data).await;
-        
+
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_torrent_file_parsing() {
         let parser = BencodeTorrentParser::new();
-        
+
         // Create temporary file with valid bencode data
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("test.torrent");
         let torrent_data = b"d8:announce9:test:80804:infod6:lengthi1000e4:name8:test.txt12:piece lengthi32768e6:pieces20:12345678901234567890ee";
-        
+
         tokio::fs::write(&file_path, torrent_data).await.unwrap();
-        
+
         let result = parser.parse_torrent_file(&file_path).await;
         assert!(result.is_ok());
-        
+
         let metadata = result.unwrap();
         assert_eq!(metadata.name, "test.txt");
         assert_eq!(metadata.total_length, 1000);
@@ -500,11 +503,13 @@ mod tests {
     #[tokio::test]
     async fn test_nonexistent_file() {
         let parser = BencodeTorrentParser::new();
-        
-        let result = parser.parse_torrent_file(Path::new("/nonexistent/file.torrent")).await;
+
+        let result = parser
+            .parse_torrent_file(Path::new("/nonexistent/file.torrent"))
+            .await;
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_torrent_metadata_structure() {
         let metadata = TorrentMetadata {
@@ -519,7 +524,7 @@ mod tests {
             }],
             announce_urls: vec!["http://tracker.example.com/announce".to_string()],
         };
-        
+
         assert_eq!(metadata.piece_hashes.len(), 2);
         assert_eq!(metadata.files.len(), 1);
     }

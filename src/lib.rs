@@ -4,6 +4,7 @@
 //! Supports simulation environments for rapid development and testing.
 
 pub mod cli;
+pub mod config;
 pub mod simulation;
 pub mod storage;
 pub mod torrent;
@@ -15,10 +16,10 @@ pub use torrent::TorrentEngine;
 pub enum RiptideError {
     #[error("Torrent error: {0}")]
     Torrent(#[from] torrent::TorrentError),
-    
+
     #[error("Storage error: {0}")]
     Storage(#[from] storage::StorageError),
-    
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }

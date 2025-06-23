@@ -1,15 +1,10 @@
+# Riptide Clippy Configuration
+# Enforces our documented coding standards
+
+# Complexity limits
 cognitive-complexity-threshold = 20
 too-many-lines-threshold = 400
 too-many-arguments-threshold = 5
-type-complexity-threshold = 60
 
-# Enforce naming conventions
-disallowed-names = ["utils", "helpers", "common", "shared", "data", "info", "tmp", "temp"]
-
-# Documentation requirements
-missing-docs-in-crate-items = false
-
-# Code quality thresholds
-max-struct-bools = 3
-max-fn-params-bools = 2
-trivial-copy-size-limit = 64
+# ENFORCE: No wildcard imports to prevent use module::*;
+warn-on-all-wildcard-imports = true
