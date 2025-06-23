@@ -299,6 +299,77 @@ impl HttpTrackerClient {
             })
         }
     }
+
+    /// Parse tracker scrape response from bencode data
+    fn parse_scrape_response(&self, response_bytes: &[u8]) -> Result<ScrapeResponse, TorrentError> {
+        let parsed = bencode_rs::Value::parse(response_bytes).map_err(|e| {
+            TorrentError::TrackerConnectionFailed {
+                url: format!("Failed to parse scrape response: {:?}", e),
+            }
+        })?;
+
+        if parsed.is_empty() {
+            return Err(TorrentError::TrackerConnectionFailed {
+                url: "Empty scrape response".to_string(),
+            });
+        }
+
+        if let bencode_rs::Value::Dictionary(dict) = &parsed[0] {
+            // Check for failure reason
+            if let Some(bencode_rs::Value::Bytes(failure_reason)) =
+                dict.get(b"failure reason".as_slice())
+            {
+                return Err(TorrentError::TrackerConnectionFailed {
+                    url: format!("Scrape error: {}", String::from_utf8_lossy(failure_reason)),
+                });
+            }
+
+            // Parse files dictionary
+            let mut files = std::collections::HashMap::new();
+
+            if let Some(bencode_rs::Value::Dictionary(files_dict)) = dict.get(b"files".as_slice()) {
+                for (info_hash_bytes, file_data) in files_dict {
+                    if info_hash_bytes.len() == 20 {
+                        let mut hash_array = [0u8; 20];
+                        hash_array.copy_from_slice(info_hash_bytes);
+                        let info_hash = InfoHash::new(hash_array);
+
+                        if let bencode_rs::Value::Dictionary(file_dict) = file_data {
+                            let complete = match file_dict.get(b"complete".as_slice()) {
+                                Some(bencode_rs::Value::Integer(val)) => *val as u32,
+                                _ => 0,
+                            };
+
+                            let downloaded = match file_dict.get(b"downloaded".as_slice()) {
+                                Some(bencode_rs::Value::Integer(val)) => *val as u32,
+                                _ => 0,
+                            };
+
+                            let incomplete = match file_dict.get(b"incomplete".as_slice()) {
+                                Some(bencode_rs::Value::Integer(val)) => *val as u32,
+                                _ => 0,
+                            };
+
+                            files.insert(
+                                info_hash,
+                                ScrapeStats {
+                                    complete,
+                                    downloaded,
+                                    incomplete,
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+
+            Ok(ScrapeResponse { files })
+        } else {
+            Err(TorrentError::TrackerConnectionFailed {
+                url: "Invalid scrape response format".to_string(),
+            })
+        }
+    }
 }
 
 #[async_trait]
@@ -347,18 +418,14 @@ impl TrackerClient for HttpTrackerClient {
             });
         }
 
-        let _body = response
+        let body = response
             .bytes()
             .await
             .map_err(|e| TorrentError::TrackerConnectionFailed {
                 url: format!("Failed to read scrape response: {}", e),
             })?;
 
-        // TODO: Parse scrape response from bencode data
-        // For now, return empty response to enable testing
-        Ok(ScrapeResponse {
-            files: std::collections::HashMap::new(),
-        })
+        self.parse_scrape_response(&body)
     }
 
     fn tracker_url(&self) -> &str {
@@ -511,6 +578,102 @@ mod tests {
         let response = tracker.parse_announce_response(response_data).unwrap();
         assert_eq!(response.interval, 1800);
         assert_eq!(response.peers.len(), 2);
+    }
+
+    #[test]
+    fn test_scrape_request_creation() {
+        let info_hash1 = InfoHash::new([1u8; 20]);
+        let info_hash2 = InfoHash::new([2u8; 20]);
+
+        let request = ScrapeRequest {
+            info_hashes: vec![info_hash1, info_hash2],
+        };
+
+        assert_eq!(request.info_hashes.len(), 2);
+        assert_eq!(request.info_hashes[0], info_hash1);
+        assert_eq!(request.info_hashes[1], info_hash2);
+    }
+
+    #[test]
+    fn test_scrape_stats_structure() {
+        let stats = ScrapeStats {
+            complete: 50,
+            downloaded: 1000,
+            incomplete: 25,
+        };
+
+        assert_eq!(stats.complete, 50);
+        assert_eq!(stats.downloaded, 1000);
+        assert_eq!(stats.incomplete, 25);
+    }
+
+    #[test]
+    fn test_scrape_response_parsing() {
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string(), &config);
+
+        // Create mock scrape response with 20-byte info hash
+        let info_hash_bytes = [
+            0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC,
+            0xDE, 0xF0, 0x12, 0x34, 0x56, 0x78,
+        ];
+
+        // Build bencode scrape response: d5:filesd20:<hash>d8:completei50e10:downloadedi1000e10:incompletei25eeee
+        let mut response_data = Vec::new();
+        response_data.extend_from_slice(b"d5:filesd20:");
+        response_data.extend_from_slice(&info_hash_bytes);
+        response_data.extend_from_slice(b"d8:completei50e10:downloadedi1000e10:incompletei25eeee");
+
+        let response = tracker.parse_scrape_response(&response_data).unwrap();
+
+        let info_hash = InfoHash::new(info_hash_bytes);
+        let stats = response.files.get(&info_hash).unwrap();
+
+        assert_eq!(stats.complete, 50);
+        assert_eq!(stats.downloaded, 1000);
+        assert_eq!(stats.incomplete, 25);
+    }
+
+    #[test]
+    fn test_scrape_response_parsing_empty_files() {
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string(), &config);
+
+        // Empty files dictionary
+        let response_data = b"d5:filesd\x65e";
+
+        let response = tracker.parse_scrape_response(response_data).unwrap();
+        assert!(response.files.is_empty());
+    }
+
+    #[test]
+    fn test_scrape_response_parsing_failure() {
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string(), &config);
+
+        // Response with failure reason
+        let response_data = b"d14:failure reason13:Access deniede";
+
+        let result = tracker.parse_scrape_response(response_data);
+        assert!(result.is_err());
+
+        if let Err(TorrentError::TrackerConnectionFailed { url }) = result {
+            assert!(url.contains("Access denied"));
+        } else {
+            panic!("Expected TrackerConnectionFailed error");
+        }
+    }
+
+    #[test]
+    fn test_scrape_response_invalid_hash_length() {
+        let config = NetworkConfig::default();
+        let tracker = HttpTrackerClient::new("http://test.com/announce".to_string(), &config);
+
+        // Hash that's not 20 bytes
+        let response_data = b"d5:filesd10:short_hashd8:completei10eeee";
+
+        let response = tracker.parse_scrape_response(response_data).unwrap();
+        assert!(response.files.is_empty()); // Invalid hash lengths are ignored
     }
 
     #[test]

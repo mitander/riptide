@@ -19,7 +19,10 @@ pub use piece_picker::{PiecePicker, StreamingPiecePicker};
 pub use protocol::{
     BitTorrentPeerProtocol, PeerHandshake, PeerId, PeerMessage, PeerProtocol, PeerState,
 };
-pub use tracker::{AnnounceRequest, AnnounceResponse, HttpTrackerClient, TrackerClient};
+pub use tracker::{
+    AnnounceRequest, AnnounceResponse, HttpTrackerClient, ScrapeRequest, ScrapeResponse,
+    ScrapeStats, TrackerClient,
+};
 
 use std::fmt;
 
