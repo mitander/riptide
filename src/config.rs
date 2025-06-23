@@ -18,8 +18,6 @@ pub struct RiptideConfig {
 pub struct TorrentConfig {
     /// BitTorrent client identifier
     pub client_id: &'static str,
-    /// Maximum number of peer connections
-    pub max_peer_connections: usize,
     /// Piece request timeout
     pub piece_timeout: Duration,
     /// Default piece size for new torrents
@@ -30,7 +28,6 @@ impl Default for TorrentConfig {
     fn default() -> Self {
         Self {
             client_id: "-RT0001-",
-            max_peer_connections: 50,
             piece_timeout: Duration::from_secs(30),
             default_piece_size: 32768, // 32 KiB
         }
@@ -48,6 +45,14 @@ pub struct NetworkConfig {
     pub default_announce_interval: Duration,
     /// User agent for HTTP requests
     pub user_agent: &'static str,
+    /// Maximum concurrent peer connections
+    pub max_peer_connections: usize,
+    /// Download bandwidth limit in bytes per second (None = unlimited)
+    pub download_limit: Option<u64>,
+    /// Upload bandwidth limit in bytes per second (None = unlimited)
+    pub upload_limit: Option<u64>,
+    /// Peer connection timeout in seconds
+    pub peer_timeout_seconds: u64,
 }
 
 impl Default for NetworkConfig {
@@ -57,6 +62,10 @@ impl Default for NetworkConfig {
             min_announce_interval: Duration::from_secs(300), // 5 minutes
             default_announce_interval: Duration::from_secs(1800), // 30 minutes
             user_agent: "riptide/0.1.0",
+            max_peer_connections: 50,
+            download_limit: None, // Unlimited by default
+            upload_limit: None,   // Unlimited by default
+            peer_timeout_seconds: 300, // 5 minutes
         }
     }
 }
@@ -99,7 +108,7 @@ impl RiptideConfig {
 
         if let Ok(max_peers) = std::env::var("RIPTIDE_MAX_PEERS") {
             if let Ok(count) = max_peers.parse::<usize>() {
-                config.torrent.max_peer_connections = count;
+                config.network.max_peer_connections = count;
             }
         }
 
@@ -116,9 +125,10 @@ mod tests {
         let config = RiptideConfig::default();
 
         assert_eq!(config.torrent.client_id, "-RT0001-");
-        assert_eq!(config.torrent.max_peer_connections, 50);
+        assert_eq!(config.network.max_peer_connections, 50);
         assert_eq!(config.network.tracker_timeout, Duration::from_secs(30));
         assert_eq!(config.storage.file_buffer_size, 65536);
+        assert_eq!(config.network.peer_timeout_seconds, 300);
     }
 
     #[test]
@@ -131,7 +141,7 @@ mod tests {
         let config = RiptideConfig::from_env();
 
         assert_eq!(config.network.tracker_timeout, Duration::from_secs(60));
-        assert_eq!(config.torrent.max_peer_connections, 100);
+        assert_eq!(config.network.max_peer_connections, 100);
 
         // Cleanup
         unsafe {

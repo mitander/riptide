@@ -76,6 +76,11 @@ pub fn create_simple_torrent_metadata() -> TorrentMetadata {
     }
 }
 
+/// Creates a test InfoHash for peer manager testing.
+pub fn create_test_info_hash() -> InfoHash {
+    InfoHash::new([0x42u8; 20])
+}
+
 /// Creates complete test environment with torrent metadata and storage.
 ///
 /// Composition pattern for tests that need both torrent and storage setup.

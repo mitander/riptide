@@ -4,6 +4,7 @@ pub mod downloader;
 pub mod engine;
 pub mod parsing;
 pub mod peer_connection;
+pub mod peer_manager;
 pub mod piece_picker;
 pub mod protocol;
 #[cfg(test)]
@@ -11,8 +12,9 @@ pub mod test_data;
 pub mod tracker;
 
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
-pub use engine::TorrentEngine;
+pub use engine::{EngineStats, TorrentEngine, TorrentSession};
 pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentMetadata, TorrentParser};
+pub use peer_manager::{BandwidthLimiter, ConnectionState, PeerManager, PeerManagerStats};
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
 pub use protocol::{BitTorrentPeerProtocol, PeerId, PeerMessage, PeerProtocol};
 pub use tracker::{AnnounceRequest, AnnounceResponse, HttpTrackerClient, TrackerClient};
@@ -82,6 +84,18 @@ pub enum TorrentError {
 
     #[error("Storage error")]
     Storage(#[from] crate::storage::StorageError),
+
+    #[error("Connection limit exceeded")]
+    ConnectionLimitExceeded,
+
+    #[error("Connection failed: {reason}")]
+    ConnectionFailed { reason: String },
+
+    #[error("No peers available for torrent")]
+    NoPeersAvailable,
+
+    #[error("Bandwidth limit exceeded")]
+    BandwidthLimitExceeded,
 }
 
 #[cfg(test)]
