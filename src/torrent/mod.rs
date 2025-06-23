@@ -16,7 +16,9 @@ pub use engine::{EngineStats, TorrentEngine, TorrentSession};
 pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentMetadata, TorrentParser};
 pub use peer_manager::{BandwidthLimiter, ConnectionState, PeerManager, PeerManagerStats};
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
-pub use protocol::{BitTorrentPeerProtocol, PeerId, PeerMessage, PeerProtocol};
+pub use protocol::{
+    BitTorrentPeerProtocol, PeerHandshake, PeerId, PeerMessage, PeerProtocol, PeerState,
+};
 pub use tracker::{AnnounceRequest, AnnounceResponse, HttpTrackerClient, TrackerClient};
 
 use std::fmt;
@@ -101,14 +103,23 @@ pub enum TorrentError {
     #[error("Connection limit exceeded")]
     ConnectionLimitExceeded,
 
-    #[error("Connection failed: {reason}")]
-    ConnectionFailed { reason: String },
-
     #[error("No peers available for torrent")]
     NoPeersAvailable,
 
     #[error("Bandwidth limit exceeded")]
     BandwidthLimitExceeded,
+
+    #[error("I/O error")]
+    Io(#[from] std::io::Error),
+
+    #[error("URL parsing error")]
+    UrlParsing(#[from] url::ParseError),
+
+    #[error("UTF-8 conversion error")]
+    Utf8(#[from] std::string::FromUtf8Error),
+
+    #[error("HTTP error")]
+    Http(#[from] reqwest::Error),
 }
 
 #[cfg(test)]

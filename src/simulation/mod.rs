@@ -10,7 +10,10 @@ pub use tracker::MockTracker;
 
 use std::time::Duration;
 
-/// Complete simulation environment for BitTorrent development
+/// Complete simulation environment for BitTorrent development.
+///
+/// Combines mock tracker, network simulator, and peer pool for comprehensive
+/// offline development and testing of BitTorrent functionality.
 pub struct SimulationEnvironment {
     pub tracker: MockTracker,
     pub network: NetworkSimulator,
@@ -24,7 +27,7 @@ impl Default for SimulationEnvironment {
 }
 
 impl SimulationEnvironment {
-    /// Create a new simulation environment with sensible defaults
+    /// Create a new simulation environment with sensible defaults.
     pub fn new() -> Self {
         Self {
             tracker: MockTracker::new(),
@@ -33,7 +36,7 @@ impl SimulationEnvironment {
         }
     }
 
-    /// Create environment optimized for streaming development
+    /// Create environment optimized for streaming development.
     pub fn for_streaming() -> Self {
         let mut env = Self::new();
 
@@ -52,7 +55,7 @@ impl SimulationEnvironment {
         env
     }
 
-    /// Add fast, reliable peers to the simulation
+    /// Add fast, reliable peers to the simulation.
     pub fn add_fast_peers(&mut self, count: usize) {
         for i in 0..count {
             let peer = MockPeer::builder()
@@ -65,7 +68,7 @@ impl SimulationEnvironment {
         }
     }
 
-    /// Add slow peers that simulate real-world conditions
+    /// Add slow peers that simulate real-world conditions.
     pub fn add_slow_peers(&mut self, count: usize) {
         for i in 0..count {
             let peer = MockPeer::builder()
@@ -78,7 +81,7 @@ impl SimulationEnvironment {
         }
     }
 
-    /// Add unreliable peers for testing error handling
+    /// Add unreliable peers for testing error handling.
     pub fn add_unreliable_peers(&mut self, count: usize) {
         for i in 0..count {
             let peer = MockPeer::builder()

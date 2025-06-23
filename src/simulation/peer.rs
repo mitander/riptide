@@ -2,7 +2,10 @@
 
 use std::time::Duration;
 
-/// Mock peer for BitTorrent protocol simulation
+/// Mock peer for BitTorrent protocol simulation.
+///
+/// Simulates BitTorrent peer behavior with configurable upload speed,
+/// reliability, and latency for testing download scenarios.
 pub struct MockPeer {
     peer_id: String,
     upload_speed: u64, // bytes per second
@@ -11,6 +14,7 @@ pub struct MockPeer {
 }
 
 impl MockPeer {
+    /// Creates new mock peer with default settings.
     pub fn new(peer_id: String) -> Self {
         Self {
             peer_id,
@@ -20,14 +24,17 @@ impl MockPeer {
         }
     }
 
+    /// Returns builder for customizing peer behavior.
     pub fn builder() -> MockPeerBuilder {
         MockPeerBuilder::new()
     }
 
+    /// Returns peer identifier string.
     pub fn peer_id(&self) -> &str {
         &self.peer_id
     }
 
+    /// Returns configured upload speed in bytes per second.
     pub fn upload_speed(&self) -> u64 {
         self.upload_speed
     }
@@ -54,6 +61,10 @@ impl MockPeer {
     }
 }
 
+/// Builder for configuring mock peer behavior.
+///
+/// Allows customization of peer characteristics including upload speed,
+/// connection reliability, and network latency before creating the peer.
 pub struct MockPeerBuilder {
     peer_id: Option<String>,
     upload_speed: u64,
@@ -71,26 +82,31 @@ impl MockPeerBuilder {
         }
     }
 
+    /// Sets peer identifier string.
     pub fn peer_id(mut self, id: String) -> Self {
         self.peer_id = Some(id);
         self
     }
 
+    /// Sets upload speed in bytes per second.
     pub fn upload_speed(mut self, bytes_per_second: u64) -> Self {
         self.upload_speed = bytes_per_second;
         self
     }
 
+    /// Sets connection reliability as probability (0.0-1.0).
     pub fn reliability(mut self, rate: f32) -> Self {
         self.reliability = rate.clamp(0.0, 1.0);
         self
     }
 
+    /// Sets network latency for peer communication.
     pub fn latency(mut self, duration: Duration) -> Self {
         self.latency = duration;
         self
     }
 
+    /// Creates mock peer with configured settings.
     pub fn build(self) -> MockPeer {
         let peer_id = self
             .peer_id
@@ -105,6 +121,10 @@ impl MockPeerBuilder {
     }
 }
 
+/// Errors that can occur during peer simulation.
+///
+/// Covers connection failures and protocol errors that may
+/// occur during mock peer communication.
 #[derive(Debug, thiserror::Error)]
 pub enum PeerError {
     #[error("Peer connection lost")]

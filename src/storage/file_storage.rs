@@ -1,18 +1,26 @@
 //! File-based storage implementation
 
 use super::{Storage, StorageError};
-use async_trait::async_trait;
 use crate::torrent::{InfoHash, PieceIndex};
+use async_trait::async_trait;
 use std::path::PathBuf;
 use tokio::fs;
 
-/// Simple file-based storage implementation
+/// File system-based storage implementation.
+///
+/// Stores torrent pieces as individual files in a directory structure
+/// organized by torrent info hash. Handles piece verification and
+/// torrent completion detection.
 pub struct FileStorage {
     download_dir: PathBuf,
     library_dir: PathBuf,
 }
 
 impl FileStorage {
+    /// Creates new file storage with download and library directories.
+    ///
+    /// Download directory stores incomplete pieces during downloading.
+    /// Library directory stores completed torrents after verification.
     pub fn new(download_dir: PathBuf, library_dir: PathBuf) -> Self {
         Self {
             download_dir,

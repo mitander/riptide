@@ -59,8 +59,8 @@ pub struct NetworkConfig {
     pub download_limit: Option<u64>,
     /// Upload bandwidth limit in bytes per second (None = unlimited)
     pub upload_limit: Option<u64>,
-    /// Peer connection timeout in seconds
-    pub peer_timeout_seconds: u64,
+    /// Peer connection timeout
+    pub peer_timeout: Duration,
 }
 
 impl Default for NetworkConfig {
@@ -71,9 +71,9 @@ impl Default for NetworkConfig {
             default_announce_interval: Duration::from_secs(1800), // 30 minutes
             user_agent: "riptide/0.1.0",
             max_peer_connections: 50,
-            download_limit: None, // Unlimited by default
-            upload_limit: None,   // Unlimited by default
-            peer_timeout_seconds: 300, // 5 minutes
+            download_limit: None,                   // Unlimited by default
+            upload_limit: None,                     // Unlimited by default
+            peer_timeout: Duration::from_secs(300), // 5 minutes
         }
     }
 }
@@ -139,7 +139,7 @@ mod tests {
         assert_eq!(config.network.max_peer_connections, 50);
         assert_eq!(config.network.tracker_timeout, Duration::from_secs(30));
         assert_eq!(config.storage.file_buffer_size, 65536);
-        assert_eq!(config.network.peer_timeout_seconds, 300);
+        assert_eq!(config.network.peer_timeout, Duration::from_secs(300));
     }
 
     #[test]

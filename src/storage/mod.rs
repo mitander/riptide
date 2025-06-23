@@ -9,8 +9,8 @@ pub mod test_fixtures;
 
 pub use file_storage::FileStorage;
 
-use async_trait::async_trait;
 use crate::torrent::{InfoHash, PieceIndex};
+use async_trait::async_trait;
 use std::path::PathBuf;
 
 /// Storage operations for torrent piece data.
@@ -58,7 +58,10 @@ pub trait Storage: Send + Sync {
     async fn finalize_torrent(&mut self, info_hash: InfoHash) -> Result<PathBuf, StorageError>;
 }
 
-/// Storage-related errors
+/// Errors that occur during storage operations.
+///
+/// Covers file system errors, disk space issues, and data corruption
+/// during piece storage and retrieval operations.
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
     #[error("Piece {index} not found")]

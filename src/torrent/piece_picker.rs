@@ -5,16 +5,22 @@
 
 use super::PieceIndex;
 
-/// Trait for piece selection strategies
+/// Trait for piece selection strategies.
+///
+/// Defines interface for algorithms that choose which pieces to download
+/// next based on availability, priority, and download strategy.
 pub trait PiecePicker: Send + Sync {
-    /// Select the next piece to download
+    /// Select the next piece to download.
     fn next_piece(&mut self) -> Option<PieceIndex>;
 
-    /// Mark a piece as completed
+    /// Mark a piece as completed.
     fn mark_completed(&mut self, index: PieceIndex);
 }
 
-/// Sequential piece picker optimized for streaming
+/// Sequential piece picker optimized for streaming.
+///
+/// Downloads pieces in order from first to last, which is ideal for
+/// streaming media content where sequential access is required.
 #[derive(Default)]
 pub struct StreamingPiecePicker {
     next_index: u32,
@@ -22,6 +28,7 @@ pub struct StreamingPiecePicker {
 }
 
 impl StreamingPiecePicker {
+    /// Creates new streaming piece picker.
     pub fn new() -> Self {
         Self {
             next_index: 0,
@@ -29,6 +36,7 @@ impl StreamingPiecePicker {
         }
     }
 
+    /// Sets total number of pieces in torrent.
     pub fn with_total_pieces(mut self, total: u32) -> Self {
         self.total_pieces = total;
         self

@@ -3,7 +3,10 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-/// Mock tracker for offline development
+/// Mock tracker for offline development.
+///
+/// Simulates BitTorrent tracker responses for testing without real trackers.
+/// Supports configurable peer counts, failure injection, and realistic delays.
 pub struct MockTracker {
     seeders: u32,
     leechers: u32,
@@ -18,6 +21,7 @@ impl Default for MockTracker {
 }
 
 impl MockTracker {
+    /// Creates new mock tracker with default settings.
     pub fn new() -> Self {
         Self {
             seeders: 10,
@@ -27,6 +31,7 @@ impl MockTracker {
         }
     }
 
+    /// Returns builder for customizing tracker behavior.
     pub fn builder() -> MockTrackerBuilder {
         MockTrackerBuilder::new()
     }
@@ -53,6 +58,10 @@ impl MockTracker {
     }
 }
 
+/// Builder for configuring mock tracker behavior.
+///
+/// Allows customization of peer counts, failure rates, and other
+/// simulation parameters before creating the tracker instance.
 pub struct MockTrackerBuilder {
     seeders: u32,
     leechers: u32,
@@ -68,21 +77,25 @@ impl MockTrackerBuilder {
         }
     }
 
+    /// Sets number of seeders to report in responses.
     pub fn with_seeders(mut self, count: u32) -> Self {
         self.seeders = count;
         self
     }
 
+    /// Sets number of leechers to report in responses.
     pub fn with_leechers(mut self, count: u32) -> Self {
         self.leechers = count;
         self
     }
 
+    /// Sets probability (0.0-1.0) of simulated connection failures.
     pub fn with_failure_rate(mut self, rate: f32) -> Self {
         self.failure_rate = rate;
         self
     }
 
+    /// Creates mock tracker with configured settings.
     pub fn build(self) -> MockTracker {
         let mut peers = Vec::new();
 
@@ -104,6 +117,10 @@ impl MockTrackerBuilder {
     }
 }
 
+/// Mock tracker announce response.
+///
+/// Contains peer list and swarm statistics returned by tracker
+/// in response to announce requests.
 #[derive(Debug)]
 pub struct AnnounceResponse {
     pub interval: u32,
@@ -112,6 +129,10 @@ pub struct AnnounceResponse {
     pub peers: Vec<SocketAddr>,
 }
 
+/// Errors that can occur during tracker simulation.
+///
+/// Covers connection failures and protocol errors that may
+/// occur during tracker communication simulation.
 #[derive(Debug, thiserror::Error)]
 pub enum TrackerError {
     #[error("Connection to tracker failed")]

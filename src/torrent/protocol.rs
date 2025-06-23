@@ -11,20 +11,25 @@ use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-/// BitTorrent peer identifier
+/// BitTorrent peer identifier.
+///
+/// 20-byte identifier for peers in the BitTorrent network.
+/// Used in handshakes and tracker communication to identify clients.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PeerId([u8; 20]);
 
 impl PeerId {
+    /// Creates peer ID from 20-byte array.
     pub fn new(id: [u8; 20]) -> Self {
         Self(id)
     }
 
+    /// Returns peer ID as byte array reference.
     pub fn as_bytes(&self) -> &[u8; 20] {
         &self.0
     }
 
-    /// Generate random peer ID for this client
+    /// Generate random peer ID for this client.
     pub fn generate() -> Self {
         let mut id = [0u8; 20];
         // Use Riptide client identifier prefix
@@ -37,7 +42,10 @@ impl PeerId {
     }
 }
 
-/// BitTorrent wire protocol messages
+/// BitTorrent wire protocol messages.
+///
+/// Complete set of message types defined in BEP 3 for peer communication.
+/// Handles keep-alive, choke/unchoke, piece requests, and data transfer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PeerMessage {
     KeepAlive,
@@ -71,7 +79,10 @@ pub enum PeerMessage {
     },
 }
 
-/// Peer handshake information
+/// Peer handshake information.
+///
+/// Initial exchange between peers to establish protocol compatibility
+/// and verify info hash matching for torrent verification.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerHandshake {
     pub protocol: String,
@@ -81,7 +92,7 @@ pub struct PeerHandshake {
 }
 
 impl PeerHandshake {
-    /// Create handshake for BitTorrent protocol
+    /// Create handshake for BitTorrent protocol.
     pub fn new(info_hash: InfoHash, peer_id: PeerId) -> Self {
         Self {
             protocol: "BitTorrent protocol".to_string(),
@@ -92,7 +103,10 @@ impl PeerHandshake {
     }
 }
 
-/// Peer connection state
+/// Peer connection state.
+///
+/// Tracks connection lifecycle from initial disconnect through handshake
+/// to active downloading. Used for connection management and protocol flow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PeerState {
     #[default]
@@ -121,7 +135,7 @@ pub trait PeerProtocol: Send + Sync {
     /// - `TorrentError::ProtocolError` - Handshake validation failed
     async fn connect(
         &mut self,
-        addr: SocketAddr,
+        address: SocketAddr,
         handshake: PeerHandshake,
     ) -> Result<(), TorrentError>;
 
@@ -154,7 +168,10 @@ pub trait PeerProtocol: Send + Sync {
     async fn disconnect(&mut self) -> Result<(), TorrentError>;
 }
 
-/// Reference implementation of BitTorrent wire protocol
+/// Reference implementation of BitTorrent wire protocol.
+///
+/// Production TCP-based implementation of BEP 3 wire protocol.
+/// Handles connection management, message serialization, and protocol state.
 #[derive(Default)]
 pub struct BitTorrentPeerProtocol {
     state: PeerState,
@@ -163,6 +180,7 @@ pub struct BitTorrentPeerProtocol {
 }
 
 impl BitTorrentPeerProtocol {
+    /// Creates new protocol instance in disconnected state.
     pub fn new() -> Self {
         Self {
             state: PeerState::Disconnected,
@@ -415,20 +433,23 @@ impl BitTorrentPeerProtocol {
 impl PeerProtocol for BitTorrentPeerProtocol {
     async fn connect(
         &mut self,
-        addr: SocketAddr,
+        address: SocketAddr,
         handshake: PeerHandshake,
     ) -> Result<(), TorrentError> {
         self.state = PeerState::Connecting;
-        self.peer_address = Some(addr);
+        self.peer_address = Some(address);
 
         // Establish TCP connection
-        let stream = TcpStream::connect(addr).await.map_err(|e| {
-            self.state = PeerState::Disconnected;
-            self.peer_address = None;
-            TorrentError::PeerConnectionError {
-                reason: format!("Failed to connect to {}: {}", addr, e),
+        let stream = match TcpStream::connect(address).await {
+            Ok(stream) => stream,
+            Err(_) => {
+                self.state = PeerState::Disconnected;
+                self.peer_address = None;
+                return Err(TorrentError::PeerConnectionError {
+                    reason: format!("Failed to connect to {}", address),
+                });
             }
-        })?;
+        };
 
         self.stream = Some(stream);
         self.state = PeerState::Handshaking;
@@ -436,26 +457,23 @@ impl PeerProtocol for BitTorrentPeerProtocol {
         // Send handshake
         let handshake_data = Self::serialize_handshake(&handshake);
         if let Some(ref mut stream) = self.stream {
-            stream.write_all(&handshake_data).await.map_err(|e| {
+            if stream.write_all(&handshake_data).await.is_err() {
                 self.state = PeerState::Disconnected;
-                TorrentError::PeerConnectionError {
-                    reason: format!("Failed to send handshake: {}", e),
-                }
-            })?;
+                return Err(TorrentError::PeerConnectionError {
+                    reason: "Failed to send handshake".to_string(),
+                });
+            }
         }
 
         // Read peer handshake response
         let mut handshake_buffer = vec![0u8; 68]; // 1 + 19 + 8 + 20 + 20
         if let Some(ref mut stream) = self.stream {
-            stream
-                .read_exact(&mut handshake_buffer)
-                .await
-                .map_err(|e| {
-                    self.state = PeerState::Disconnected;
-                    TorrentError::PeerConnectionError {
-                        reason: format!("Failed to read handshake response: {}", e),
-                    }
-                })?;
+            if stream.read_exact(&mut handshake_buffer).await.is_err() {
+                self.state = PeerState::Disconnected;
+                return Err(TorrentError::PeerConnectionError {
+                    reason: "Failed to read handshake response".to_string(),
+                });
+            }
         }
 
         // Validate peer handshake
@@ -480,12 +498,12 @@ impl PeerProtocol for BitTorrentPeerProtocol {
 
         let message_data = Self::serialize_message(&message);
         if let Some(ref mut stream) = self.stream {
-            stream.write_all(&message_data).await.map_err(|e| {
+            if stream.write_all(&message_data).await.is_err() {
                 self.state = PeerState::Disconnected;
-                TorrentError::PeerConnectionError {
-                    reason: format!("Failed to send message: {}", e),
-                }
-            })?;
+                return Err(TorrentError::PeerConnectionError {
+                    reason: "Failed to send message".to_string(),
+                });
+            }
         }
 
         Ok(())
@@ -501,12 +519,12 @@ impl PeerProtocol for BitTorrentPeerProtocol {
         // Read message length (first 4 bytes)
         let mut length_buf = [0u8; 4];
         if let Some(ref mut stream) = self.stream {
-            stream.read_exact(&mut length_buf).await.map_err(|e| {
+            if stream.read_exact(&mut length_buf).await.is_err() {
                 self.state = PeerState::Disconnected;
-                TorrentError::PeerConnectionError {
-                    reason: format!("Failed to read message length: {}", e),
-                }
-            })?;
+                return Err(TorrentError::PeerConnectionError {
+                    reason: "Failed to read message length".to_string(),
+                });
+            }
         }
 
         let length = u32::from_be_bytes(length_buf);
@@ -519,12 +537,12 @@ impl PeerProtocol for BitTorrentPeerProtocol {
         // Read message payload
         let mut message_buf = vec![0u8; length as usize];
         if let Some(ref mut stream) = self.stream {
-            stream.read_exact(&mut message_buf).await.map_err(|e| {
+            if stream.read_exact(&mut message_buf).await.is_err() {
                 self.state = PeerState::Disconnected;
-                TorrentError::PeerConnectionError {
-                    reason: format!("Failed to read message payload: {}", e),
-                }
-            })?;
+                return Err(TorrentError::PeerConnectionError {
+                    reason: "Failed to read message payload".to_string(),
+                });
+            }
         }
 
         // Reconstruct full message for parsing (length + payload)

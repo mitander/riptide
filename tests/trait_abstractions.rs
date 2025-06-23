@@ -107,7 +107,8 @@ fn test_trait_isolation() {
 
     // Tracker clients can be created independently
     let config = NetworkConfig::default();
-    let _http_tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
+    let _http_tracker =
+        HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
     // Peer protocol can be instantiated independently
     let _peer_protocol = BitTorrentPeerProtocol::new();

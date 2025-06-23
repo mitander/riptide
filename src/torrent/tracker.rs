@@ -4,15 +4,18 @@
 //! Supports automatic URL encoding, compact peer list parsing, and error handling.
 
 use super::{InfoHash, TorrentError};
-use async_trait::async_trait;
 use crate::config::NetworkConfig;
+use async_trait::async_trait;
 use std::net::SocketAddr;
 use url::Url;
 
 // Type aliases for complex types
 type PeerList = Result<Vec<SocketAddr>, TorrentError>;
 
-/// Tracker announce request
+/// Tracker announce request.
+///
+/// Contains client statistics and torrent information sent to tracker
+/// during announce operations to report progress and request peer list.
 #[derive(Debug, Clone)]
 pub struct AnnounceRequest {
     pub info_hash: InfoHash,
@@ -24,7 +27,10 @@ pub struct AnnounceRequest {
     pub event: AnnounceEvent,
 }
 
-/// BitTorrent announce events
+/// BitTorrent announce events.
+///
+/// Indicates client state changes that should be reported to tracker
+/// for proper swarm management and statistics tracking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnnounceEvent {
     Started,
@@ -32,7 +38,10 @@ pub enum AnnounceEvent {
     Completed,
 }
 
-/// Tracker announce response
+/// Tracker announce response.
+///
+/// Contains peer list and swarm statistics returned by tracker
+/// in response to announce requests.
 #[derive(Debug, Clone)]
 pub struct AnnounceResponse {
     pub interval: u32,
@@ -43,13 +52,19 @@ pub struct AnnounceResponse {
     pub peers: Vec<SocketAddr>,
 }
 
-/// Tracker scrape request
+/// Tracker scrape request.
+///
+/// Requests statistics for multiple torrents without announcing
+/// client presence or affecting swarm participation.
 #[derive(Debug, Clone)]
 pub struct ScrapeRequest {
     pub info_hashes: Vec<InfoHash>,
 }
 
-/// Individual torrent statistics from scrape
+/// Individual torrent statistics from scrape.
+///
+/// Contains seeder/leecher counts and download statistics
+/// for a single torrent from scrape response.
 #[derive(Debug, Clone)]
 pub struct ScrapeStats {
     pub complete: u32,
@@ -57,7 +72,10 @@ pub struct ScrapeStats {
     pub incomplete: u32,
 }
 
-/// Tracker scrape response
+/// Tracker scrape response.
+///
+/// Contains statistics for all requested torrents indexed by info hash.
+/// Used for monitoring swarm health without participating.
 #[derive(Debug, Clone)]
 pub struct ScrapeResponse {
     pub files: std::collections::HashMap<InfoHash, ScrapeStats>,
@@ -129,10 +147,7 @@ impl HttpTrackerClient {
 
     /// Build announce URL with query parameters
     fn build_announce_url(&self, request: &AnnounceRequest) -> Result<String, TorrentError> {
-        let mut url =
-            Url::parse(&self.announce_url).map_err(|e| TorrentError::TrackerConnectionFailed {
-                url: format!("Invalid tracker URL: {}", e),
-            })?;
+        let mut url = Url::parse(&self.announce_url)?;
 
         // Add required parameters
         url.query_pairs_mut()
@@ -160,10 +175,7 @@ impl HttpTrackerClient {
                     url: "No scrape URL available".to_string(),
                 })?;
 
-        let mut url =
-            Url::parse(scrape_url).map_err(|e| TorrentError::TrackerConnectionFailed {
-                url: format!("Invalid scrape URL: {}", e),
-            })?;
+        let mut url = Url::parse(scrape_url)?;
 
         // Add info_hash parameters
         {
@@ -378,7 +390,8 @@ mod tests {
     #[tokio::test]
     async fn test_http_tracker_interface() {
         let config = NetworkConfig::default();
-        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
+        let tracker =
+            HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
         assert_eq!(tracker.tracker_url(), "http://tracker.example.com/announce");
 
@@ -400,7 +413,8 @@ mod tests {
     #[test]
     fn test_scrape_url_derivation() {
         let config = NetworkConfig::default();
-        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
+        let tracker =
+            HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
         // Scrape URL should be derived correctly
         assert!(tracker.scrape_url.is_some());
@@ -459,7 +473,8 @@ mod tests {
     #[test]
     fn test_announce_url_building() {
         let config = NetworkConfig::default();
-        let tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
+        let tracker =
+            HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
         let request = AnnounceRequest {
             info_hash: InfoHash::new([0u8; 20]),

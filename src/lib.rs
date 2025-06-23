@@ -11,7 +11,10 @@ pub mod torrent;
 
 pub use torrent::TorrentEngine;
 
-/// Common error type used throughout Riptide
+/// Top-level errors for the Riptide application.
+///
+/// High-level error types that can bubble up from any Riptide subsystem.
+/// These represent failures in core application functionality.
 #[derive(Debug, thiserror::Error)]
 pub enum RiptideError {
     #[error("Torrent error: {0}")]

@@ -11,7 +11,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Single piece download request
+/// Single piece download request.
+///
+/// Represents a request for a specific piece range from a peer.
+/// Used to coordinate piece-level downloads across multiple connections.
 #[derive(Debug, Clone)]
 pub struct PieceRequest {
     pub piece_index: PieceIndex,
@@ -19,7 +22,10 @@ pub struct PieceRequest {
     pub length: u32,
 }
 
-/// Piece download status
+/// Piece download status.
+///
+/// Tracks the lifecycle of piece downloads from initial request
+/// through verification to completion or failure.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PieceStatus {
     Pending,
@@ -29,7 +35,10 @@ pub enum PieceStatus {
     Failed { attempts: u32 },
 }
 
-/// Download progress for a single piece
+/// Download progress for a single piece.
+///
+/// Provides detailed progress information including status, bytes downloaded,
+/// and completion percentage for individual pieces.
 #[derive(Debug, Clone)]
 pub struct PieceProgress {
     pub piece_index: PieceIndex,
@@ -125,9 +134,7 @@ impl<S: Storage> PieceDownloader<S> {
 
         let piece_data = match self.download_from_peers(piece_index).await {
             Ok(data) => data,
-            Err(_) => {
-                self.simulate_piece_download(piece_index).await?
-            }
+            Err(_) => self.simulate_piece_download(piece_index).await?,
         };
 
         {

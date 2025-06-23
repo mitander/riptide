@@ -5,6 +5,10 @@ pub mod commands;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+/// Main CLI structure for Riptide torrent client.
+///
+/// Defines command-line interface with global options and subcommands
+/// for torrent management and simulation.
 #[derive(Parser)]
 #[command(name = "riptide")]
 #[command(about = "Production-grade torrent media server")]
@@ -22,6 +26,10 @@ pub struct Cli {
     pub verbose: bool,
 }
 
+/// Available CLI commands.
+///
+/// Covers torrent lifecycle management from adding torrents through
+/// monitoring status, plus simulation mode for development.
 #[derive(Subcommand)]
 pub enum Commands {
     /// Add a torrent by magnet link or file
