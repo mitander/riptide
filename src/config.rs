@@ -5,7 +5,10 @@
 
 use std::time::Duration;
 
-/// Central configuration for Riptide components.
+/// Central configuration for all Riptide components.
+///
+/// Groups related configuration settings into logical sections.
+/// Supports environment variable overrides for runtime customization.
 #[derive(Debug, Clone, Default)]
 pub struct RiptideConfig {
     pub torrent: TorrentConfig,
@@ -13,7 +16,9 @@ pub struct RiptideConfig {
     pub storage: StorageConfig,
 }
 
-/// BitTorrent protocol configuration.
+/// BitTorrent protocol-specific configuration.
+///
+/// Controls torrent downloading behavior, timeouts, and protocol parameters.
 #[derive(Debug, Clone)]
 pub struct TorrentConfig {
     /// BitTorrent client identifier
@@ -34,7 +39,10 @@ impl Default for TorrentConfig {
     }
 }
 
-/// Network and tracker configuration.
+/// Network communication and tracker configuration.
+///
+/// Controls HTTP timeouts, peer connection limits, bandwidth throttling,
+/// and tracker communication parameters.
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {
     /// HTTP request timeout for tracker communication
@@ -70,7 +78,10 @@ impl Default for NetworkConfig {
     }
 }
 
-/// Storage and file management configuration.
+/// File storage and disk I/O configuration.
+///
+/// Controls buffer sizes, temporary file handling, and storage optimization
+/// settings for piece data persistence.
 #[derive(Debug, Clone)]
 pub struct StorageConfig {
     /// Buffer size for file operations

@@ -21,15 +21,20 @@ pub use tracker::{AnnounceRequest, AnnounceResponse, HttpTrackerClient, TrackerC
 
 use std::fmt;
 
-/// Context identifier for torrent operations
+/// SHA-1 hash identifying a unique torrent.
+///
+/// 20-byte SHA-1 hash of the info dictionary from a torrent file.
+/// Used to uniquely identify torrents across the BitTorrent network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InfoHash([u8; 20]);
 
 impl InfoHash {
+    /// Creates InfoHash from 20-byte SHA-1 hash.
     pub fn new(hash: [u8; 20]) -> Self {
         Self(hash)
     }
 
+    /// Returns reference to underlying 20-byte hash.
     pub fn as_bytes(&self) -> &[u8; 20] {
         &self.0
     }
@@ -44,15 +49,20 @@ impl fmt::Display for InfoHash {
     }
 }
 
-/// Index of a piece within a torrent
+/// Zero-based index of a piece within a torrent.
+///
+/// Torrent files are divided into pieces for downloading and verification.
+/// Each piece has a sequential index starting from 0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PieceIndex(pub u32);
 
 impl PieceIndex {
+    /// Creates PieceIndex from zero-based index.
     pub fn new(index: u32) -> Self {
         Self(index)
     }
 
+    /// Returns the underlying piece index as u32.
     pub fn as_u32(self) -> u32 {
         self.0
     }
@@ -64,7 +74,10 @@ impl fmt::Display for PieceIndex {
     }
 }
 
-/// Torrent-related errors
+/// Errors that can occur during torrent operations.
+///
+/// Covers all failure modes in BitTorrent protocol operations including
+/// file parsing, network communication, and data verification.
 #[derive(Debug, thiserror::Error)]
 pub enum TorrentError {
     #[error("Failed to parse torrent file: {reason}")]

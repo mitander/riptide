@@ -14,7 +14,10 @@ pub struct TorrentEngine {
     config: RiptideConfig,
 }
 
-/// Download session for a single torrent
+/// Active download session for a single torrent.
+///
+/// Tracks download progress, piece completion status, and session metadata
+/// for an individual torrent being downloaded by the engine.
 #[derive(Debug)]
 pub struct TorrentSession {
     /// Torrent info hash
@@ -143,7 +146,10 @@ impl TorrentSession {
     }
 }
 
-/// Overall engine statistics
+/// Statistical information about the torrent engine.
+///
+/// Provides aggregate metrics across all active torrent downloads
+/// including peer counts, transfer amounts, and progress indicators.
 #[derive(Debug, Clone)]
 pub struct EngineStats {
     /// Number of active torrent downloads
