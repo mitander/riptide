@@ -31,8 +31,13 @@ into_streaming_response() // Consuming conversion
 from_torrent_file()    // Constructor
 
 // Fallible operations
-try_parse_torrent()    // Returns Result
-parse_announce_response() // Also Result (try_ optional for external APIs)
+parse_torrent_data()      // Returns Result - descriptive name is sufficient
+parse_announce_response() // Returns Result - `try_` prefix unnecessary
+decode_peer_message()     // Returns Result - operation name implies fallibility
+
+// Use `try_` ONLY when there's a panic-based alternative
+reserve_buffer()          // Panics on allocation failure
+try_reserve_buffer()      // Returns Result on allocation failure
 
 // Network operations (always async)
 async fn connect_to_peer()     // Not connect()

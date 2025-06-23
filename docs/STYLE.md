@@ -183,7 +183,7 @@ pub struct TorrentEngine {
     piece_buffer: BytesMut,
     message_buffer: BytesMut,
 
-    // Object pools for concurrent operations
+    // Object pools for concurrent operations  
     verification_pool: Pool<sha1::Sha1>,
 }
 
@@ -194,6 +194,10 @@ impl TorrentEngine {
         // Use buffer...
     }
 }
+
+// PATTERN: Always clear/reuse buffers rather than allocate new ones
+// PATTERN: Use Vec::with_capacity() when size is known
+// PATTERN: For protocol parsing, reuse fixed-size buffers on stack
 ```
 
 ## Async Patterns
@@ -618,6 +622,78 @@ max_width = 100                    # Not too wide
 use_field_init_shorthand = true    # Clean struct init
 imports_granularity = "Module"     # One import per module
 group_imports = "StdExternalCrate" # Stdlib, external, crate
+```
+
+## Standardized Patterns
+
+These patterns MUST be used consistently throughout the codebase:
+
+### Error Conversion
+```rust
+// ALWAYS use #[from] for automatic conversion
+#[derive(Debug, thiserror::Error)]
+pub enum TorrentError {
+    #[error("Storage error")]
+    Storage(#[from] crate::storage::StorageError),
+}
+
+// Then use simple ? operator
+self.storage.store_piece(...).await?;  // Not .map_err()
+```
+
+### Configuration Access
+```rust
+// ALWAYS use centralized config, never hard-coded values
+use crate::config::RiptideConfig;
+
+let config = RiptideConfig::default();
+let timeout = config.network.tracker_timeout;  // Not Duration::from_secs(30)
+```
+
+### Test Data Creation  
+```rust
+// ALWAYS use domain-specific test modules, not global helpers
+use crate::torrent::test_data::*;        // Torrent-specific test data
+use crate::storage::test_fixtures::*;    // Storage-specific test fixtures
+
+let metadata = create_test_torrent_metadata();  // Not inline creation
+let (temp_dir, downloads, library) = create_temp_storage_dirs();
+
+// For complex setups, use composition functions
+let (metadata, storage, _temp) = create_test_environment();  // Combines both
+```
+
+### Async Lock Pattern
+```rust
+// ALWAYS use this pattern for shared state
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+struct SharedState {
+    data: Arc<RwLock<HashMap<Key, Value>>>,
+}
+
+// Access pattern
+{
+    let guard = self.data.read().await;
+    // Read operations
+}
+{
+    let mut guard = self.data.write().await;
+    // Write operations  
+}
+// Locks released at block end
+```
+
+### Function Naming Consistency
+```rust
+// Network operations: verb + target
+async fn connect_to_peer()      // Not connect()
+async fn announce_to_tracker()  // Not announce()
+
+// Parsing operations: descriptive names (no try_ prefix)
+fn parse_torrent_data()         // Not try_parse_torrent_data()
+fn deserialize_handshake()      // Not try_deserialize_handshake()
 ```
 
 ## Final Wisdom
