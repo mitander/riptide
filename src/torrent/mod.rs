@@ -11,7 +11,7 @@ pub use engine::TorrentEngine;
 pub use parsing::{TorrentParser, BencodeTorrentParser, TorrentMetadata, MagnetLink};
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
 pub use protocol::{PeerProtocol, BitTorrentPeerProtocol, PeerMessage, PeerId};
-pub use tracker::{TrackerClient, HttpTrackerClient, UdpTrackerClient, AnnounceRequest, AnnounceResponse};
+pub use tracker::{TrackerClient, HttpTrackerClient, AnnounceRequest, AnnounceResponse};
 
 use std::fmt;
 

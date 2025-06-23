@@ -1,7 +1,7 @@
 //! Integration tests for trait abstractions and swappable implementations
 
 use riptide::torrent::{
-    BencodeTorrentParser, TorrentParser, HttpTrackerClient, UdpTrackerClient, TrackerClient,
+    BencodeTorrentParser, TorrentParser, HttpTrackerClient, TrackerClient,
     BitTorrentPeerProtocol, PeerProtocol, InfoHash, PeerId, AnnounceRequest
 };
 use riptide::torrent::tracker::AnnounceEvent;
@@ -27,7 +27,6 @@ async fn test_swappable_tracker_client_implementations() {
     // Test that different tracker implementations are interchangeable
     let clients: Vec<Box<dyn TrackerClient>> = vec![
         Box::new(HttpTrackerClient::new("http://tracker.example.com/announce".to_string())),
-        Box::new(UdpTrackerClient::new("udp://tracker.example.com:8080".to_string())),
     ];
     
     let request = AnnounceRequest {
@@ -105,7 +104,6 @@ fn test_trait_isolation() {
     
     // Tracker clients can be created independently
     let _http_tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
-    let _udp_tracker = UdpTrackerClient::new("udp://tracker.example.com:8080".to_string());
     
     // Peer protocol can be instantiated independently
     let _peer_protocol = BitTorrentPeerProtocol::new();
@@ -114,6 +112,5 @@ fn test_trait_isolation() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<BencodeTorrentParser>();
     assert_send_sync::<HttpTrackerClient>();
-    assert_send_sync::<UdpTrackerClient>();
     assert_send_sync::<BitTorrentPeerProtocol>();
 }
