@@ -4,12 +4,14 @@
 //! Integrates with tracker client, storage layer, and piece picker to manage
 //! the complete download process.
 
-use super::{PieceIndex, TorrentError, TorrentMetadata};
-use crate::storage::Storage;
-use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
+
+use super::{PieceIndex, TorrentError, TorrentMetadata};
+use crate::storage::Storage;
 
 /// Single piece download request.
 ///
@@ -258,10 +260,11 @@ impl<S: Storage> PieceDownloader<S> {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
     use super::*;
     use crate::storage::FileStorage;
     use crate::torrent::test_data::create_test_torrent_metadata;
-    use tempfile::tempdir;
 
     fn create_test_metadata() -> TorrentMetadata {
         create_test_torrent_metadata()

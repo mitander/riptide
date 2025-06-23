@@ -3,10 +3,12 @@
 //! Torrent metadata extraction using bencode-rs and magnet-url crates.
 //! Supports both .torrent files and magnet links with error handling and validation.
 
-use super::{InfoHash, TorrentError};
+use std::path::Path;
+
 use async_trait::async_trait;
 use sha1::{Digest, Sha1};
-use std::path::Path;
+
+use super::{InfoHash, TorrentError};
 
 // Type aliases for complex bencode types
 type BencodeDict<'a> = std::collections::HashMap<&'a [u8], bencode_rs::Value<'a>>;

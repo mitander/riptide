@@ -1,8 +1,9 @@
 //! Core torrent download engine
 
+use std::collections::HashMap;
+
 use super::{BencodeTorrentParser, InfoHash, PeerManager, TorrentError, TorrentParser};
 use crate::config::RiptideConfig;
-use std::collections::HashMap;
 
 /// Main orchestrator for torrent downloads
 pub struct TorrentEngine {
@@ -230,9 +231,10 @@ pub struct EngineStats {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
     use super::*;
     use crate::torrent::test_data::create_test_info_hash;
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
     #[tokio::test]
     async fn test_torrent_engine_creation() {

@@ -1,10 +1,12 @@
 //! File-based storage implementation
 
+use std::path::PathBuf;
+
+use async_trait::async_trait;
+use tokio::fs;
+
 use super::{Storage, StorageError};
 use crate::torrent::{InfoHash, PieceIndex};
-use async_trait::async_trait;
-use std::path::PathBuf;
-use tokio::fs;
 
 /// File system-based storage implementation.
 ///

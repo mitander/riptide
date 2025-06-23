@@ -5,10 +5,11 @@
 
 #![cfg(test)]
 
+use sha1::{Digest, Sha1};
+
 use super::parsing::TorrentFile;
 use super::{InfoHash, PieceIndex, TorrentMetadata};
 use crate::storage::file_storage::FileStorage;
-use sha1::{Digest, Sha1};
 
 /// Creates standard test torrent metadata with predictable hashes.
 ///

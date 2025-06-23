@@ -1,7 +1,8 @@
 //! BitTorrent wire protocol implementation
 
-use super::{BitTorrentPeerProtocol, InfoHash, PeerHandshake, PeerId, PeerProtocol, TorrentError};
 use std::net::SocketAddr;
+
+use super::{BitTorrentPeerProtocol, InfoHash, PeerHandshake, PeerId, PeerProtocol, TorrentError};
 
 /// Connection to a BitTorrent peer
 pub struct PeerConnection {
@@ -66,8 +67,9 @@ impl PeerConnection {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::net::{IpAddr, Ipv4Addr};
+
+    use super::*;
 
     fn create_test_info_hash() -> InfoHash {
         InfoHash::new([1u8; 20])

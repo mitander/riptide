@@ -3,11 +3,13 @@
 //! HTTP tracker client following BEP 3 with announce/scrape operations.
 //! Supports automatic URL encoding, compact peer list parsing, and error handling.
 
+use std::net::SocketAddr;
+
+use async_trait::async_trait;
+use url::Url;
+
 use super::{InfoHash, TorrentError};
 use crate::config::NetworkConfig;
-use async_trait::async_trait;
-use std::net::SocketAddr;
-use url::Url;
 
 // Type aliases for complex types
 type PeerList = Result<Vec<SocketAddr>, TorrentError>;

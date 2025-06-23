@@ -4,11 +4,11 @@ pub mod network;
 pub mod peer;
 pub mod tracker;
 
+use std::time::Duration;
+
 pub use network::NetworkSimulator;
 pub use peer::MockPeer;
 pub use tracker::MockTracker;
-
-use std::time::Duration;
 
 /// Complete simulation environment for BitTorrent development.
 ///

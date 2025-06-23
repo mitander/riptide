@@ -7,11 +7,12 @@ pub mod file_storage;
 #[cfg(test)]
 pub mod test_fixtures;
 
+use std::path::PathBuf;
+
+use async_trait::async_trait;
 pub use file_storage::FileStorage;
 
 use crate::torrent::{InfoHash, PieceIndex};
-use async_trait::async_trait;
-use std::path::PathBuf;
 
 /// Storage operations for torrent piece data.
 ///

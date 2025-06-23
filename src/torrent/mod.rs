@@ -11,6 +11,8 @@ pub mod protocol;
 pub mod test_data;
 pub mod tracker;
 
+use std::fmt;
+
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
 pub use engine::{EngineStats, TorrentEngine, TorrentSession};
 pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentMetadata, TorrentParser};
@@ -23,8 +25,6 @@ pub use tracker::{
     AnnounceRequest, AnnounceResponse, HttpTrackerClient, ScrapeRequest, ScrapeResponse,
     ScrapeStats, TrackerClient,
 };
-
-use std::fmt;
 
 /// SHA-1 hash identifying a unique torrent.
 ///

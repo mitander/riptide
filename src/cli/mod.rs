@@ -2,8 +2,9 @@
 
 pub mod commands;
 
-use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
 
 /// Main CLI structure for Riptide torrent client.
 ///

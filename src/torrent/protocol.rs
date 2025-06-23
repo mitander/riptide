@@ -4,12 +4,14 @@
 //! Defines message types, handshake procedures, and connection state management
 //! for communicating with remote peers.
 
-use super::{InfoHash, PieceIndex, TorrentError};
+use std::net::SocketAddr;
+
 use async_trait::async_trait;
 use bytes::{Buf, BufMut, Bytes};
-use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+use super::{InfoHash, PieceIndex, TorrentError};
 
 /// BitTorrent peer identifier.
 ///

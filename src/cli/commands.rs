@@ -1,10 +1,12 @@
 //! CLI command implementations
 
+use std::path::PathBuf;
+
+use tokio::fs;
+
 use crate::config::RiptideConfig;
 use crate::simulation::SimulationEnvironment;
 use crate::torrent::{InfoHash, TorrentEngine};
-use std::path::PathBuf;
-use tokio::fs;
 
 /// Add a torrent by magnet link or file
 ///

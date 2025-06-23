@@ -1,17 +1,15 @@
 //! Peer connection management with bandwidth control and connection pooling
 
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use tokio::sync::{RwLock, Semaphore};
+use tokio::time::sleep;
+
 use super::{InfoHash, PieceIndex, TorrentError};
 use crate::config::RiptideConfig;
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tokio::{
-    sync::{RwLock, Semaphore},
-    time::sleep,
-};
 
 /// Manages multiple peer connections with bandwidth throttling.
 ///
@@ -352,9 +350,10 @@ pub struct PeerManagerStats {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
     use super::*;
     use crate::torrent::test_data::create_test_info_hash;
-    use std::net::{IpAddr, Ipv4Addr};
 
     #[tokio::test]
     async fn test_peer_manager_add_peer() {
