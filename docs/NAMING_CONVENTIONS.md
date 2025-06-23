@@ -295,16 +295,14 @@ fn bench_piece_hash_calculation() { }
 /// Starts downloading the specified torrent.
 ///
 /// Connects to trackers, discovers peers, and begins piece acquisition using
-/// the configured piece selection strategy.
+/// the configured piece selection strategy. Returns handle to monitor and control
+/// the download.
 ///
-/// # Arguments
-/// * `magnet_link` - The magnet URI containing at minimum the info hash
+/// # Errors
+/// - `TorrentError::InvalidTorrentFile` - Failed to parse magnet link
+/// - `TorrentError::TrackerConnectionFailed` - Could not reach tracker
 ///
-/// # Returns
-/// * `Ok(DownloadHandle)` - Handle to monitor and control the download
-/// * `Err(TorrentError)` - Failed to parse magnet or initialize download
-///
-/// # Example
+/// # Examples
 /// ```
 /// let handle = engine.start_download("magnet:?xt=...")?;
 /// ```

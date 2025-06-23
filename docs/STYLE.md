@@ -356,56 +356,87 @@ for piece in pieces {
 
 ## Documentation
 
+Comments explain WHY, not WHAT. Omit obvious comments.
+
+### Public API Documentation
+
+**Required for all public functions:**
+
+```rust
+/// Compresses RTP/UDP/IP headers into ROHC packet.
+///
+/// Analyzes headers and context to determine optimal packet type (IR, UO-0, etc.)
+/// and generates the corresponding ROHC packet. Updates compressor context state.
+/// Returns the number of bytes written to the output buffer.
+///
+/// # Errors
+/// - `RohcError::ContextNotFound` - No context for the given CID
+/// - `RohcError::UnsupportedProfile` - Headers incompatible with Profile 1
+/// - `RohcError::BufferTooSmall` - Output buffer insufficient
+///
+/// # Examples
+/// ```rust
+/// let mut buffer = [0u8; 1024];
+/// let compressed_size = compressor.compress(&headers, &mut buffer)?;
+/// ```
+pub fn compress(&mut self, headers: &Headers, buffer: &mut [u8]) -> Result<usize, RohcError>
+```
+
+### Internal Function Documentation
+
+**Brief docs for complex algorithms only:**
+
+```rust
+/// RFC 3095 4.5.1: Calculate minimum k-bits for W-LSB encoding
+fn calculate_k_bits(v_ref: u16, v: u16) -> u8
+
+// Simple getter - no comment needed
+fn get_sequence_number(&self) -> u16
+```
+
 ### Module Documentation
 
+**Document module purpose and key concepts:**
+
 ```rust
-//! Piece selection algorithms for optimal download performance.
+//! BitTorrent tracker communication abstractions and implementations.
 //!
-//! Provides multiple strategies:
-//! - [`RarestFirst`]: Standard BitTorrent algorithm
-//! - [`Sequential`]: For streaming use cases
-//! - [`Priority`]: User-specified piece priority
-//!
-//! The piece picker maintains global piece availability and makes
-//! decisions based on the configured strategy.
+//! Provides HTTP and UDP tracker clients following BEP 3 and BEP 15.
+//! Supports announce/scrape operations with automatic URL encoding
+//! and compact peer list parsing.
 ```
 
-### Function Documentation
+### Inline Comments
+
+**Explain WHY, not WHAT. Reference specs when applicable:**
 
 ```rust
-/// Selects the next piece to download based on strategy and availability.
-///
-/// Considers piece rarity, peer capabilities, and existing requests
-/// to maximize download efficiency while avoiding duplicate requests.
-///
-/// # Returns
-/// - `Some(PieceIndex)` - Next piece to request
-/// - `None` - No pieces available (complete or all requested)
-///
-/// # Performance
-/// O(log n) for rarest-first, O(1) for sequential.
-pub fn select_piece(&mut self, peer: &Peer) -> Option<PieceIndex>
-```
-
-### Code Comments
-
-```rust
-// GOOD: Explains non-obvious decision
-// Use 16 KiB blocks per BitTorrent spec for compatibility
+// BEP 3: Use 16 KiB blocks for peer compatibility
 const BLOCK_SIZE: u32 = 16384;
 
-// GOOD: Documents protocol requirement
-// Peers MUST send bitfield immediately after handshake
+// BitTorrent protocol: Peers MUST send bitfield after handshake
 self.expect_bitfield = true;
 
-// GOOD: Specific actionable TODO
-// TODO: Add bandwidth throttling per BEP 7 specification
+// Avoid TCP slow start by requesting next piece immediately
+self.request_next_piece_optimistically()?;
+```
 
-// BAD: Vague TODO
-// TODO: Fix this
+### What NOT to Comment
 
-// BAD: Restates code
-let piece_count = torrent.piece_count();  // Get the piece count
+```rust
+// BAD - obvious from code
+let count = count + 1;  // Increment counter
+
+// BAD - implementation detail
+// TODO: optimize this later
+
+// BAD - restating types/names
+let parser: BencodeTorrentParser = BencodeTorrentParser::new();
+
+// BAD - explaining obvious control flow
+if result.is_err() {  // Check if there was an error
+    return result;
+}
 ```
 
 ### TODO Comment Standards

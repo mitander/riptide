@@ -2,14 +2,14 @@
 
 [![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**A production-grade BitTorrent media server optimized for streaming.**
+**BitTorrent media server optimized for streaming.**
 
 > [!WARNING]
 > Early development stage. Core BitTorrent engine and streaming components are in active development.
 
 ## Overview
 
-Riptide downloads torrents and streams media content with a focus on zero-buffering playback. Built with Rust for performance and reliability, featuring a comprehensive simulation framework for offline development.
+Riptide downloads torrents and streams media content with a focus on zero-buffering playback. Built with Rust for performance and reliability, featuring a simulation framework for offline development.
 
 **Current Implementation:**
 - Type-safe domain modeling (InfoHash, PieceIndex, TorrentError)
@@ -18,7 +18,7 @@ Riptide downloads torrents and streams media content with a focus on zero-buffer
 - CLI interface with working simulation mode
 - **Trait abstractions for swappable implementations** (TorrentParser, TrackerClient, PeerProtocol)
 - **Controlled external dependencies** (bencode-rs, magnet-url)
-- Comprehensive test suite with unit and integration tests
+- Test suite with unit and integration tests
 
 **Next Development Phase:**
 - Torrent file parsing implementation using bencode-rs
@@ -68,7 +68,7 @@ engine.start_download(info_hash).await?;
 
 ### Mock-First Strategy
 
-Riptide uses comprehensive simulation for rapid development without external dependencies:
+Riptide uses simulation for rapid development without external dependencies:
 
 ```bash
 # Test simulation environment
@@ -131,7 +131,7 @@ cargo run -- simulate --peers 5 /tmp/test.torrent
 **Current Development Stage**: Foundation and simulation framework complete
 
 **Ready for Use:**
-- Comprehensive simulation environment for BitTorrent development
+- Simulation environment for BitTorrent development
 - Type-safe domain modeling and error handling
 - Async storage abstraction with file backend
 - CLI interface for testing and development

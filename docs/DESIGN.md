@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-A Rust-based torrent media server focused on streaming performance and rapid iteration. Ships MVP in 2 weeks, production-ready in 16 weeks.
+A Rust-based torrent media server focused on streaming performance and rapid iteration.
 
 ### Core Components
 
@@ -121,7 +121,7 @@ Kill switch if VPN disconnects during torrent activity.
 - Device detection
 - Pre-transcoding
 
-### Phase 4: Production (Weeks 7-16)
+### Phase 4: Polish (Weeks 7-16)
 - Subtitles
 - Apple TV app
 - Performance optimization
@@ -180,7 +180,7 @@ pub struct StorageManifest {
 
 Storage format versioning from day one prevents future migration pain.
 
-## Production Considerations
+## Implementation Considerations
 
 - All async functions must be cancellation-safe
 - Pre-allocate buffers in hot paths
