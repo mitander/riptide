@@ -1,5 +1,6 @@
 //! Integration tests for trait abstractions and swappable implementations
 
+use riptide::config::NetworkConfig;
 use riptide::torrent::tracker::AnnounceEvent;
 use riptide::torrent::{
     AnnounceRequest, BencodeTorrentParser, BitTorrentPeerProtocol, HttpTrackerClient, InfoHash,
@@ -25,8 +26,10 @@ async fn test_swappable_torrent_parser_implementations() {
 #[tokio::test]
 async fn test_swappable_tracker_client_implementations() {
     // Test that different tracker implementations are interchangeable
+    let config = NetworkConfig::default();
     let clients: Vec<Box<dyn TrackerClient>> = vec![Box::new(HttpTrackerClient::new(
         "http://tracker.example.com/announce".to_string(),
+        &config,
     ))];
 
     let request = AnnounceRequest {
@@ -103,7 +106,8 @@ fn test_trait_isolation() {
     let _parser = BencodeTorrentParser::new();
 
     // Tracker clients can be created independently
-    let _http_tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string());
+    let config = NetworkConfig::default();
+    let _http_tracker = HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
 
     // Peer protocol can be instantiated independently
     let _peer_protocol = BitTorrentPeerProtocol::new();

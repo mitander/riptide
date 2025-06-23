@@ -111,7 +111,6 @@ impl<S: Storage> PieceDownloader<S> {
     /// - `TorrentError::PeerConnectionError` - No peers available
     /// - `TorrentError::PieceHashMismatch` - Hash verification failed
     pub async fn download_piece(&mut self, piece_index: PieceIndex) -> Result<(), TorrentError> {
-        // Check if piece already complete
         {
             let status_map = self.piece_status.read().await;
             if let Some(PieceStatus::Complete) = status_map.get(&piece_index) {
@@ -119,46 +118,38 @@ impl<S: Storage> PieceDownloader<S> {
             }
         }
 
-        // Update status to downloading
         {
             let mut status_map = self.piece_status.write().await;
             status_map.insert(piece_index, PieceStatus::Downloading);
         }
 
-        // Try real peer download first, fall back to simulation
         let piece_data = match self.download_from_peers(piece_index).await {
             Ok(data) => data,
             Err(_) => {
-                // Fall back to simulation for testing
                 self.simulate_piece_download(piece_index).await?
             }
         };
 
-        // Update status to verifying
         {
             let mut status_map = self.piece_status.write().await;
             status_map.insert(piece_index, PieceStatus::Verifying);
         }
 
-        // Verify piece hash
         if !self.verify_piece_hash(piece_index, &piece_data) {
             let mut status_map = self.piece_status.write().await;
             status_map.insert(piece_index, PieceStatus::Failed { attempts: 1 });
             return Err(TorrentError::PieceHashMismatch { index: piece_index });
         }
 
-        // Store verified piece
         self.storage
             .store_piece(self.torrent_metadata.info_hash, piece_index, &piece_data)
             .await?;
 
-        // Update status to complete
         {
             let mut status_map = self.piece_status.write().await;
             status_map.insert(piece_index, PieceStatus::Complete);
         }
 
-        // Remove from in-memory data
         {
             let mut data_map = self.piece_data.write().await;
             data_map.remove(&piece_index);
@@ -189,13 +180,7 @@ impl<S: Storage> PieceDownloader<S> {
     /// Attempts to connect to peers and download the requested piece
     /// using the BitTorrent wire protocol.
     async fn download_from_peers(&self, _piece_index: PieceIndex) -> Result<Vec<u8>, TorrentError> {
-        // For now, return error to fall back to simulation
-        // In a real implementation, this would:
-        // 1. Get peer list from tracker
-        // 2. Connect to available peers
-        // 3. Send interested/unchoke messages
-        // 4. Request piece blocks
-        // 5. Reassemble piece data
+        // Real peer implementation pending - requires tracker integration
         Err(TorrentError::PeerConnectionError {
             reason: "Real peer download not yet implemented".to_string(),
         })
@@ -206,25 +191,17 @@ impl<S: Storage> PieceDownloader<S> {
         &self,
         piece_index: PieceIndex,
     ) -> Result<Vec<u8>, TorrentError> {
-        // Simulate network delay
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // For simulation, create data that produces the expected hash
-        // In real implementation, this would be downloaded from peers
         let piece_size = self.calculate_piece_size(piece_index);
         let piece_idx = piece_index.as_u32() as usize;
 
-        // Generate data that will produce the expected hash for this piece
         let piece_data = if piece_idx < self.torrent_metadata.piece_hashes.len() {
-            // Create data that will hash to the expected value
-            // For test purposes, fill with the piece index value
             vec![piece_idx as u8; piece_size]
         } else {
-            // Fallback for invalid piece indices
             vec![0u8; piece_size]
         };
 
-        // Store in memory temporarily
         {
             let mut data_map = self.piece_data.write().await;
             data_map.insert(piece_index, piece_data.clone());
@@ -259,7 +236,6 @@ impl<S: Storage> PieceDownloader<S> {
         }
 
         if piece_idx == total_pieces - 1 {
-            // Last piece may be smaller
             let remaining =
                 self.torrent_metadata.total_length % self.torrent_metadata.piece_length as u64;
             if remaining > 0 {
@@ -311,11 +287,7 @@ mod tests {
         let metadata = create_test_metadata();
         let mut downloader = PieceDownloader::new(metadata, storage).unwrap();
 
-        // Download first piece
         let result = downloader.download_piece(PieceIndex::new(0)).await;
-        if let Err(e) = &result {
-            println!("Download failed: {:?}", e);
-        }
         assert!(result.is_ok());
 
         let progress = downloader.get_progress().await;
@@ -340,7 +312,6 @@ mod tests {
         let metadata = create_test_metadata();
         let mut downloader = PieceDownloader::new(metadata, storage).unwrap();
 
-        // Download all pieces
         for i in 0..3 {
             let result = downloader.download_piece(PieceIndex::new(i)).await;
             assert!(result.is_ok());

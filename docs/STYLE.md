@@ -227,6 +227,32 @@ let hash = tokio::task::spawn_blocking(move || {
 }).await?;
 ```
 
+### RwLock Scope Management
+
+**MANDATORY**: Use explicit scopes to drop RwLock guards before `.await` calls to prevent deadlocks:
+
+```rust
+// REQUIRED: Explicit scope drops the guard before .await
+{
+    let mut status_map = self.piece_status.write().await;
+    status_map.insert(piece_index, PieceStatus::Downloading);
+}
+
+// Next async operation is safe - no lock held across .await
+let piece_data = self.download_from_peers(piece_index).await?;
+
+// BAD: Lock held across .await - potential deadlock
+let mut status_map = self.piece_status.write().await;
+status_map.insert(piece_index, PieceStatus::Downloading);
+let piece_data = self.download_from_peers(piece_index).await?; // DEADLOCK RISK
+```
+
+**Why explicit scopes are necessary**:
+- RwLock guards must be dropped before `.await` points
+- Prevents deadlocks when multiple async tasks need the same lock
+- Explicit scopes make the lifetime boundaries obvious
+- This pattern is standard in async Rust code
+
 ### Cancellation Safety
 
 Every async function must be cancellation-safe:

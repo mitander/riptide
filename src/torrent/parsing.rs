@@ -113,7 +113,6 @@ impl BencodeTorrentParser {
         dict: &BencodeDict<'_>,
         original_data: &[u8],
     ) -> ParseResult<TorrentMetadata> {
-        // Extract info dictionary
         let info_dict =
             dict.get(b"info".as_slice())
                 .ok_or_else(|| TorrentError::InvalidTorrentFile {
@@ -122,70 +121,62 @@ impl BencodeTorrentParser {
 
         let info_hash = Self::calculate_info_hash(info_dict, original_data)?;
 
-        if let bencode_rs::Value::Dictionary(info_dict_map) = info_dict {
-            // Extract name
-            let name = Self::extract_bytes_as_string(info_dict_map, b"name")?;
-
-            // Extract piece length
-            let piece_length = Self::extract_integer(info_dict_map, b"piece length")? as u32;
-
-            // Extract pieces (concatenated SHA1 hashes)
-            let pieces_bytes = Self::extract_bytes(info_dict_map, b"pieces")?;
-            if pieces_bytes.len() % 20 != 0 {
-                return Err(TorrentError::InvalidTorrentFile {
-                    reason: "Invalid pieces length".to_string(),
-                });
-            }
-
-            let piece_hashes: Vec<[u8; 20]> = pieces_bytes
-                .chunks(20)
-                .map(|chunk| {
-                    let mut hash = [0u8; 20];
-                    hash.copy_from_slice(chunk);
-                    hash
-                })
-                .collect();
-
-            // Extract files and total length
-            let (files, total_length) =
-                if let Ok(length) = Self::extract_integer(info_dict_map, b"length") {
-                    // Single file torrent
-                    let files = vec![TorrentFile {
-                        path: vec![name.clone()],
-                        length: length as u64,
-                    }];
-                    (files, length as u64)
-                } else if let Ok(bencode_rs::Value::List(files_list)) = info_dict_map
-                    .get(b"files".as_slice())
-                    .ok_or_else(|| TorrentError::InvalidTorrentFile {
-                        reason: "Missing 'files' or 'length' field".to_string(),
-                    })
-                {
-                    // Multi-file torrent
-                    Self::extract_files_info(files_list)?
-                } else {
-                    return Err(TorrentError::InvalidTorrentFile {
-                        reason: "Invalid files structure".to_string(),
-                    });
-                };
-
-            // Extract announce URLs
-            let announce_urls = Self::extract_announce_urls(dict)?;
-
-            Ok(TorrentMetadata {
-                info_hash,
-                name,
-                piece_length,
-                piece_hashes,
-                total_length,
-                files,
-                announce_urls,
-            })
-        } else {
-            Err(TorrentError::InvalidTorrentFile {
+        let bencode_rs::Value::Dictionary(info_dict_map) = info_dict else {
+            return Err(TorrentError::InvalidTorrentFile {
                 reason: "Info field must be dictionary".to_string(),
-            })
+            });
+        };
+
+        let name = Self::extract_bytes_as_string(info_dict_map, b"name")?;
+        let piece_length = Self::extract_integer(info_dict_map, b"piece length")? as u32;
+
+        let pieces_bytes = Self::extract_bytes(info_dict_map, b"pieces")?;
+        if pieces_bytes.len() % 20 != 0 {
+            return Err(TorrentError::InvalidTorrentFile {
+                reason: "Invalid pieces length".to_string(),
+            });
         }
+
+        let piece_hashes: Vec<[u8; 20]> = pieces_bytes
+            .chunks(20)
+            .map(|chunk| {
+                let mut hash = [0u8; 20];
+                hash.copy_from_slice(chunk);
+                hash
+            })
+            .collect();
+
+        let (files, total_length) =
+            if let Ok(length) = Self::extract_integer(info_dict_map, b"length") {
+                let files = vec![TorrentFile {
+                    path: vec![name.clone()],
+                    length: length as u64,
+                }];
+                (files, length as u64)
+            } else if let Ok(bencode_rs::Value::List(files_list)) = info_dict_map
+                .get(b"files".as_slice())
+                .ok_or_else(|| TorrentError::InvalidTorrentFile {
+                    reason: "Missing 'files' or 'length' field".to_string(),
+                })
+            {
+                Self::extract_files_info(files_list)?
+            } else {
+                return Err(TorrentError::InvalidTorrentFile {
+                    reason: "Invalid files structure".to_string(),
+                });
+            };
+
+        let announce_urls = Self::extract_announce_urls(dict)?;
+
+        Ok(TorrentMetadata {
+            info_hash,
+            name,
+            piece_length,
+            piece_hashes,
+            total_length,
+            files,
+            announce_urls,
+        })
     }
 
     /// Calculate SHA1 hash of the info dictionary

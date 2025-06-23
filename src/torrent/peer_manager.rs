@@ -15,73 +15,48 @@ use tokio::{
 
 /// Manages multiple peer connections with bandwidth throttling
 pub struct PeerManager {
-    /// Active connections per torrent
     connections: Arc<RwLock<HashMap<InfoHash, Vec<ManagedPeerConnection>>>>,
-    /// Global connection limit
     connection_semaphore: Arc<Semaphore>,
-    /// Bandwidth throttling state
     bandwidth_limiter: BandwidthLimiter,
-    /// Configuration
     config: RiptideConfig,
 }
 
 /// Individual peer connection with connection state and statistics
 pub struct ManagedPeerConnection {
-    /// Remote peer address
     pub addr: SocketAddr,
-    /// Connection state
     pub state: ConnectionState,
-    /// Transfer statistics
     pub stats: ConnectionStats,
-    /// Last activity timestamp
     pub last_activity: Instant,
 }
 
 /// Connection state for peer lifecycle management
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionState {
-    /// Attempting to establish connection
     Connecting,
-    /// Handshake in progress
     Handshaking,
-    /// Connected and ready for requests
     Connected,
-    /// Peer is choking us
     Choked,
-    /// We are choking the peer
     Choking,
-    /// Connection failed or timed out
     Failed { reason: String },
 }
 
 /// Connection transfer statistics
 #[derive(Debug, Clone)]
 pub struct ConnectionStats {
-    /// Bytes downloaded from this peer
     pub bytes_downloaded: u64,
-    /// Bytes uploaded to this peer
     pub bytes_uploaded: u64,
-    /// Download rate in bytes per second
     pub download_rate: f64,
-    /// Upload rate in bytes per second
     pub upload_rate: f64,
-    /// Number of pieces downloaded
     pub pieces_downloaded: u32,
-    /// Last rate calculation time
     last_rate_update: Instant,
 }
 
 /// Bandwidth throttling with token bucket algorithm
 pub struct BandwidthLimiter {
-    /// Download bandwidth limit in bytes per second
     download_limit: Option<u64>,
-    /// Upload bandwidth limit in bytes per second
     upload_limit: Option<u64>,
-    /// Download tokens available
     download_tokens: Arc<RwLock<f64>>,
-    /// Upload tokens available
     upload_tokens: Arc<RwLock<f64>>,
-    /// Last token refill time
     last_refill: Arc<RwLock<Instant>>,
 }
 
@@ -111,7 +86,6 @@ impl PeerManager {
         info_hash: InfoHash,
         addr: SocketAddr,
     ) -> Result<(), TorrentError> {
-        // Acquire connection permit
         let _permit = self.connection_semaphore.acquire().await
             .map_err(|_| TorrentError::ConnectionLimitExceeded)?;
 
@@ -158,20 +132,17 @@ impl PeerManager {
         piece_index: PieceIndex,
         piece_size: u32,
     ) -> Result<Vec<u8>, TorrentError> {
-        // Check bandwidth availability
         self.bandwidth_limiter.acquire_download_tokens(piece_size as u64).await?;
 
         let connections = self.connections.read().await;
         let torrent_peers = connections.get(&info_hash)
             .ok_or(TorrentError::NoPeersAvailable)?;
 
-        // Find best peer (highest download rate, connected state)
         let best_peer = torrent_peers.iter()
             .filter(|peer| peer.state == ConnectionState::Connected)
             .max_by(|a, b| a.stats.download_rate.partial_cmp(&b.stats.download_rate).unwrap())
             .ok_or(TorrentError::NoPeersAvailable)?;
 
-        // Simulate piece download with rate limiting
         self.simulate_piece_download(piece_index, piece_size, best_peer.addr).await
     }
 
@@ -189,7 +160,6 @@ impl PeerManager {
                 peer.stats.bytes_downloaded += bytes_downloaded;
                 peer.last_activity = Instant::now();
                 
-                // Update download rate calculation
                 peer.stats.update_download_rate(bytes_downloaded);
             }
         }
@@ -206,7 +176,6 @@ impl PeerManager {
             });
         }
         
-        // Remove empty torrent entries
         connections.retain(|_, peers| !peers.is_empty());
     }
 
@@ -241,16 +210,13 @@ impl PeerManager {
         piece_size: u32,
         _peer_addr: SocketAddr,
     ) -> Result<Vec<u8>, TorrentError> {
-        // Calculate download time based on bandwidth limit
         let download_time = if let Some(limit) = self.config.network.download_limit {
             Duration::from_millis((piece_size as u64 * 1000) / limit)
         } else {
-            Duration::from_millis(50) // Simulate network latency
+            Duration::from_millis(50)
         };
         
         sleep(download_time).await;
-        
-        // Return mock piece data
         Ok(vec![0u8; piece_size as usize])
     }
 }
@@ -275,7 +241,7 @@ impl BandwidthLimiter {
     /// - `TorrentError::BandwidthLimitExceeded` - No bandwidth limit configured but tokens unavailable
     pub async fn acquire_download_tokens(&self, bytes: u64) -> Result<(), TorrentError> {
         if self.download_limit.is_none() {
-            return Ok(()); // No limit configured
+            return Ok(());
         }
         
         self.refill_tokens().await;
@@ -295,11 +261,11 @@ impl BandwidthLimiter {
         let mut last_refill = self.last_refill.write().await;
         let elapsed = now.duration_since(*last_refill).as_secs_f64();
         
-        if elapsed > 0.1 { // Refill every 100ms minimum
+        if elapsed > 0.1 {
             if let Some(download_limit) = self.download_limit {
                 let mut download_tokens = self.download_tokens.write().await;
                 *download_tokens = (*download_tokens + (download_limit as f64 * elapsed))
-                    .min(download_limit as f64 * 2.0); // Max 2 seconds of burst
+                    .min(download_limit as f64 * 2.0);
             }
             
             if let Some(upload_limit) = self.upload_limit {
@@ -318,13 +284,10 @@ impl ConnectionStats {
     fn update_download_rate(&mut self, bytes: u64) {
         let now = Instant::now();
         
-        // Calculate elapsed time since last update
         let elapsed = now.duration_since(self.last_rate_update).as_secs_f64();
         
-        // Only calculate rate if enough time has passed to avoid division by zero
-        if elapsed > 0.001 { // At least 1ms
+        if elapsed > 0.001 {
             let instantaneous_rate = bytes as f64 / elapsed;
-            // Exponential moving average with alpha = 0.1
             self.download_rate = 0.1 * instantaneous_rate + 0.9 * self.download_rate;
         }
         
@@ -384,7 +347,6 @@ mod tests {
     async fn test_bandwidth_limiter_no_limit() {
         let limiter = BandwidthLimiter::new(None, None);
         
-        // Should always succeed when no limit is set
         limiter.acquire_download_tokens(1024).await.unwrap();
         limiter.acquire_download_tokens(1024 * 1024).await.unwrap();
     }
@@ -393,12 +355,9 @@ mod tests {
     async fn test_connection_stats_rate_calculation() {
         let mut stats = ConnectionStats::default();
         
-        // Wait and do download
         sleep(Duration::from_millis(200)).await;
         stats.update_download_rate(2048);
         
-        // Rate should be approximately 10KB/s (2048 bytes / 0.2 seconds)
-        // Use exponential moving average starting from 0: 0.1 * 10240 + 0.9 * 0 = 1024
         assert!(stats.download_rate > 500.0);
         assert!(stats.download_rate < 2000.0);
     }
@@ -406,7 +365,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_stale_connections() {
         let mut config = RiptideConfig::default();
-        config.network.peer_timeout_seconds = 1; // 1 second timeout
+        config.network.peer_timeout_seconds = 1;
         
         let manager = PeerManager::new(config);
         let info_hash = create_test_info_hash();
@@ -414,7 +373,6 @@ mod tests {
 
         manager.add_peer(info_hash, addr).await.unwrap();
         
-        // Wait for timeout
         sleep(Duration::from_secs(2)).await;
         manager.cleanup_stale_connections().await;
         
