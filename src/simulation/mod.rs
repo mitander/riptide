@@ -17,6 +17,12 @@ pub struct SimulationEnvironment {
     pub peers: Vec<MockPeer>,
 }
 
+impl Default for SimulationEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimulationEnvironment {
     /// Create a new simulation environment with sensible defaults
     pub fn new() -> Self {

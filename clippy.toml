@@ -1,13 +1,15 @@
 cognitive-complexity-threshold = 20
 too-many-lines-threshold = 400
 too-many-arguments-threshold = 5
+type-complexity-threshold = 60
 
 # Enforce naming conventions
 disallowed-names = ["utils", "helpers", "common", "shared", "data", "info", "tmp", "temp"]
 
-# Require documentation for public items  
-missing-docs-in-private-items = false
+# Documentation requirements
+missing-docs-in-crate-items = false
 
-# Additional code quality
-enum-variant-names = true
-redundant-field-names = true
+# Code quality thresholds
+max-struct-bools = 3
+max-fn-params-bools = 2
+trivial-copy-size-limit = 64

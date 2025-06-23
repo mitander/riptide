@@ -11,6 +11,12 @@ pub struct MockTracker {
     peers: Vec<SocketAddr>,
 }
 
+impl Default for MockTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockTracker {
     pub fn new() -> Self {
         Self {

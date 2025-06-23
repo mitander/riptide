@@ -1,4 +1,7 @@
-//! Piece selection algorithms optimized for streaming
+//! Piece selection algorithms for torrent downloads.
+//!
+//! Provides strategies for choosing which pieces to download next.
+//! Sequential picker prioritizes in-order download for streaming applications.
 
 use super::PieceIndex;
 
@@ -15,6 +18,12 @@ pub trait PiecePicker: Send + Sync {
 pub struct StreamingPiecePicker {
     next_index: u32,
     total_pieces: u32,
+}
+
+impl Default for StreamingPiecePicker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StreamingPiecePicker {

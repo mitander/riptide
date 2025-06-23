@@ -22,7 +22,7 @@ impl FileStorage {
 
 #[async_trait::async_trait]
 impl Storage for FileStorage {
-    async fn store_piece(&mut self, info_hash: InfoHash, index: PieceIndex, data: &[u8]) -> Result<(), StorageError> {
+    async fn store_piece(&mut self, info_hash: InfoHash, index: PieceIndex, piece_bytes: &[u8]) -> Result<(), StorageError> {
         let piece_path = self.download_dir
             .join(info_hash.to_string())
             .join(format!("piece_{}", index.as_u32()));
@@ -31,7 +31,7 @@ impl Storage for FileStorage {
             fs::create_dir_all(parent).await?;
         }
         
-        fs::write(&piece_path, data).await?;
+        fs::write(&piece_path, piece_bytes).await?;
         Ok(())
     }
     
@@ -41,7 +41,7 @@ impl Storage for FileStorage {
             .join(format!("piece_{}", index.as_u32()));
             
         match fs::read(&piece_path).await {
-            Ok(data) => Ok(data),
+            Ok(piece_bytes) => Ok(piece_bytes),
             Err(_) => Err(StorageError::PieceNotFound { index }),
         }
     }

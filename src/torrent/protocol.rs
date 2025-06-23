@@ -1,4 +1,8 @@
-//! BitTorrent wire protocol abstractions and message types
+//! BitTorrent wire protocol abstractions and message types.
+//!
+//! BitTorrent peer-to-peer protocol implementation following BEP 3.
+//! Defines message types, handshake procedures, and connection state management
+//! for communicating with remote peers.
 
 use super::{InfoHash, PieceIndex, TorrentError};
 use bytes::Bytes;
@@ -78,25 +82,49 @@ pub enum PeerState {
     Downloading,
 }
 
-/// Abstract peer protocol interface for streaming optimization
+/// Abstract peer protocol interface for BitTorrent communication.
+///
+/// Defines wire protocol operations for connecting to peers, exchanging messages,
+/// and managing connection state. Implementations handle TCP socket management
+/// and protocol-specific encoding/decoding.
 #[async_trait::async_trait]
 pub trait PeerProtocol: Send + Sync {
-    /// Establish connection and perform handshake
+    /// Establishes TCP connection and performs BitTorrent handshake.
+    ///
+    /// Connects to peer address and exchanges handshake messages to verify
+    /// protocol compatibility and info hash matching.
+    ///
+    /// # Errors
+    /// - `TorrentError::PeerConnectionError` - TCP connection failed
+    /// - `TorrentError::ProtocolError` - Handshake validation failed
     async fn connect(&mut self, addr: SocketAddr, handshake: PeerHandshake) -> Result<(), TorrentError>;
     
-    /// Send message to peer
+    /// Sends wire protocol message to connected peer.
+    ///
+    /// # Errors
+    /// - `TorrentError::PeerConnectionError` - Connection lost or write failed
+    /// - `TorrentError::ProtocolError` - Message encoding failed
     async fn send_message(&mut self, message: PeerMessage) -> Result<(), TorrentError>;
     
-    /// Receive next message from peer
+    /// Receives next wire protocol message from peer.
+    ///
+    /// Blocks until complete message received or connection fails.
+    ///
+    /// # Errors
+    /// - `TorrentError::PeerConnectionError` - Connection lost or read failed
+    /// - `TorrentError::ProtocolError` - Message decoding failed
     async fn receive_message(&mut self) -> Result<PeerMessage, TorrentError>;
     
-    /// Get current peer state
+    /// Returns current connection state.
     fn peer_state(&self) -> PeerState;
     
-    /// Get peer address
+    /// Returns peer socket address if connected.
     fn peer_address(&self) -> Option<SocketAddr>;
     
-    /// Close connection
+    /// Closes connection gracefully.
+    ///
+    /// # Errors
+    /// - `TorrentError::PeerConnectionError` - Error during shutdown
     async fn disconnect(&mut self) -> Result<(), TorrentError>;
 }
 
@@ -104,6 +132,12 @@ pub trait PeerProtocol: Send + Sync {
 pub struct BitTorrentPeerProtocol {
     state: PeerState,
     peer_address: Option<SocketAddr>,
+}
+
+impl Default for BitTorrentPeerProtocol {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BitTorrentPeerProtocol {

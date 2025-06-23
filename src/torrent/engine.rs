@@ -7,6 +7,12 @@ pub struct TorrentEngine {
     // TODO: Add tracker client, peer manager, piece storage integration
 }
 
+impl Default for TorrentEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TorrentEngine {
     pub fn new() -> Self {
         Self {}

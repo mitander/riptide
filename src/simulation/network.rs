@@ -10,6 +10,12 @@ pub struct NetworkSimulator {
     bandwidth_limit: u64, // bytes per second
 }
 
+impl Default for NetworkSimulator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NetworkSimulator {
     pub fn new() -> Self {
         Self {
