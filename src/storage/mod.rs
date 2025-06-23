@@ -9,6 +9,7 @@ pub mod test_fixtures;
 
 pub use file_storage::FileStorage;
 
+use async_trait::async_trait;
 use crate::torrent::{InfoHash, PieceIndex};
 use std::path::PathBuf;
 
@@ -16,7 +17,7 @@ use std::path::PathBuf;
 ///
 /// Defines interface for persisting, retrieving, and managing piece data
 /// across torrent downloads. Implementations handle storage backend details.
-#[async_trait::async_trait]
+#[async_trait]
 pub trait Storage: Send + Sync {
     /// Stores verified piece data to persistent storage.
     ///

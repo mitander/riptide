@@ -5,6 +5,7 @@
 //! for communicating with remote peers.
 
 use super::{InfoHash, PieceIndex, TorrentError};
+use async_trait::async_trait;
 use bytes::{Buf, BufMut, Bytes};
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -108,7 +109,7 @@ pub enum PeerState {
 /// Defines wire protocol operations for connecting to peers, exchanging messages,
 /// and managing connection state. Implementations handle TCP socket management
 /// and protocol-specific encoding/decoding.
-#[async_trait::async_trait]
+#[async_trait]
 pub trait PeerProtocol: Send + Sync {
     /// Establishes TCP connection and performs BitTorrent handshake.
     ///
@@ -410,7 +411,7 @@ impl BitTorrentPeerProtocol {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl PeerProtocol for BitTorrentPeerProtocol {
     async fn connect(
         &mut self,

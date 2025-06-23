@@ -4,6 +4,7 @@
 //! Supports both .torrent files and magnet links with error handling and validation.
 
 use super::{InfoHash, TorrentError};
+use async_trait::async_trait;
 use sha1::{Digest, Sha1};
 use std::path::Path;
 
@@ -45,7 +46,7 @@ pub struct MagnetLink {
 /// Provides unified interface for parsing torrent metadata from various sources.
 /// Implementations handle format-specific details while maintaining consistent
 /// error handling and metadata extraction.
-#[async_trait::async_trait]
+#[async_trait]
 pub trait TorrentParser: Send + Sync {
     /// Parses torrent metadata from raw bencode bytes.
     ///
@@ -381,7 +382,7 @@ impl BencodeTorrentParser {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl TorrentParser for BencodeTorrentParser {
     async fn parse_torrent_data(
         &self,

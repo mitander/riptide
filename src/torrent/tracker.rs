@@ -4,6 +4,7 @@
 //! Supports automatic URL encoding, compact peer list parsing, and error handling.
 
 use super::{InfoHash, TorrentError};
+use async_trait::async_trait;
 use crate::config::NetworkConfig;
 use std::net::SocketAddr;
 use url::Url;
@@ -67,7 +68,7 @@ pub struct ScrapeResponse {
 /// Provides announce and scrape operations following BEP 3 specification.
 /// Implementations handle protocol-specific details (HTTP/UDP) while maintaining
 /// consistent error handling and response parsing.
-#[async_trait::async_trait]
+#[async_trait]
 pub trait TrackerClient: Send + Sync {
     /// Announces client presence to tracker and retrieves peer list.
     ///
@@ -288,7 +289,7 @@ impl HttpTrackerClient {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl TrackerClient for HttpTrackerClient {
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError> {
         let url = self.build_announce_url(&request)?;

@@ -1,6 +1,7 @@
 //! File-based storage implementation
 
 use super::{Storage, StorageError};
+use async_trait::async_trait;
 use crate::torrent::{InfoHash, PieceIndex};
 use std::path::PathBuf;
 use tokio::fs;
@@ -20,7 +21,7 @@ impl FileStorage {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Storage for FileStorage {
     async fn store_piece(
         &mut self,
