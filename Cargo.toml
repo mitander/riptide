@@ -23,6 +23,7 @@ async-trait = "0.1"
 # Controlled external dependencies for trait abstractions
 bencode-rs = { git = "https://github.com/mitander/bencode-rs" }
 magnet-url = "3.0"
+magneto = "0.1"
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
