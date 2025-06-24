@@ -146,6 +146,7 @@ pub struct DeterministicSimulation {
     clock: DeterministicClock,
     rng: DeterministicRng,
     event_queue: BTreeMap<Instant, VecDeque<SimulationEvent>>,
+    #[allow(dead_code)]
     network: NetworkSimulator,
     peers: Vec<MockPeer>,
     seed: u64,
@@ -186,7 +187,7 @@ impl DeterministicSimulation {
     pub fn schedule_event(&mut self, event: SimulationEvent) {
         self.event_queue
             .entry(event.timestamp)
-            .or_insert_with(VecDeque::new)
+            .or_default()
             .push_back(event);
     }
 
@@ -331,7 +332,7 @@ impl DeterministicSimulation {
                         .gen_duration(Duration::from_millis(50), Duration::from_millis(500));
 
                     // Peer successfully connects after handshake delay
-                    let connect_complete = SimulationEvent {
+                    let _connect_complete = SimulationEvent {
                         timestamp: self.clock.now() + completion_delay,
                         event_type: EventType::PeerConnect,
                         peer_id: Some(peer_id.clone()),

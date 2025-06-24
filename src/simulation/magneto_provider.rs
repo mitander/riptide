@@ -23,13 +23,13 @@ pub struct MockMagnetoProvider {
 
 /// Mock torrent entry in the content database.
 #[derive(Debug, Clone)]
-struct MockTorrentEntry {
-    name: String,
-    size_bytes: u64,
-    seeders: u32,
-    leechers: u32,
-    magnet_template: String,
-    categories: Vec<String>,
+pub struct MockTorrentEntry {
+    pub name: String,
+    pub size_bytes: u64,
+    pub seeders: u32,
+    pub leechers: u32,
+    pub magnet_template: String,
+    pub categories: Vec<String>,
 }
 
 impl MockMagnetoProvider {

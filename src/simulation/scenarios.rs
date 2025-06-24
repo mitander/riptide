@@ -224,6 +224,7 @@ impl SimulationScenarios {
 /// Test runner for systematic scenario validation.
 pub struct ScenarioRunner {
     seed: u64,
+    #[allow(dead_code)]
     scenarios: Vec<String>,
 }
 

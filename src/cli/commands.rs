@@ -19,11 +19,11 @@ pub async fn add_torrent(source: String, output: Option<PathBuf>) -> crate::Resu
 
     let info_hash = if source.starts_with("magnet:") {
         // Handle magnet link
-        println!("Adding magnet link: {}", source);
+        println!("Adding magnet link: {source}");
         engine.add_magnet(&source).await?
     } else {
         // Handle torrent file
-        println!("Adding torrent file: {}", source);
+        println!("Adding torrent file: {source}");
         let torrent_data = fs::read(&source).await?;
         engine.add_torrent_data(&torrent_data).await?
     };

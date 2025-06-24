@@ -95,16 +95,22 @@ pub struct MediaStreamingSimulation {
     movie_folder: MovieFolder,
     piece_size: u32,
     piece_to_file_map: HashMap<PieceIndex, usize>, // Maps pieces to file indices
+    #[allow(dead_code)]
     playback_position: Duration,
+    #[allow(dead_code)]
     buffer_state: StreamingBuffer,
 }
 
 /// Streaming buffer state tracking.
 #[derive(Debug, Clone)]
 pub struct StreamingBuffer {
+    #[allow(dead_code)]
     buffered_duration: Duration,
+    #[allow(dead_code)]
     critical_pieces: Vec<PieceIndex>, // Pieces needed for immediate playback
+    #[allow(dead_code)]
     prefetch_pieces: Vec<PieceIndex>, // Pieces for future playback
+    #[allow(dead_code)]
     subtitle_pieces: Vec<PieceIndex>, // Subtitle data pieces
 }
 
