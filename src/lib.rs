@@ -9,6 +9,7 @@ pub mod simulation;
 pub mod storage;
 pub mod streaming;
 pub mod torrent;
+pub mod web;
 
 pub use torrent::TorrentEngine;
 
