@@ -4,10 +4,13 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use magneto::{ClientError, Magneto, SearchRequest};
+use magneto::{ClientError, SearchRequest};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
+use super::magneto_provider::{
+    MockMagnetoClient, MockMagnetoProviderBuilder, create_mock_magneto_client,
+};
 use crate::torrent::InfoHash;
 
 /// Mock tracker for offline development with magneto integration.
@@ -22,7 +25,7 @@ pub struct MockTracker {
     peers: Vec<SocketAddr>,
     torrents: HashMap<InfoHash, MockTorrentData>,
     rng: ChaCha8Rng,
-    magneto_client: Option<Magneto>,
+    magneto_client: Option<MockMagnetoClient>,
 }
 
 /// Mock torrent data for simulation.
@@ -63,7 +66,16 @@ impl MockTracker {
 
     /// Enables magneto integration for magnet link discovery simulation.
     pub fn with_magneto(mut self) -> Self {
-        self.magneto_client = Some(Magneto::new());
+        // Use mock provider for deterministic results
+        let provider = MockMagnetoProviderBuilder::new().with_seed(42).build();
+        self.magneto_client = Some(create_mock_magneto_client(provider));
+        self
+    }
+
+    /// Enables magneto integration with custom seed for deterministic behavior.
+    pub fn with_magneto_seed(mut self, seed: u64) -> Self {
+        let provider = MockMagnetoProviderBuilder::new().with_seed(seed).build();
+        self.magneto_client = Some(create_mock_magneto_client(provider));
         self
     }
 
@@ -84,7 +96,7 @@ impl MockTracker {
     ) -> Result<Vec<MockTorrentData>, TrackerError> {
         let magneto = self
             .magneto_client
-            .as_ref()
+            .as_mut()
             .ok_or(TrackerError::MagnetoNotEnabled)?;
 
         let search_request = SearchRequest::new(query);
@@ -192,13 +204,13 @@ impl MockTracker {
     /// - `TrackerError::MagnetoNotEnabled` - Magneto client not configured
     /// - `TrackerError::SearchFailed` - Magneto search failed
     pub async fn discover_magnet_links(
-        &self,
+        &mut self,
         query: &str,
         limit: usize,
     ) -> Result<Vec<String>, TrackerError> {
         let magneto = self
             .magneto_client
-            .as_ref()
+            .as_mut()
             .ok_or(TrackerError::MagnetoNotEnabled)?;
 
         let search_request = SearchRequest::new(query);
@@ -353,7 +365,10 @@ impl MockTrackerBuilder {
             torrents: HashMap::new(),
             rng,
             magneto_client: if self.enable_magneto {
-                Some(Magneto::new())
+                let provider = MockMagnetoProviderBuilder::new()
+                    .with_seed(self.seed)
+                    .build();
+                Some(create_mock_magneto_client(provider))
             } else {
                 None
             },

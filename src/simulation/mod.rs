@@ -1,6 +1,7 @@
 //! Simulation framework for rapid BitTorrent development
 
 pub mod deterministic;
+pub mod magneto_provider;
 pub mod media;
 pub mod network;
 pub mod peer;
@@ -10,6 +11,10 @@ pub mod tracker;
 use std::time::Duration;
 
 pub use deterministic::{DeterministicClock, DeterministicSimulation, EventType, SimulationEvent};
+pub use magneto_provider::{
+    MockMagnetoProvider, MockMagnetoProviderBuilder, create_mock_magneto_client,
+    create_streaming_test_client,
+};
 pub use media::{MediaStreamingSimulation, MovieFolder, StreamingResult};
 pub use network::NetworkSimulator;
 pub use peer::MockPeer;
