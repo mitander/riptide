@@ -441,10 +441,15 @@ impl PeerProtocol for BitTorrentPeerProtocol {
         self.state = PeerState::Connecting;
         self.peer_address = Some(address);
 
-        // Establish TCP connection
-        let stream = match TcpStream::connect(address).await {
-            Ok(stream) => stream,
-            Err(_) => {
+        // Establish TCP connection with timeout
+        let stream = match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            TcpStream::connect(address),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(_)) | Err(_) => {
                 self.state = PeerState::Disconnected;
                 self.peer_address = None;
                 return Err(TorrentError::PeerConnectionError {
