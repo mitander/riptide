@@ -2,6 +2,7 @@
 
 pub mod downloader;
 pub mod engine;
+pub mod enhanced_peer_manager;
 pub mod parsing;
 pub mod peer_connection;
 pub mod peer_manager;
@@ -15,6 +16,9 @@ use std::fmt;
 
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
 pub use engine::{EngineStats, TorrentEngine, TorrentSession};
+pub use enhanced_peer_manager::{
+    EnhancedPeerManager, EnhancedPeerManagerStats, PieceResult, Priority,
+};
 pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentMetadata, TorrentParser};
 pub use peer_manager::{BandwidthLimiter, ConnectionState, PeerManager, PeerManagerStats};
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
@@ -111,6 +115,9 @@ pub enum TorrentError {
 
     #[error("Bandwidth limit exceeded")]
     BandwidthLimitExceeded,
+
+    #[error("Peer {address} is blacklisted")]
+    PeerBlacklisted { address: std::net::SocketAddr },
 
     #[error("I/O error")]
     Io(#[from] std::io::Error),
