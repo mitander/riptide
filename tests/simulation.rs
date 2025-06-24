@@ -1,17 +1,18 @@
 //! Integration tests for simulation environment
 
 use riptide::simulation::SimulationEnvironment;
+use riptide::torrent::InfoHash;
 
 #[tokio::test]
 async fn test_simulation_environment_for_streaming() {
-    let env = SimulationEnvironment::for_streaming();
+    let mut env = SimulationEnvironment::for_streaming();
 
     // Should create mixed peer types
     assert_eq!(env.peers.len(), 17); // 10 fast + 5 slow + 2 unreliable
 
     // Verify tracker is configured
-    let info_hash = [0u8; 20];
-    let response = env.tracker.announce(&info_hash).await;
+    let info_hash = InfoHash::new([0u8; 20]);
+    let response = env.tracker.announce(info_hash).await;
     assert!(response.is_ok());
 }
 

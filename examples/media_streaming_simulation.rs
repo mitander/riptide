@@ -241,7 +241,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("==========================================\n");
 
     // Example 1: Create test movie folder if needed
-    if let Err(e) = simulate_movie_streaming("test_movies/Big.Buck.Bunny.2008").await {
+    if let Err(_e) = simulate_movie_streaming("test_movies/Big.Buck.Bunny.2008").await {
         println!("Creating test movie folder...");
         create_test_movie_folder().await?;
         println!();

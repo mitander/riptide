@@ -81,7 +81,7 @@ async fn magnet_link_discovery() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nMagnet Link Discovery");
     println!("{:-<50}", "");
 
-    let tracker = MockTracker::builder()
+    let mut tracker = MockTracker::builder()
         .with_magneto(true)
         .with_seed(0x123456)
         .build();

@@ -714,13 +714,13 @@ impl StreamingResult {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
     use tokio::fs::File;
     use tokio::io::AsyncWriteExt;
 
     use super::*;
 
-    async fn create_test_movie_folder() -> PathBuf {
+    async fn create_test_movie_folder() -> (PathBuf, TempDir) {
         let temp_dir = tempdir().unwrap();
         let movie_dir = temp_dir.path().join("Test.Movie.2024");
         fs::create_dir(&movie_dir).await.unwrap();
@@ -757,12 +757,12 @@ mod tests {
             .await
             .unwrap();
 
-        movie_dir
+        (movie_dir, temp_dir)
     }
 
     #[tokio::test]
     async fn test_movie_folder_analysis() {
-        let movie_dir = create_test_movie_folder().await;
+        let (movie_dir, _temp_dir) = create_test_movie_folder().await;
         let movie_folder = MediaStreamingSimulation::analyze_movie_folder(&movie_dir)
             .await
             .unwrap();
@@ -775,7 +775,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_media_file_classification() {
-        let movie_dir = create_test_movie_folder().await;
+        let (movie_dir, _temp_dir) = create_test_movie_folder().await;
         let video_path = movie_dir.join("Test.Movie.2024.1080p.mp4");
 
         let media_file = MediaStreamingSimulation::classify_media_file(&video_path, 1_000_000)
@@ -789,7 +789,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_simulation() {
-        let movie_dir = create_test_movie_folder().await;
+        let (movie_dir, _temp_dir) = create_test_movie_folder().await;
         let mut simulation = MediaStreamingSimulation::from_movie_folder(&movie_dir, 42, 262144)
             .await
             .unwrap();
