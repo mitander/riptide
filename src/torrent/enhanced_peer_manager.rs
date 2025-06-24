@@ -410,9 +410,9 @@ impl EnhancedPeerManager {
         let connections = self.connections.read().await;
 
         if let Some(pool) = connections.get(&request.info_hash) {
-            if let Some(best_peer) = pool.get_best_available_peer() {
+            if let Some(_best_peer) = pool.get_best_available_peer() {
                 // Check if we have bandwidth available
-                let mut bandwidth = self.global_bandwidth.write().await;
+                let bandwidth = self.global_bandwidth.write().await;
                 if bandwidth.can_allocate_immediate(request.piece_size as u64) {
                     // Simulate immediate download
                     sleep(Duration::from_millis(50)).await;

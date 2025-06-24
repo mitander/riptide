@@ -7,6 +7,7 @@ pub mod cli;
 pub mod config;
 pub mod simulation;
 pub mod storage;
+pub mod streaming;
 pub mod torrent;
 
 pub use torrent::TorrentEngine;
