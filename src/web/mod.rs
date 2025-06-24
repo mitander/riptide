@@ -22,9 +22,9 @@ use crate::config::RiptideConfig;
 use crate::streaming::DirectStreamingService;
 use crate::torrent::TorrentEngine;
 
-/// Complete web UI service providing library management and monitoring interface.
+/// Web UI service providing library management and monitoring interface.
 ///
-/// Integrates with the streaming service and torrent engine to provide a comprehensive
+/// Integrates with the streaming service and torrent engine to provide a
 /// web-based interface for managing the Riptide media server.
 pub struct WebUIService {
     web_server: WebServer,

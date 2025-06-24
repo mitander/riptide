@@ -41,7 +41,7 @@ pub struct FileInfo {
 
 /// Handler for HTTP range requests with torrent-aware optimizations.
 ///
-/// Provides intelligent range handling that understands BitTorrent piece boundaries
+/// Provides range handling that understands BitTorrent piece boundaries
 /// and can optimize downloading for streaming scenarios.
 pub struct RangeHandler {
     piece_size: u32,
@@ -140,7 +140,7 @@ impl RangeHandler {
         }
     }
 
-    /// Optimize piece download order for streaming.
+    /// Order pieces for streaming.
     ///
     /// Returns pieces ordered by streaming priority, considering:
     /// - Current playback position

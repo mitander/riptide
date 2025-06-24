@@ -1,7 +1,7 @@
 //! Direct streaming service with HTTP range requests
 //!
-//! Provides production-ready media streaming capabilities that integrate with the
-//! enhanced peer management system for optimal streaming performance.
+//! Provides media streaming capabilities that integrate with the
+//! peer management system for streaming performance.
 
 pub mod http_server;
 pub mod range_handler;
@@ -17,10 +17,10 @@ use tokio::sync::RwLock;
 use crate::config::RiptideConfig;
 use crate::torrent::{EnhancedPeerManager, TorrentEngine};
 
-/// Complete streaming service integrating HTTP server with BitTorrent backend.
+/// Streaming service integrating HTTP server with BitTorrent backend.
 ///
 /// Coordinates between HTTP range requests from media players and the underlying
-/// BitTorrent downloading system to provide seamless media streaming.
+/// BitTorrent downloading system to provide media streaming.
 pub struct DirectStreamingService {
     http_server: StreamingHttpServer,
     stream_coordinator: Arc<RwLock<StreamCoordinator>>,

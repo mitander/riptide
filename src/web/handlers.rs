@@ -28,7 +28,7 @@ impl WebHandlers {
         }
     }
 
-    /// Get comprehensive server statistics for dashboard.
+    /// Get server statistics for dashboard.
     pub async fn get_server_stats(&self) -> Result<ServerStats, WebUIError> {
         let engine = self.torrent_engine.read().await;
         let streaming = self.streaming_service.read().await;
@@ -185,7 +185,7 @@ impl WebHandlers {
     }
 }
 
-/// Comprehensive server statistics for dashboard.
+/// Server statistics for dashboard.
 #[derive(Debug, Clone, Serialize)]
 pub struct ServerStats {
     pub total_torrents: usize,

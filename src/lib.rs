@@ -1,4 +1,4 @@
-//! Riptide - Production-grade torrent media server
+//! Riptide - A media server designed for streaming torrented media
 //!
 //! A Rust-based BitTorrent client optimized for streaming media content.
 //! Supports simulation environments for rapid development and testing.

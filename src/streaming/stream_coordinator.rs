@@ -1,7 +1,7 @@
 //! Stream coordinator for managing torrent-based streaming sessions
 //!
 //! Coordinates between HTTP requests and BitTorrent downloading to provide
-//! seamless media streaming with intelligent buffering and piece prioritization.
+//! media streaming with buffering and piece prioritization.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,8 +18,8 @@ use crate::torrent::{
 
 /// Coordinates streaming sessions between HTTP requests and BitTorrent backend.
 ///
-/// Manages active streaming sessions, prioritizes piece downloads for optimal
-/// streaming performance, and maintains streaming buffers for smooth playback.
+/// Manages active streaming sessions, prioritizes piece downloads for streaming
+/// performance, and maintains streaming buffers for smooth playback.
 pub struct StreamCoordinator {
     torrent_engine: Arc<RwLock<TorrentEngine>>,
     peer_manager: Arc<RwLock<EnhancedPeerManager>>,
@@ -30,7 +30,7 @@ pub struct StreamCoordinator {
 /// Active streaming session for a torrent.
 ///
 /// Tracks streaming state, buffer requirements, and performance metrics
-/// for optimal piece prioritization and bandwidth allocation.
+/// for piece prioritization and bandwidth allocation.
 #[derive(Debug, Clone)]
 pub struct StreamingSession {
     pub info_hash: InfoHash,
@@ -64,7 +64,7 @@ pub struct ActiveRange {
     pub estimated_completion: Option<Instant>,
 }
 
-/// Performance metrics for streaming optimization.
+/// Performance metrics for streaming.
 #[derive(Debug, Clone)]
 pub struct StreamingPerformanceMetrics {
     pub average_response_time: Duration,
@@ -386,7 +386,7 @@ impl StreamCoordinator {
         ))
     }
 
-    /// Prioritize pieces for optimal streaming performance.
+    /// Prioritize pieces for streaming performance.
     async fn prioritize_pieces_for_streaming(
         &self,
         info_hash: InfoHash,

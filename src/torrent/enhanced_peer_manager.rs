@@ -1,8 +1,8 @@
 //! Enhanced peer connection management with advanced bandwidth control and intelligent peer selection
 //!
-//! Provides production-ready peer connection management with features like:
+//! Provides peer connection management with features like:
 //! - Intelligent peer selection based on performance metrics
-//! - Advanced bandwidth control with priority queues
+//! - Bandwidth control with priority queues
 //! - Connection health monitoring and automatic recovery
 //! - Streaming-optimized piece prioritization
 //! - Anti-pattern detection for malicious peers
@@ -20,7 +20,7 @@ use crate::config::RiptideConfig;
 
 /// Enhanced peer connection manager with intelligent peer selection and bandwidth control.
 ///
-/// Provides production-ready peer management with advanced features for streaming
+/// Provides peer management with features for streaming
 /// media applications including priority-based bandwidth allocation and peer quality assessment.
 pub struct EnhancedPeerManager {
     connections: Arc<RwLock<HashMap<InfoHash, TorrentPeerPool>>>,

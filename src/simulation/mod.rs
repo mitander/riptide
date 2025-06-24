@@ -21,9 +21,9 @@ pub use peer::MockPeer;
 pub use scenarios::{ScenarioResults, ScenarioRunner, SimulationScenarios};
 pub use tracker::MockTracker;
 
-/// Complete simulation environment for BitTorrent development.
+/// Simulation environment for BitTorrent development.
 ///
-/// Combines mock tracker, network simulator, and peer pool for comprehensive
+/// Combines mock tracker, network simulator, and peer pool for
 /// offline development and testing of BitTorrent functionality.
 pub struct SimulationEnvironment {
     pub tracker: MockTracker,
