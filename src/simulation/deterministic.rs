@@ -324,25 +324,110 @@ impl DeterministicSimulation {
     fn process_event(&mut self, event: &SimulationEvent) {
         match event.event_type {
             EventType::PeerConnect => {
-                // Peer connection logic
+                // Peer connection logic - schedule completion events
+                if let Some(peer_id) = &event.peer_id {
+                    let completion_delay = self
+                        .rng
+                        .gen_duration(Duration::from_millis(50), Duration::from_millis(500));
+
+                    // Peer successfully connects after handshake delay
+                    let connect_complete = SimulationEvent {
+                        timestamp: self.clock.now() + completion_delay,
+                        event_type: EventType::PeerConnect,
+                        peer_id: Some(peer_id.clone()),
+                        piece_index: None,
+                    };
+
+                    // Don't re-schedule to avoid infinite loop
+                    // Instead, mark peer as available for requests
+                }
             }
             EventType::PeerDisconnect => {
-                // Peer disconnection logic
+                // Peer disconnection logic - clean up any pending requests
             }
             EventType::PieceRequest => {
-                // Piece request initiation
+                // Piece request initiation - schedule realistic completion
+                if let Some(piece_idx) = event.piece_index {
+                    let piece_size = 262144; // 256KB default piece size
+                    let download_time = self.calculate_download_time(piece_size);
+
+                    // Add some randomness for realistic behavior
+                    let jitter = self
+                        .rng
+                        .gen_duration(Duration::from_millis(0), Duration::from_millis(100));
+
+                    let completion_event = SimulationEvent {
+                        timestamp: self.clock.now() + download_time + jitter,
+                        event_type: if self.rng.gen_bool(0.95) {
+                            EventType::PieceComplete
+                        } else {
+                            EventType::PieceFailed
+                        },
+                        peer_id: event.peer_id.clone(),
+                        piece_index: Some(piece_idx),
+                    };
+
+                    self.schedule_event(completion_event);
+                }
             }
             EventType::PieceComplete => {
-                // Piece download completion
+                // Piece download completion - no additional action needed
             }
             EventType::PieceFailed => {
-                // Piece download failure handling
+                // Piece download failure handling - schedule retry
+                if let Some(piece_idx) = event.piece_index {
+                    let retry_delay = self
+                        .rng
+                        .gen_duration(Duration::from_secs(1), Duration::from_secs(5));
+
+                    let retry_event = SimulationEvent {
+                        timestamp: self.clock.now() + retry_delay,
+                        event_type: EventType::PieceRequest,
+                        peer_id: None,
+                        piece_index: Some(piece_idx),
+                    };
+
+                    self.schedule_event(retry_event);
+                }
             }
             EventType::NetworkChange => {
-                // Network condition updates
+                // Network condition updates - simulate buffering check
             }
             EventType::TrackerAnnounce => {
-                // Tracker communication
+                // Tracker communication - schedule peer discovery
+                let peer_discovery_delay = Duration::from_secs(2);
+
+                // Add new peer after tracker announce
+                let new_peer_count = self.rng.gen_range(1..=3);
+                for i in 0..new_peer_count {
+                    let peer_id = format!("TRACKER_PEER_{}", self.rng.gen_range(1000..9999));
+                    let connect_delay = Duration::from_millis(500 + i * 200);
+
+                    let peer_connect = SimulationEvent {
+                        timestamp: self.clock.now() + peer_discovery_delay + connect_delay,
+                        event_type: EventType::PeerConnect,
+                        peer_id: Some(peer_id.clone()),
+                        piece_index: None,
+                    };
+
+                    self.schedule_event(peer_connect);
+
+                    // Add to peers list
+                    let upload_speed = self.rng.gen_range(500_000..5_000_000);
+                    let reliability = 0.8 + (self.rng.gen_range(0..20) as f32 * 0.01);
+                    let latency = self
+                        .rng
+                        .gen_duration(Duration::from_millis(20), Duration::from_millis(150));
+
+                    let peer = MockPeer::builder()
+                        .upload_speed(upload_speed)
+                        .reliability(reliability)
+                        .latency(latency)
+                        .peer_id(peer_id)
+                        .build();
+
+                    self.peers.push(peer);
+                }
             }
         }
     }

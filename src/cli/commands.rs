@@ -62,7 +62,7 @@ pub async fn start_torrent(torrent: String) -> crate::Result<()> {
 /// - `crate::Error::TorrentError` - Torrent not found or stop failed
 pub async fn stop_torrent(torrent: String) -> crate::Result<()> {
     let config = RiptideConfig::default();
-    let engine = TorrentEngine::new(config);
+    let _engine = TorrentEngine::new(config);
 
     let info_hash = parse_torrent_identifier(&torrent)?;
 
