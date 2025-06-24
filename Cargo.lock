@@ -1790,6 +1790,7 @@ dependencies = [
  "magnet-url",
  "magneto",
  "mime_guess",
+ "proc-macro2",
  "proptest",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -1797,6 +1798,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
+ "syn",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1807,6 +1809,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "urlencoding",
+ "walkdir",
 ]
 
 [[package]]
