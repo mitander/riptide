@@ -8,14 +8,15 @@ use axum::response::{IntoResponse, Response};
 /// Simple static file handler for serving web assets
 #[derive(Debug, Clone)]
 pub struct StaticFileHandler {
-    static_dir: PathBuf,
+    // TODO: Implement actual static file serving using this directory
+    _static_dir: PathBuf,
 }
 
 impl StaticFileHandler {
     /// Create new static file handler
     pub fn new() -> Self {
         Self {
-            static_dir: PathBuf::from("static"),
+            _static_dir: PathBuf::from("static"),
         }
     }
 

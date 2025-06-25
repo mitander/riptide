@@ -130,9 +130,6 @@ pub async fn start_torrent(torrent: String) -> Result<()> {
 /// # Errors
 /// - `RiptideError::Torrent` - Torrent not found or stop failed
 pub async fn stop_torrent(torrent: String) -> Result<()> {
-    let config = RiptideConfig::default();
-    let _engine = TorrentEngine::new(config);
-
     let info_hash = parse_torrent_identifier(&torrent)?;
 
     println!("Stopping download for torrent: {info_hash}");

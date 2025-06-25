@@ -3,10 +3,15 @@
 //! Provides ready-to-use simulation scenarios that reproduce specific
 //! network conditions and edge cases for systematic testing.
 
+pub mod streaming_edge_cases;
+
 use std::time::Duration;
 
-use super::deterministic::{DeterministicSimulation, EventType};
-use crate::torrent::PieceIndex;
+use riptide_core::config::SimulationConfig;
+use riptide_core::torrent::PieceIndex;
+
+use crate::EventPriority;
+use crate::deterministic::{DeterministicSimulation, EventType, PeerBehavior};
 
 /// Standard streaming scenario configuration.
 #[derive(Debug, Clone)]
@@ -61,17 +66,28 @@ impl SimulationScenarios {
     /// Fast, reliable peers with low latency. Used as baseline for
     /// performance testing and streaming algorithm validation.
     pub fn ideal_streaming(seed: u64) -> DeterministicSimulation {
-        let mut sim = DeterministicSimulation::from_seed(seed);
+        let config = SimulationConfig {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 10,
+            packet_loss_rate: 0.0,
+            max_simulated_peers: 20,
+            simulated_download_speed: 10_485_760, // 10 MB/s
+            use_mock_data: true,
+        };
+        let mut sim = DeterministicSimulation::new(config).unwrap();
         let scenario = StreamingScenario::default();
 
         // Add fast, reliable peers
         for i in 0..scenario.peer_count {
             let peer_id = format!("IDEAL{i:03}");
-            sim.add_deterministic_peer(peer_id, 10_000_000); // 10 MB/s
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Fast)
+                .unwrap();
         }
 
         // Create sequential piece requests for streaming
-        sim.create_streaming_scenario(scenario.total_pieces, Duration::from_secs(1));
+        sim.create_streaming_scenario(scenario.total_pieces, Duration::from_secs(1))
+            .expect("Failed to create ideal streaming scenario");
 
         sim
     }
@@ -81,19 +97,46 @@ impl SimulationScenarios {
     /// Simulates poor network conditions with high latency and
     /// limited bandwidth to test streaming resilience.
     pub fn slow_network(seed: u64) -> DeterministicSimulation {
-        let mut sim = DeterministicSimulation::from_seed(seed);
+        let config = SimulationConfig {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 100,
+            packet_loss_rate: 0.05,
+            max_simulated_peers: 10,
+            simulated_download_speed: 524_288, // 500 KB/s
+            use_mock_data: true,
+        };
+        let mut sim = DeterministicSimulation::new(config).unwrap();
 
         // Add slow peers with high latency
         for i in 0..10 {
             let peer_id = format!("SLOW{i:03}");
-            sim.add_deterministic_peer(peer_id, 500_000); // 500 KB/s
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Slow)
+                .unwrap();
         }
 
         // Schedule network degradation events
-        sim.schedule_delayed(Duration::from_secs(30), EventType::NetworkChange);
-        sim.schedule_delayed(Duration::from_secs(60), EventType::NetworkChange);
+        sim.schedule_delayed(
+            Duration::from_secs(30),
+            EventType::NetworkChange {
+                latency_ms: 100,
+                packet_loss_rate: 0.05,
+            },
+            EventPriority::High,
+        )
+        .expect("Failed to schedule first network degradation event");
+        sim.schedule_delayed(
+            Duration::from_secs(60),
+            EventType::NetworkChange {
+                latency_ms: 200,
+                packet_loss_rate: 0.10,
+            },
+            EventPriority::High,
+        )
+        .expect("Failed to schedule second network degradation event");
 
-        sim.create_streaming_scenario(500, Duration::from_secs(2));
+        sim.create_streaming_scenario(500, Duration::from_secs(2))
+            .expect("Failed to create slow network streaming scenario");
 
         sim
     }
@@ -103,21 +146,39 @@ impl SimulationScenarios {
     /// Tests resilience to peers joining and leaving the swarm frequently.
     /// Critical for streaming applications that need continuous data flow.
     pub fn peer_churn(seed: u64) -> DeterministicSimulation {
-        let mut sim = DeterministicSimulation::from_seed(seed);
+        let config = SimulationConfig {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 50,
+            packet_loss_rate: 0.02,
+            max_simulated_peers: 30,
+            simulated_download_speed: 2_097_152, // 2 MB/s
+            use_mock_data: true,
+        };
+        let mut sim = DeterministicSimulation::new(config).unwrap();
 
         // Add initial peer set
         for i in 0..20 {
             let peer_id = format!("CHURN{i:03}");
-            sim.add_deterministic_peer(peer_id.clone(), 2_000_000); // 2 MB/s
+            sim.add_deterministic_peer(peer_id.clone(), PeerBehavior::Slow)
+                .expect("Failed to add peer for churn scenario");
 
             // Schedule random disconnections
             if i % 3 == 0 {
                 let disconnect_time = Duration::from_secs(10 + (i as u64 * 5));
-                sim.schedule_delayed(disconnect_time, EventType::PeerDisconnect);
+                sim.schedule_delayed(
+                    disconnect_time,
+                    EventType::PeerDisconnect {
+                        peer_id: peer_id.clone(),
+                    },
+                    EventPriority::High,
+                )
+                .unwrap();
             }
         }
 
-        sim.create_streaming_scenario(800, Duration::from_secs(1));
+        sim.create_streaming_scenario(800, Duration::from_secs(1))
+            .expect("Failed to create peer churn streaming scenario");
 
         sim
     }
@@ -127,28 +188,42 @@ impl SimulationScenarios {
     /// Injects hash failures and download errors to validate
     /// retry logic and error recovery mechanisms.
     pub fn piece_failures(seed: u64) -> DeterministicSimulation {
-        let mut sim = DeterministicSimulation::from_seed(seed);
+        let config = SimulationConfig {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 75,
+            packet_loss_rate: 0.03,
+            max_simulated_peers: 12,
+            simulated_download_speed: 3_145_728, // 3 MB/s
+            use_mock_data: true,
+        };
+        let mut sim = DeterministicSimulation::new(config).unwrap();
 
         // Add unreliable peers
         for i in 0..12 {
             let peer_id = format!("UNRELIABLE{i:02}");
-            sim.add_deterministic_peer(peer_id, 3_000_000); // 3 MB/s
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Unreliable)
+                .unwrap();
         }
 
         // Schedule specific piece failures for testing
         let failure_pieces = [15, 47, 128, 256, 512];
-        for &piece_idx in &failure_pieces {
-            let fail_time = Duration::from_secs(5 + piece_idx as u64 / 10);
-            let fail_event = super::deterministic::SimulationEvent {
-                timestamp: sim.clock().now() + fail_time,
-                event_type: EventType::PieceFailed,
-                peer_id: None,
-                piece_index: Some(PieceIndex::new(piece_idx)),
-            };
-            sim.schedule_event(fail_event);
+        for &piece_index in &failure_pieces {
+            let fail_time = Duration::from_secs(5 + piece_index as u64 / 10);
+            sim.schedule_delayed(
+                fail_time,
+                EventType::PieceFailed {
+                    peer_id: format!("UNRELIABLE{:02}", piece_index % 12),
+                    piece_index: PieceIndex::new(piece_index),
+                    reason: "Simulated hash mismatch".to_string(),
+                },
+                EventPriority::High,
+            )
+            .expect("Failed to schedule piece failure event");
         }
 
-        sim.create_streaming_scenario(1000, Duration::from_secs(1));
+        sim.create_streaming_scenario(1000, Duration::from_secs(1))
+            .expect("Failed to create piece failures streaming scenario");
 
         sim
     }
@@ -158,33 +233,47 @@ impl SimulationScenarios {
     /// Combines fast seeders, slow leechers, and unreliable peers to
     /// simulate real-world BitTorrent swarm composition.
     pub fn mixed_peers(seed: u64) -> DeterministicSimulation {
-        let mut sim = DeterministicSimulation::from_seed(seed);
+        let config = SimulationConfig {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 40,
+            packet_loss_rate: 0.01,
+            max_simulated_peers: 20,
+            simulated_download_speed: 5_242_880, // 5 MB/s average
+            use_mock_data: true,
+        };
+        let mut sim = DeterministicSimulation::new(config).unwrap();
 
         // Fast seeders (3)
         for i in 0..3 {
             let peer_id = format!("SEEDER{i:02}");
-            sim.add_deterministic_peer(peer_id, 15_000_000); // 15 MB/s
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Fast)
+                .expect("Failed to add fast seeder peer");
         }
 
         // Medium peers (8)
         for i in 0..8 {
             let peer_id = format!("MEDIUM{i:02}");
-            sim.add_deterministic_peer(peer_id, 3_000_000); // 3 MB/s
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Fast)
+                .expect("Failed to add medium speed peer");
         }
 
         // Slow peers (6)
         for i in 0..6 {
             let peer_id = format!("SLOWPEER{i:02}");
-            sim.add_deterministic_peer(peer_id, 800_000); // 800 KB/s
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Slow)
+                .expect("Failed to add slow peer");
         }
 
         // Unreliable peers (3)
         for i in 0..3 {
             let peer_id = format!("UNSTABLE{i:02}");
-            sim.add_deterministic_peer(peer_id, 5_000_000); // 5 MB/s fast but unreliable
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Unreliable)
+                .expect("Failed to add unreliable peer");
         }
 
-        sim.create_streaming_scenario(1200, Duration::from_secs(1));
+        sim.create_streaming_scenario(1200, Duration::from_secs(1))
+            .expect("Failed to create mixed peers streaming scenario");
 
         sim
     }
@@ -194,27 +283,38 @@ impl SimulationScenarios {
     /// Simulates the challenging endgame phase where only a few pieces
     /// remain and they're distributed across different peers.
     pub fn endgame_scenario(seed: u64) -> DeterministicSimulation {
-        let mut sim = DeterministicSimulation::from_seed(seed);
+        let config = SimulationConfig {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 60,
+            packet_loss_rate: 0.02,
+            max_simulated_peers: 15,
+            simulated_download_speed: 2_097_152, // 2 MB/s
+            use_mock_data: true,
+        };
+        let mut sim = DeterministicSimulation::new(config).unwrap();
 
         // Add peers with partial content
         for i in 0..15 {
             let peer_id = format!("PARTIAL{i:02}");
-            sim.add_deterministic_peer(peer_id, 2_000_000); // 2 MB/s
+            sim.add_deterministic_peer(peer_id, PeerBehavior::Slow)
+                .unwrap();
         }
 
         // Simulate most pieces already downloaded, only final pieces remain
-        let _total_pieces = 1000;
         let remaining_pieces = [995, 996, 997, 998, 999];
 
-        for &piece_idx in &remaining_pieces {
-            let request_time = Duration::from_secs(1 + piece_idx as u64 - 995);
-            let request_event = super::deterministic::SimulationEvent {
-                timestamp: sim.clock().now() + request_time,
-                event_type: EventType::PieceRequest,
-                peer_id: None,
-                piece_index: Some(PieceIndex::new(piece_idx)),
-            };
-            sim.schedule_event(request_event);
+        for &piece_index in &remaining_pieces {
+            let request_time = Duration::from_secs(1 + piece_index as u64 - 995);
+            sim.schedule_delayed(
+                request_time,
+                EventType::PieceRequest {
+                    peer_id: format!("PARTIAL{:02}", piece_index % 15),
+                    piece_index: PieceIndex::new(piece_index),
+                },
+                EventPriority::Critical,
+            )
+            .unwrap();
         }
 
         sim
@@ -267,32 +367,44 @@ impl ScenarioRunner {
         };
 
         let start_time = sim.clock().now();
-        let events = sim.run_for(Duration::from_secs(300)); // 5 minute simulation
+        let report = sim
+            .run_for(Duration::from_secs(300))
+            .expect("Failed to run simulation for scenario"); // 5 minute simulation
         let end_time = sim.clock().now();
 
         ScenarioResult {
             duration: end_time.duration_since(start_time),
-            total_events: events.len(),
-            piece_requests: events
-                .iter()
-                .filter(|e| e.event_type == EventType::PieceRequest)
-                .count(),
-            piece_completions: events
-                .iter()
-                .filter(|e| e.event_type == EventType::PieceComplete)
-                .count(),
-            piece_failures: events
-                .iter()
-                .filter(|e| e.event_type == EventType::PieceFailed)
-                .count(),
-            peer_connections: events
-                .iter()
-                .filter(|e| e.event_type == EventType::PeerConnect)
-                .count(),
-            peer_disconnections: events
-                .iter()
-                .filter(|e| e.event_type == EventType::PeerDisconnect)
-                .count(),
+            total_events: report.event_count as usize,
+            piece_requests: report
+                .metrics
+                .events_by_type
+                .get("PieceRequest")
+                .copied()
+                .unwrap_or(0) as usize,
+            piece_completions: report
+                .metrics
+                .events_by_type
+                .get("PieceComplete")
+                .copied()
+                .unwrap_or(0) as usize,
+            piece_failures: report
+                .metrics
+                .events_by_type
+                .get("PieceFailed")
+                .copied()
+                .unwrap_or(0) as usize,
+            peer_connections: report
+                .metrics
+                .events_by_type
+                .get("PeerConnect")
+                .copied()
+                .unwrap_or(0) as usize,
+            peer_disconnections: report
+                .metrics
+                .events_by_type
+                .get("PeerDisconnect")
+                .copied()
+                .unwrap_or(0) as usize,
         }
     }
 }
@@ -375,13 +487,17 @@ mod tests {
 
         // Run same scenario twice
         let mut sim1 = SimulationScenarios::ideal_streaming(seed);
-        let events1 = sim1.run_for(Duration::from_secs(10));
+        let report1 = sim1
+            .run_for(Duration::from_secs(10))
+            .expect("Failed to run first simulation for reproducibility test");
 
         let mut sim2 = SimulationScenarios::ideal_streaming(seed);
-        let events2 = sim2.run_for(Duration::from_secs(10));
+        let report2 = sim2
+            .run_for(Duration::from_secs(10))
+            .expect("Failed to run second simulation for reproducibility test");
 
         // Should produce identical results
-        assert_eq!(events1.len(), events2.len());
+        assert_eq!(report1.event_count, report2.event_count);
     }
 
     #[test]

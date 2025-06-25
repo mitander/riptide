@@ -99,6 +99,7 @@ impl PeerManager {
         info_hash: InfoHash,
         address: SocketAddr,
     ) -> Result<(), TorrentError> {
+        // Hold semaphore permit for connection limit enforcement (RAII guard)
         let _permit = self
             .connection_semaphore
             .acquire()

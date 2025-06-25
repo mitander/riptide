@@ -1,0 +1,45 @@
+[package]
+name = "riptide-sim"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Core async runtime
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Deterministic RNG
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# BitTorrent-specific dependencies
+magneto = { workspace = true }
+sha1 = { workspace = true }
+hex = { workspace = true }
+urlencoding = { workspace = true }
+
+# Internal dependencies
+riptide-core = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+proptest = { workspace = true }
+criterion = { workspace = true }
+tempfile = { workspace = true }

@@ -22,7 +22,12 @@ use crate::torrent::{
 /// Manages active streaming sessions, prioritizes piece downloads for streaming
 /// performance, and maintains streaming buffers for smooth playback.
 pub struct StreamCoordinator {
-    torrent_engine: Arc<RwLock<TorrentEngine>>,
+    // TODO: Use for querying torrent metadata and piece availability
+    // Currently metadata is mocked - will integrate with engine for:
+    // - Real-time piece availability checks
+    // - Torrent metadata queries
+    // - Download progress tracking
+    _torrent_engine: Arc<RwLock<TorrentEngine>>,
     peer_manager: Arc<RwLock<EnhancedPeerManager>>,
     active_sessions: Arc<RwLock<HashMap<InfoHash, StreamingSession>>>,
     registered_torrents: Arc<RwLock<HashMap<InfoHash, TorrentMetadata>>>,
@@ -180,7 +185,7 @@ impl StreamCoordinator {
         peer_manager: Arc<RwLock<EnhancedPeerManager>>,
     ) -> Self {
         Self {
-            torrent_engine,
+            _torrent_engine: torrent_engine,
             peer_manager,
             active_sessions: Arc::new(RwLock::new(HashMap::new())),
             registered_torrents: Arc::new(RwLock::new(HashMap::new())),
@@ -196,8 +201,6 @@ impl StreamCoordinator {
         info_hash: InfoHash,
         source: String,
     ) -> Result<(), StreamingError> {
-        let _engine = self.torrent_engine.read().await;
-
         // Get torrent metadata from engine
         let metadata = self.create_torrent_metadata(info_hash, source).await?;
 
@@ -272,6 +275,7 @@ impl StreamCoordinator {
         let info_hash = InfoHash::new(info_hash);
 
         // Get or create streaming session
+        // TODO: Use session for state management once streaming protocol is implemented
         let _session = self.get_or_create_session(info_hash, start).await?;
 
         // Calculate required pieces for this range
@@ -440,10 +444,10 @@ impl StreamCoordinator {
         info_hash: InfoHash,
         source: String,
     ) -> Result<TorrentMetadata, StreamingError> {
-        // For now, create minimal metadata - in production this would:
-        // 1. Query torrent engine for actual metadata
-        // 2. Parse file list and calculate offsets
-        // 3. Determine piece size and count
+        // TODO: Replace mock with real implementation:
+        // let engine = self._torrent_engine.read().await;
+        // let metadata = engine.get_torrent_metadata(info_hash)?;
+        // For now, create minimal metadata
 
         Ok(TorrentMetadata {
             info_hash,

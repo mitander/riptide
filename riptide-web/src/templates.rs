@@ -16,7 +16,8 @@ use super::{HtmlResponse, WebUIError};
 pub struct TemplateEngine {
     templates: HashMap<String, String>,
     base_template: String,
-    template_dir: PathBuf,
+    // TODO: Implement template hot-reloading using this directory
+    _template_dir: PathBuf,
 }
 
 impl TemplateEngine {
@@ -65,7 +66,7 @@ impl TemplateEngine {
         Self {
             templates,
             base_template: base_content,
-            template_dir,
+            _template_dir: template_dir,
         }
     }
 
@@ -195,13 +196,13 @@ impl TemplateEngine {
             </nav>
         </div>
     </header>
-    
+
     <main class="main">
         <div class="container">
             {{content}}
         </div>
     </main>
-    
+
     <footer class="footer">
         <div class="container">
             <p>&copy; 2024 Riptide Media Server</p>
@@ -232,7 +233,7 @@ impl TemplateEngine {
             <p class="stat-value">{{stats.upload_speed}} KB/s</p>
         </div>
     </div>
-    
+
     <div class="recent-activity">
         <h2>Recent Activity</h2>
         <div class="activity-list">
@@ -260,7 +261,7 @@ impl TemplateEngine {
     fn library_template() -> String {
         r#"<div class="library">
     <h1>Media Library</h1>
-    
+
     <div class="library-filters">
         <input type="text" id="search" placeholder="Search media..." class="search-input">
         <select id="type-filter" class="filter-select">
@@ -270,12 +271,12 @@ impl TemplateEngine {
             <option value="Music">Music</option>
         </select>
     </div>
-    
+
     <div class="media-grid" id="media-grid">
         <script>
             const libraryItems = {{library_items}};
             const mediaGrid = document.getElementById('media-grid');
-            
+
             function renderLibraryItems(items) {
                 mediaGrid.innerHTML = '';
                 items.forEach(item => {
@@ -283,7 +284,7 @@ impl TemplateEngine {
                     div.className = 'media-card';
                     div.innerHTML = `
                         <div class="media-poster">
-                            ${item.thumbnail_url ? 
+                            ${item.thumbnail_url ?
                                 `<img src="${item.thumbnail_url}" alt="${item.title}">` :
                                 '<div class="placeholder-poster"></div>'
                             }
@@ -302,22 +303,22 @@ impl TemplateEngine {
                     mediaGrid.appendChild(div);
                 });
             }
-            
+
             renderLibraryItems(libraryItems);
-            
+
             // Search functionality
             document.getElementById('search').addEventListener('input', (e) => {
                 const query = e.target.value.toLowerCase();
-                const filtered = libraryItems.filter(item => 
+                const filtered = libraryItems.filter(item =>
                     item.title.toLowerCase().includes(query)
                 );
                 renderLibraryItems(filtered);
             });
-            
+
             // Type filter
             document.getElementById('type-filter').addEventListener('change', (e) => {
                 const type = e.target.value;
-                const filtered = type ? 
+                const filtered = type ?
                     libraryItems.filter(item => item.media_type === type) :
                     libraryItems;
                 renderLibraryItems(filtered);
@@ -331,12 +332,12 @@ impl TemplateEngine {
     fn torrents_template() -> String {
         r#"<div class="torrents">
     <h1>Torrent Management</h1>
-    
+
     <div class="torrents-toolbar">
         <a href="/add-torrent" class="btn btn-primary">Add Torrent</a>
         <button class="btn btn-secondary" onclick="refreshTorrents()">Refresh</button>
     </div>
-    
+
     <div class="torrents-table">
         <table class="table">
             <thead>
@@ -356,7 +357,7 @@ impl TemplateEngine {
                 <script>
                     const torrents = {{torrents}};
                     const tbody = document.getElementById('torrents-tbody');
-                    
+
                     function renderTorrents() {
                         tbody.innerHTML = '';
                         torrents.forEach(torrent => {
@@ -383,7 +384,7 @@ impl TemplateEngine {
                             tbody.appendChild(tr);
                         });
                     }
-                    
+
                     renderTorrents();
                 </script>
             </tbody>
@@ -396,40 +397,40 @@ impl TemplateEngine {
     fn add_torrent_template() -> String {
         r#"<div class="add-torrent">
     <h1>Add New Torrent</h1>
-    
+
     <form class="add-torrent-form" onsubmit="addTorrent(event)">
         <div class="form-group">
             <label for="magnet-link">Magnet Link:</label>
-            <input type="url" id="magnet-link" name="magnet" required 
+            <input type="url" id="magnet-link" name="magnet" required
                    placeholder="magnet:?xt=urn:btih:..." class="form-input">
         </div>
-        
+
         <div class="form-group">
             <label>
                 <input type="checkbox" id="start-immediately" checked>
                 Start download immediately
             </label>
         </div>
-        
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Add Torrent</button>
             <a href="/torrents" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
-    
+
     <div id="add-result" class="result-message" style="display: none;"></div>
-    
+
     <script>
         async function addTorrent(event) {
             event.preventDefault();
-            
+
             const magnetLink = document.getElementById('magnet-link').value;
             const resultDiv = document.getElementById('add-result');
-            
+
             try {
                 const response = await fetch(`/api/torrents/add?magnet=${encodeURIComponent(magnetLink)}`);
                 const data = await response.json();
-                
+
                 if (data.result.success) {
                     resultDiv.className = 'result-message success';
                     resultDiv.textContent = data.result.message;
@@ -441,7 +442,7 @@ impl TemplateEngine {
                     resultDiv.className = 'result-message error';
                     resultDiv.textContent = data.result.message;
                 }
-                
+
                 resultDiv.style.display = 'block';
             } catch (error) {
                 resultDiv.className = 'result-message error';
@@ -457,11 +458,11 @@ impl TemplateEngine {
     fn search_template() -> String {
         r#"<div class="search">
     <h1>Search Media</h1>
-    
+
     <div class="search-form">
         <form class="search-input-form" onsubmit="performSearch(event)">
             <div class="form-group">
-                <input type="text" id="search-query" name="query" required 
+                <input type="text" id="search-query" name="query" required
                        placeholder="Search for movies, TV shows..." class="form-input search-input">
                 <div class="search-filters">
                     <label>
@@ -478,33 +479,33 @@ impl TemplateEngine {
             </div>
         </form>
     </div>
-    
+
     <div id="search-loading" class="loading" style="display: none;">
         <p>Searching...</p>
     </div>
-    
+
     <div id="search-results" class="search-results" style="display: none;">
         <h2>Search Results</h2>
         <div id="results-grid" class="results-grid"></div>
     </div>
-    
+
     <script>
         async function performSearch(event) {
             event.preventDefault();
-            
+
             const query = document.getElementById('search-query').value.trim();
             const category = document.querySelector('input[name="category"]:checked').value;
-            
+
             if (!query) return;
-            
+
             const loadingDiv = document.getElementById('search-loading');
             const resultsDiv = document.getElementById('search-results');
             const resultsGrid = document.getElementById('results-grid');
-            
+
             // Show loading
             loadingDiv.style.display = 'block';
             resultsDiv.style.display = 'none';
-            
+
             try {
                 let url = '/api/search';
                 if (category === 'movie') {
@@ -512,13 +513,13 @@ impl TemplateEngine {
                 } else if (category === 'tv') {
                     url = '/api/search/tv';
                 }
-                
+
                 const response = await fetch(`${url}?q=${encodeURIComponent(query)}`);
                 const data = await response.json();
-                
+
                 // Hide loading
                 loadingDiv.style.display = 'none';
-                
+
                 if (data.results && data.results.length > 0) {
                     renderSearchResults(data.results);
                     resultsDiv.style.display = 'block';
@@ -532,23 +533,23 @@ impl TemplateEngine {
                 resultsDiv.style.display = 'block';
             }
         }
-        
+
         function renderSearchResults(results) {
             const grid = document.getElementById('results-grid');
             grid.innerHTML = '';
-            
+
             results.forEach(result => {
                 const resultDiv = document.createElement('div');
                 resultDiv.className = 'search-result-card';
-                
-                const posterImg = result.poster_url ? 
+
+                const posterImg = result.poster_url ?
                     `<img src="${result.poster_url}" alt="${result.title}" class="result-poster">` :
                     '<div class="result-poster-placeholder"></div>';
-                
+
                 const year = result.year ? ` (${result.year})` : '';
                 const rating = result.rating ? `<span class="rating">★ ${result.rating}</span>` : '';
                 const genre = result.genre ? `<span class="genre">${result.genre}</span>` : '';
-                
+
                 resultDiv.innerHTML = `
                     <div class="result-poster-container">
                         ${posterImg}
@@ -581,11 +582,11 @@ impl TemplateEngine {
                         </div>
                     </div>
                 `;
-                
+
                 grid.appendChild(resultDiv);
             });
         }
-        
+
         function formatBytes(bytes) {
             if (bytes >= 1073741824) {
                 return (bytes / 1073741824).toFixed(1) + ' GB';
@@ -594,12 +595,12 @@ impl TemplateEngine {
             }
             return (bytes / 1024).toFixed(0) + ' KB';
         }
-        
+
         async function downloadTorrent(magnetLink) {
             try {
                 const response = await fetch(`/api/torrents/add?magnet=${encodeURIComponent(magnetLink)}`);
                 const data = await response.json();
-                
+
                 if (data.result.success) {
                     alert('Torrent added successfully! ' + data.result.message);
                     if (data.result.stream_url) {
@@ -614,7 +615,7 @@ impl TemplateEngine {
                 alert('Error adding torrent: ' + error.message);
             }
         }
-        
+
         // Auto-focus search input
         document.getElementById('search-query').focus();
     </script>
@@ -625,98 +626,98 @@ impl TemplateEngine {
     fn settings_template() -> String {
         r#"<div class="settings">
     <h1>Server Settings</h1>
-    
+
     <form class="settings-form" onsubmit="saveSettings(event)">
         <div class="settings-section">
             <h2>Network Settings</h2>
-            
+
             <div class="form-group">
                 <label for="download-limit">Download Limit (KB/s):</label>
-                <input type="number" id="download-limit" name="download_limit" 
+                <input type="number" id="download-limit" name="download_limit"
                        value="{{settings.download_limit}}" class="form-input">
                 <small>Leave empty for unlimited</small>
             </div>
-            
+
             <div class="form-group">
                 <label for="upload-limit">Upload Limit (KB/s):</label>
-                <input type="number" id="upload-limit" name="upload_limit" 
+                <input type="number" id="upload-limit" name="upload_limit"
                        value="{{settings.upload_limit}}" class="form-input">
                 <small>Leave empty for unlimited</small>
             </div>
-            
+
             <div class="form-group">
                 <label for="max-connections">Max Connections:</label>
-                <input type="number" id="max-connections" name="max_connections" 
+                <input type="number" id="max-connections" name="max_connections"
                        value="{{settings.max_connections}}" class="form-input">
             </div>
         </div>
-        
+
         <div class="settings-section">
             <h2>Server Ports</h2>
-            
+
             <div class="form-group">
                 <label for="streaming-port">Streaming Port:</label>
-                <input type="number" id="streaming-port" name="streaming_port" 
+                <input type="number" id="streaming-port" name="streaming_port"
                        value="{{settings.streaming_port}}" class="form-input">
             </div>
-            
+
             <div class="form-group">
                 <label for="web-ui-port">Web UI Port:</label>
-                <input type="number" id="web-ui-port" name="web_ui_port" 
+                <input type="number" id="web-ui-port" name="web_ui_port"
                        value="{{settings.web_ui_port}}" class="form-input">
             </div>
         </div>
-        
+
         <div class="settings-section">
             <h2>Protocol Settings</h2>
-            
+
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="enable-upnp" name="enable_upnp" 
+                    <input type="checkbox" id="enable-upnp" name="enable_upnp"
                            {{#if settings.enable_upnp}}checked{{/if}}>
                     Enable UPnP
                 </label>
             </div>
-            
+
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="enable-dht" name="enable_dht" 
+                    <input type="checkbox" id="enable-dht" name="enable_dht"
                            {{#if settings.enable_dht}}checked{{/if}}>
                     Enable DHT
                 </label>
             </div>
-            
+
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="enable-pex" name="enable_pex" 
+                    <input type="checkbox" id="enable-pex" name="enable_pex"
                            {{#if settings.enable_pex}}checked{{/if}}>
                     Enable Peer Exchange
                 </label>
             </div>
         </div>
-        
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Settings</button>
             <button type="button" class="btn btn-secondary" onclick="resetSettings()">Reset</button>
         </div>
     </form>
-    
+
     <div id="settings-result" class="result-message" style="display: none;"></div>
-    
+
     <script>
         function saveSettings(event) {
             event.preventDefault();
-            
+
             const resultDiv = document.getElementById('settings-result');
             resultDiv.className = 'result-message success';
             resultDiv.textContent = 'Settings saved successfully!';
             resultDiv.style.display = 'block';
-            
+
             setTimeout(() => {
                 resultDiv.style.display = 'none';
             }, 3000);
         }
-        
+
         function resetSettings() {
             if (confirm('Reset all settings to defaults?')) {
                 location.reload();

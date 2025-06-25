@@ -18,6 +18,7 @@ riptide-{domain}
 - **riptide-web** - Web interface concerns
 - **riptide-search** - Media discovery and metadata
 - **riptide-cli** - Command-line interface
+- **riptide-sim** - Deterministic simulation framework
 
 ### Cross-Crate Type Disambiguation
 
@@ -28,7 +29,7 @@ When types might conflict across crates, use descriptive prefixes:
 pub struct TorrentEngine;        // Core BitTorrent engine
 pub struct StreamingService;     // Direct streaming service
 
-// riptide-web  
+// riptide-web
 pub struct WebServer;            // HTTP server
 pub struct WebHandlers;          // Request handlers
 pub struct TemplateEngine;       // HTML rendering
@@ -39,6 +40,12 @@ pub struct TorrentResult;        // Search result item
 
 // riptide-cli
 pub enum Commands;               // CLI commands
+
+// riptide-sim
+pub struct DeterministicSimulation;  // Main simulation engine
+pub struct DeterministicClock;       // Controlled time advancement
+pub enum EventType;                  // Simulation event types
+pub struct SimulationReport;         // Run results and metrics
 ```
 
 ## Functions
@@ -88,7 +95,7 @@ Each crate defines specific error types with descriptive names:
 // riptide-core/src/lib.rs
 pub enum RiptideError {
     Torrent(TorrentError),
-    Storage(StorageError), 
+    Storage(StorageError),
     Streaming(StreamingError),
     WebUI { reason: String },        // Cross-crate conversion
 }
@@ -100,7 +107,7 @@ pub enum WebUIError {
     HandlerError { reason: String },
 }
 
-// riptide-search/src/lib.rs  
+// riptide-search/src/lib.rs
 pub enum MediaSearchError {
     SearchFailed { query: String, reason: String },
     NetworkError { reason: String },
@@ -120,13 +127,14 @@ pub async fn add_torrent(source: String, output: Option<PathBuf>) -> Result<()>
 // riptide-core/src/lib.rs - conversion helpers
 impl RiptideError {
     pub fn from_web_ui_error(error: impl std::fmt::Display) -> Self
-    pub fn from_search_error(error: impl std::fmt::Display) -> Self  
+    pub fn from_search_error(error: impl std::fmt::Display) -> Self
 }
 ```
 
 ### The Specificity Rule
 
 **Public APIs**: Maximum specificity
+
 ```rust
 // BAD
 pub fn get(&self, id: u64) -> Option<Data>
@@ -138,6 +146,7 @@ pub async fn handle_peer_message(&mut self, message: &PeerMessage) -> Result<()>
 ```
 
 **Internal APIs**: Context-appropriate specificity
+
 ```rust
 // In piece_picker.rs - context is clear
 fn next_piece(&self) -> Option<PieceIndex>  // OK
@@ -375,7 +384,7 @@ fn bench_piece_hash_calculation() { }
 
 ### Documentation Comments
 
-```rust
+````rust
 /// Starts downloading the specified torrent.
 ///
 /// Connects to trackers, discovers peers, and begins piece acquisition using
@@ -391,7 +400,7 @@ fn bench_piece_hash_calculation() { }
 /// let handle = engine.start_download("magnet:?xt=...")?;
 /// ```
 pub async fn start_download(&mut self, magnet_link: &str) -> Result<DownloadHandle>
-```
+````
 
 ### Inline Comments
 
@@ -455,13 +464,15 @@ type CompletionHandler = Box<dyn FnOnce(Result<()>) + Send>;
 ## Enforcement
 
 ### CI Enforcement (Automatic)
+
 - Public API must use full words
 - No utils.rs or helpers.rs modules
-- Test names must start with test_ or prop_ or bench_
+- Test names must start with test* or prop* or bench\_
 - Constants must be SCREAMING_SNAKE_CASE
 - Public types must have documentation
 
 ### Code Review (Human Judgment)
+
 - Internal naming clarity
 - Appropriate abbreviation use
 - Comment quality
@@ -470,35 +481,38 @@ type CompletionHandler = Box<dyn FnOnce(Result<()>) + Send>;
 ## Quick Reference
 
 ### DO
+
 - Use domain terms correctly (piece vs segment)
 - Be specific in public APIs
 - Include units in names when ambiguous (`timeout_seconds`)
 - Use standard Rust patterns (`.into_iter()`, `as_ref()`)
 
 ### DON'T
+
 - Abbreviate in public APIs (`msg` → `message`)
 - Use generic names (`process`, `handle`, `manage`)
 - Mix domain metaphors (torrent "segments", streaming "pieces")
 - Create utils.rs modules
 
 ### THINK
+
 - Will this name make sense in 6 months?
 - Does it disambiguate from similar concepts?
 - Is the abbreviation universally understood?
-- Does the name indicate fallibility (try_) or asyncness?
+- Does the name indicate fallibility (try\_) or asyncness?
 
 ## Workspace-Specific Guidelines
 
 ### Module Naming by Crate
 
-```rust
+````rust
 // riptide-core/src/ - Technical focus
 torrent/engine.rs               // Core BitTorrent protocol
-streaming/http_server.rs        // HTTP range request handling  
+streaming/http_server.rs        // HTTP range request handling
 storage/file_storage.rs         // Copy-on-write file operations
 config.rs                       // Configuration management
 
-// riptide-web/src/ - Web focus  
+// riptide-web/src/ - Web focus
 handlers.rs                     // HTTP request handlers
 server.rs                       // Web server setup and routing
 templates.rs                    // HTML template rendering
@@ -509,9 +523,14 @@ service.rs                      // Search coordination and providers
 // Future: providers/magneto.rs, providers/imdb.rs
 
 // riptide-cli/src/ - Command focus
-commands.rs                     // CLI command implementations 
+commands.rs                     // CLI command implementations
 main.rs                         // Argument parsing and dispatch
-```
+
+// riptide-sim/src/ - Simulation focus
+deterministic.rs                // Core simulation engine and clock
+scenarios.rs                    // Pre-built test scenarios
+scenarios/streaming_edge_cases.rs // Streaming-specific edge cases
+media.rs                        // Media-aware simulation features
 
 ### Import Naming Conventions
 
@@ -526,7 +545,8 @@ use riptide_search::service::MediaSearchService;
 use riptide_core::{Result as CoreResult, RiptideError};
 use riptide_web::{Result as WebResult, WebUIError};
 use riptide_search::{Result as SearchResult, MediaSearchError};
-```
+use riptide_sim::{DeterministicSimulation, EventType, SimulationReport};
+````
 
 ### Test Naming by Crate
 
@@ -534,7 +554,7 @@ use riptide_search::{Result as SearchResult, MediaSearchError};
 // riptide-core tests - Focus on protocol correctness
 #[test]
 fn test_torrent_engine_handles_invalid_info_hash() { }
-#[test] 
+#[test]
 fn test_piece_picker_streaming_prioritizes_sequential() { }
 #[test]
 fn test_storage_copy_on_write_preserves_data() { }
@@ -559,9 +579,19 @@ fn test_add_command_validates_magnet_links() { }
 #[test]
 fn test_server_command_starts_with_correct_config() { }
 
+// riptide-sim tests - Focus on deterministic behavior
+#[test]
+fn test_simulation_reproducibility_with_same_seed() { }
+#[test]
+fn test_event_priority_ordering_maintained() { }
+#[test]
+fn test_streaming_scenario_completes_successfully() { }
+
 // Integration tests - Cross-crate workflows
 #[test]
 fn test_search_to_stream_complete_workflow() { }
+#[test]
+fn test_simulated_streaming_matches_real_behavior() { }
 ```
 
 ### Error Message Consistency
@@ -571,9 +601,9 @@ fn test_search_to_stream_complete_workflow() { }
 impl fmt::Display for RiptideError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RiptideError::WebUI { reason } => 
+            RiptideError::WebUI { reason } =>
                 write!(f, "Web UI error: {reason}"),
-            RiptideError::Torrent(e) => 
+            RiptideError::Torrent(e) =>
                 write!(f, "Core torrent error: {e}"),
             // Always prefix with component context
         }

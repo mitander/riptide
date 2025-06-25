@@ -49,8 +49,8 @@ async fn simulate_movie_streaming(movie_path: &str) -> Result<(), Box<dyn std::e
         folder_info.total_size as f64 / 1_073_741_824.0
     );
 
-    if let Some(video_idx) = folder_info.primary_video {
-        let video = &folder_info.files[video_idx];
+    if let Some(video_index) = folder_info.primary_video {
+        let video = &folder_info.files[video_index];
         println!(
             "  Primary video: {} ({:.1} MB)",
             video.path.file_name().unwrap().to_string_lossy(),
@@ -67,8 +67,8 @@ async fn simulate_movie_streaming(movie_path: &str) -> Result<(), Box<dyn std::e
     }
 
     println!("  Subtitle files: {}", folder_info.subtitle_files.len());
-    for &sub_idx in &folder_info.subtitle_files {
-        let sub = &folder_info.files[sub_idx];
+    for &sub_index in &folder_info.subtitle_files {
+        let sub = &folder_info.files[sub_index];
         if let riptide::simulation::media::MediaFileType::Subtitle { language, .. } = &sub.file_type
         {
             println!(

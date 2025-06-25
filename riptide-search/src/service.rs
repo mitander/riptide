@@ -324,7 +324,7 @@ impl TorrentResult {
             VideoQuality::CamRip => 1,
             VideoQuality::TeleSync => 2,
             VideoQuality::WebRip => 3,
-            VideoQuality::DVD => 4,
+            VideoQuality::Dvd => 4,
             VideoQuality::BluRay720p => 5,
             VideoQuality::BluRay1080p => 6,
             VideoQuality::BluRay4K => 7,
@@ -361,7 +361,7 @@ pub enum VideoQuality {
     CamRip,
     TeleSync,
     WebRip,
-    DVD,
+    Dvd,
     BluRay720p,
     BluRay1080p,
     BluRay4K,
@@ -453,7 +453,7 @@ fn extract_quality(name: &str) -> VideoQuality {
     } else if name_lower.contains("720p") {
         VideoQuality::BluRay720p
     } else if name_lower.contains("dvd") {
-        VideoQuality::DVD
+        VideoQuality::Dvd
     } else if name_lower.contains("webrip") || name_lower.contains("web-dl") {
         VideoQuality::WebRip
     } else if name_lower.contains("ts") || name_lower.contains("telesync") {

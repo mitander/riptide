@@ -7,11 +7,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use magneto::{ClientError, SearchRequest};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use riptide_core::torrent::InfoHash;
 
 use super::magneto_provider::{
     MockMagnetoClient, MockMagnetoProviderBuilder, create_mock_magneto_client,
 };
-use crate::torrent::InfoHash;
 
 /// Mock tracker for offline development with magneto integration.
 ///

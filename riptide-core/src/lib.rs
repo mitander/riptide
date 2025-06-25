@@ -9,12 +9,8 @@ pub mod storage;
 pub mod streaming;
 pub mod torrent;
 
-// Optional simulation module for development
-#[cfg(feature = "simulation")]
-pub mod simulation;
-
 // Re-export main types for convenient access
-pub use config::{RiptideConfig, SimulationConfig};
+pub use config::RiptideConfig;
 pub use storage::{FileStorage, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
 pub use torrent::{TorrentEngine, TorrentError};

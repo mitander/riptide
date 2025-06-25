@@ -2,9 +2,10 @@
 resolver = "2"
 members = [
     "riptide-core",
-    "riptide-web", 
+    "riptide-web",
     "riptide-search",
-    "riptide-cli"
+    "riptide-cli",
+    "riptide-sim"
 ]
 
 [workspace.package]
@@ -73,3 +74,4 @@ criterion = { version = "0.5", features = ["html_reports"] }
 riptide-core = { path = "riptide-core" }
 riptide-web = { path = "riptide-web" }
 riptide-search = { path = "riptide-search" }
+riptide-sim = { path = "riptide-sim" }

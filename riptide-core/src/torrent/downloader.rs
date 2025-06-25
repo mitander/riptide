@@ -203,10 +203,10 @@ impl<S: Storage> PieceDownloader<S> {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let piece_size = self.calculate_piece_size(piece_index);
-        let piece_idx = piece_index.as_u32() as usize;
+        let index = piece_index.as_u32() as usize;
 
-        let piece_data = if piece_idx < self.torrent_metadata.piece_hashes.len() {
-            vec![piece_idx as u8; piece_size]
+        let piece_data = if index < self.torrent_metadata.piece_hashes.len() {
+            vec![index as u8; piece_size]
         } else {
             vec![0u8; piece_size]
         };
@@ -221,12 +221,12 @@ impl<S: Storage> PieceDownloader<S> {
 
     /// Verifies piece data against expected hash.
     fn verify_piece_hash(&self, piece_index: PieceIndex, piece_data: &[u8]) -> bool {
-        let piece_idx = piece_index.as_u32() as usize;
-        if piece_idx >= self.torrent_metadata.piece_hashes.len() {
+        let index = piece_index.as_u32() as usize;
+        if index >= self.torrent_metadata.piece_hashes.len() {
             return false;
         }
 
-        let expected_hash = &self.torrent_metadata.piece_hashes[piece_idx];
+        let expected_hash = &self.torrent_metadata.piece_hashes[index];
 
         let mut hasher = Sha1::new();
         hasher.update(piece_data);
@@ -237,14 +237,14 @@ impl<S: Storage> PieceDownloader<S> {
 
     /// Calculates size of specific piece (last piece may be smaller).
     fn calculate_piece_size(&self, piece_index: PieceIndex) -> usize {
-        let piece_idx = piece_index.as_u32() as usize;
+        let index = piece_index.as_u32() as usize;
         let total_pieces = self.torrent_metadata.piece_hashes.len();
 
-        if piece_idx >= total_pieces {
+        if index >= total_pieces {
             return 0;
         }
 
-        if piece_idx == total_pieces - 1 {
+        if index == total_pieces - 1 {
             let remaining =
                 self.torrent_metadata.total_length % self.torrent_metadata.piece_length as u64;
             if remaining > 0 {

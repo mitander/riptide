@@ -7,10 +7,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use riptide_core::torrent::PieceIndex;
 use tokio::fs;
 
-use super::deterministic::{DeterministicSimulation, EventType, SimulationEvent};
-use crate::torrent::PieceIndex;
+use super::deterministic::{DeterministicSimulation, EventType};
+use crate::EventPriority;
 
 /// Media file types found in movie folders.
 #[derive(Debug, Clone, PartialEq)]
@@ -140,7 +141,16 @@ impl MediaStreamingSimulation {
         piece_size: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let movie_folder = Self::analyze_movie_folder(folder_path).await?;
-        let simulation = DeterministicSimulation::from_seed(seed);
+        let config = riptide_core::config::SimulationConfig {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 50,
+            packet_loss_rate: 0.01,
+            max_simulated_peers: 20,
+            simulated_download_speed: 5_242_880,
+            use_mock_data: true,
+        };
+        let simulation = DeterministicSimulation::new(config).unwrap();
         let piece_to_file_map = Self::build_piece_mapping(&movie_folder, piece_size);
 
         Ok(Self {
@@ -358,8 +368,8 @@ impl MediaStreamingSimulation {
         files: &[MediaFile],
         primary_video: Option<usize>,
     ) -> StreamingProfile {
-        if let Some(video_idx) = primary_video {
-            if let MediaFileType::Video { bitrate, .. } = &files[video_idx].file_type {
+        if let Some(video_index) = primary_video {
+            if let MediaFileType::Video { bitrate, .. } = &files[video_index].file_type {
                 return StreamingProfile {
                     bitrate: *bitrate,
                     buffer_duration: Duration::from_secs(if *bitrate > 10_000_000 {
@@ -386,13 +396,12 @@ impl MediaStreamingSimulation {
         let mut current_piece = 0u32;
         let mut current_offset = 0u64;
 
-        for (file_idx, file) in movie_folder.files.iter().enumerate() {
-            let _file_start_piece = current_piece;
+        for (file_index, file) in movie_folder.files.iter().enumerate() {
             let file_end_offset = current_offset + file.size;
 
             // Map all pieces that contain this file's data
             while current_offset < file_end_offset {
-                mapping.insert(PieceIndex::new(current_piece), file_idx);
+                mapping.insert(PieceIndex::new(current_piece), file_index);
                 current_piece += 1;
                 current_offset += piece_size as u64;
             }
@@ -415,28 +424,30 @@ impl MediaStreamingSimulation {
 
     /// Schedules critical pieces for startup buffering.
     fn schedule_startup_buffering(&mut self) {
-        if let Some(video_idx) = self.movie_folder.primary_video {
+        if let Some(video_index) = self.movie_folder.primary_video {
             let startup_duration = self.movie_folder.streaming_profile.startup_buffer;
-            let startup_pieces = self.calculate_pieces_for_duration(video_idx, startup_duration);
+            let startup_pieces = self.calculate_pieces_for_duration(video_index, startup_duration);
 
-            for (delay_ms, piece_idx) in startup_pieces.iter().enumerate() {
-                let request_time =
-                    self.simulation.clock().now() + Duration::from_millis(delay_ms as u64);
-                let event = SimulationEvent {
-                    timestamp: request_time,
-                    event_type: EventType::PieceRequest,
-                    peer_id: None,
-                    piece_index: Some(*piece_idx),
-                };
-                self.simulation.schedule_event(event);
+            for (delay_ms, piece_index) in startup_pieces.iter().enumerate() {
+                let delay = Duration::from_millis(delay_ms as u64);
+                self.simulation
+                    .schedule_delayed(
+                        delay,
+                        EventType::PieceRequest {
+                            peer_id: format!("STREAM_PEER_{}", delay_ms % 10),
+                            piece_index: *piece_index,
+                        },
+                        EventPriority::Normal,
+                    )
+                    .unwrap();
             }
         }
     }
 
     /// Schedules subtitle file loading.
     fn schedule_subtitle_loading(&mut self) {
-        for &subtitle_idx in &self.movie_folder.subtitle_files {
-            let file = &self.movie_folder.files[subtitle_idx];
+        for &subtitle_index in &self.movie_folder.subtitle_files {
+            let file = &self.movie_folder.files[subtitle_index];
 
             // High priority subtitles load early
             let delay = match file.priority {
@@ -445,16 +456,18 @@ impl MediaStreamingSimulation {
                 _ => Duration::from_secs(10),
             };
 
-            let subtitle_pieces = self.calculate_pieces_for_file(subtitle_idx);
-            for piece_idx in subtitle_pieces {
-                let request_time = self.simulation.clock().now() + delay;
-                let event = SimulationEvent {
-                    timestamp: request_time,
-                    event_type: EventType::PieceRequest,
-                    peer_id: None,
-                    piece_index: Some(piece_idx),
-                };
-                self.simulation.schedule_event(event);
+            let subtitle_pieces = self.calculate_pieces_for_file(subtitle_index);
+            for piece_index in subtitle_pieces {
+                self.simulation
+                    .schedule_delayed(
+                        delay,
+                        EventType::PieceRequest {
+                            peer_id: format!("SUBTITLE_PEER_{}", subtitle_index % 5),
+                            piece_index,
+                        },
+                        EventPriority::Low,
+                    )
+                    .unwrap();
             }
         }
     }
@@ -464,24 +477,27 @@ impl MediaStreamingSimulation {
         // Schedule regular buffer checks every 5 seconds
         for i in 1..60 {
             // 5 minute simulation
-            let check_time = self.simulation.clock().now() + Duration::from_secs(i * 5);
-            let event = SimulationEvent {
-                timestamp: check_time,
-                event_type: EventType::NetworkChange, // Reuse for buffer check
-                peer_id: None,
-                piece_index: None,
-            };
-            self.simulation.schedule_event(event);
+            let delay = Duration::from_secs(i * 5);
+            self.simulation
+                .schedule_delayed(
+                    delay,
+                    EventType::NetworkChange {
+                        latency_ms: 50,
+                        packet_loss_rate: 0.01,
+                    }, // Reuse for buffer check
+                    EventPriority::Low,
+                )
+                .unwrap();
         }
     }
 
     /// Calculates pieces needed for a duration of video.
     fn calculate_pieces_for_duration(
         &self,
-        file_idx: usize,
+        file_index: usize,
         duration: Duration,
     ) -> Vec<PieceIndex> {
-        let file = &self.movie_folder.files[file_idx];
+        let file = &self.movie_folder.files[file_index];
         if let MediaFileType::Video {
             bitrate: _,
             duration: total_duration,
@@ -496,8 +512,8 @@ impl MediaStreamingSimulation {
             let start_piece = self
                 .piece_to_file_map
                 .iter()
-                .find(|&(_, idx)| *idx == file_idx)
-                .map(|(piece_idx, _)| piece_idx.as_u32())
+                .find(|&(_, index)| *index == file_index)
+                .map(|(piece_index, _)| piece_index.as_u32())
                 .unwrap_or(0);
 
             (start_piece..start_piece + pieces_needed)
@@ -509,39 +525,44 @@ impl MediaStreamingSimulation {
     }
 
     /// Calculates all pieces for a complete file.
-    fn calculate_pieces_for_file(&self, file_idx: usize) -> Vec<PieceIndex> {
+    fn calculate_pieces_for_file(&self, file_index: usize) -> Vec<PieceIndex> {
         self.piece_to_file_map
             .iter()
-            .filter(|&(_, idx)| *idx == file_idx)
-            .map(|(piece_idx, _)| *piece_idx)
+            .filter(|&(_, index)| *index == file_index)
+            .map(|(piece_index, _)| *piece_index)
             .collect()
     }
 
     /// Runs streaming simulation with media awareness.
     pub fn run_streaming_simulation(&mut self, duration: Duration) -> StreamingResult {
         let start_time = self.simulation.clock().now();
-        let events = self.simulation.run_for(duration);
+        let report = self.simulation.run_for(duration).unwrap();
         let end_time = self.simulation.clock().now();
 
         // Analyze streaming performance
-        let piece_requests = events
-            .iter()
-            .filter(|e| e.event_type == EventType::PieceRequest)
-            .count();
+        // Count piece requests
+        let piece_requests = report
+            .metrics
+            .events_by_type
+            .get("PieceRequest")
+            .copied()
+            .unwrap_or(0) as usize;
 
-        let piece_completions = events
-            .iter()
-            .filter(|e| e.event_type == EventType::PieceComplete)
-            .count();
+        let piece_completions = report
+            .metrics
+            .events_by_type
+            .get("PieceComplete")
+            .copied()
+            .unwrap_or(0) as usize;
 
         // Calculate streaming-specific metrics
-        let video_pieces = self.count_video_pieces(&events);
-        let subtitle_pieces = self.count_subtitle_pieces(&events);
-        let buffering_events = self.count_buffering_events(&events);
+        let video_pieces = self.count_video_pieces_from_report(&report);
+        let subtitle_pieces = self.count_subtitle_pieces_from_report(&report);
+        let buffering_events = self.count_buffering_events_from_report(&report);
 
         StreamingResult {
             duration: end_time.duration_since(start_time),
-            total_events: events.len(),
+            total_events: report.event_count as usize,
             piece_requests,
             piece_completions,
             video_pieces_completed: video_pieces,
@@ -552,65 +573,70 @@ impl MediaStreamingSimulation {
             } else {
                 0.0
             },
-            subtitle_sync_issues: self.detect_subtitle_sync_issues(&events),
+            subtitle_sync_issues: self.detect_subtitle_sync_issues_from_report(&report),
         }
     }
 
-    /// Counts video-related piece completions.
-    fn count_video_pieces(&self, events: &[SimulationEvent]) -> usize {
-        events
+    /// Counts video-related piece completions from report.
+    fn count_video_pieces_from_report(&self, report: &crate::SimulationReport) -> usize {
+        // For now, estimate based on completed pieces and file mapping
+        report
+            .final_state
+            .completed_pieces
             .iter()
-            .filter(|e| {
-                e.event_type == EventType::PieceComplete
-                    && e.piece_index.is_some_and(|piece_idx| {
-                        self.piece_to_file_map
-                            .get(&piece_idx)
-                            .is_some_and(|&file_idx| {
-                                matches!(
-                                    self.movie_folder.files[file_idx].file_type,
-                                    MediaFileType::Video { .. }
-                                )
-                            })
+            .filter(|piece_index| {
+                self.piece_to_file_map
+                    .get(piece_index)
+                    .is_some_and(|&file_index| {
+                        matches!(
+                            self.movie_folder.files[file_index].file_type,
+                            MediaFileType::Video { .. }
+                        )
                     })
             })
             .count()
     }
 
-    /// Counts subtitle-related piece completions.
-    fn count_subtitle_pieces(&self, events: &[SimulationEvent]) -> usize {
-        events
+    /// Counts subtitle-related piece completions from report.
+    fn count_subtitle_pieces_from_report(&self, report: &crate::SimulationReport) -> usize {
+        // Count completed pieces that belong to subtitle files
+        report
+            .final_state
+            .completed_pieces
             .iter()
-            .filter(|e| {
-                e.event_type == EventType::PieceComplete
-                    && e.piece_index.is_some_and(|piece_idx| {
-                        self.piece_to_file_map
-                            .get(&piece_idx)
-                            .is_some_and(|&file_idx| {
-                                matches!(
-                                    self.movie_folder.files[file_idx].file_type,
-                                    MediaFileType::Subtitle { .. }
-                                )
-                            })
+            .filter(|piece_index| {
+                self.piece_to_file_map
+                    .get(piece_index)
+                    .is_some_and(|&file_index| {
+                        matches!(
+                            self.movie_folder.files[file_index].file_type,
+                            MediaFileType::Subtitle { .. }
+                        )
                     })
             })
             .count()
     }
 
-    /// Counts buffering-related events.
-    fn count_buffering_events(&self, events: &[SimulationEvent]) -> usize {
-        events
-            .iter()
-            .filter(|e| e.event_type == EventType::NetworkChange)
-            .count()
+    /// Counts buffering events from report.
+    fn count_buffering_events_from_report(&self, report: &crate::SimulationReport) -> usize {
+        // For now, count network change events as potential buffering triggers
+        report
+            .metrics
+            .events_by_type
+            .get("NetworkChange")
+            .copied()
+            .unwrap_or(0) as usize
     }
 
-    /// Detects potential subtitle synchronization issues.
-    fn detect_subtitle_sync_issues(&self, _events: &[SimulationEvent]) -> usize {
+    /// Detects subtitle synchronization issues from report.
+    fn detect_subtitle_sync_issues_from_report(&self, _report: &crate::SimulationReport) -> usize {
+        // TODO: Implement actual subtitle sync detection by analyzing timing between
+        // video and subtitle piece arrivals in the simulation report
+
         // Simple heuristic: subtitle pieces arriving much later than video pieces
         let sync_issues = 0;
         let _tolerance = self.movie_folder.streaming_profile.subtitle_sync_tolerance;
 
-        // Implementation would analyze timing between video and subtitle piece arrivals
         // For now, return placeholder
         sync_issues
     }
@@ -671,8 +697,8 @@ impl StreamingResult {
             movie_folder.total_size as f64 / 1_073_741_824.0
         );
 
-        if let Some(video_idx) = movie_folder.primary_video {
-            let video_file = &movie_folder.files[video_idx];
+        if let Some(video_index) = movie_folder.primary_video {
+            let video_file = &movie_folder.files[video_index];
             if let MediaFileType::Video {
                 bitrate, duration, ..
             } = &video_file.file_type
@@ -757,7 +783,7 @@ mod tests {
             .await
             .unwrap();
 
-        (movie_dir, temp_dir)
+        (movie_dir.to_path_buf(), temp_dir)
     }
 
     #[tokio::test]

@@ -20,14 +20,17 @@ riptide/
 ├── riptide-core/     → Core BitTorrent and streaming (no web dependencies)
 ├── riptide-web/      → Web UI and HTTP API (depends on core + search)
 ├── riptide-search/   → Media search and metadata (standalone)
-└── riptide-cli/      → Command interface (orchestrates other crates)
+├── riptide-cli/      → Command interface (orchestrates other crates)
+└── riptide-sim/      → Deterministic simulation framework (depends on core)
 ```
 
 **Design Rules:**
+
 - **riptide-core** has zero web dependencies (pure protocol + streaming)
 - **riptide-web** depends on core and search, handles all HTTP concerns
 - **riptide-search** is standalone, can be used independently
 - **riptide-cli** orchestrates other crates, provides unified interface
+- **riptide-sim** depends only on core, provides deterministic testing environment
 
 ### Module Organization Within Crates
 
@@ -71,16 +74,25 @@ riptide-search/src/
 riptide-cli/src/
 ├── commands.rs             # CLI command implementations
 └── main.rs                 # Command parsing and execution
+
+riptide-sim/src/
+├── deterministic.rs        # Core simulation engine and event scheduling
+├── scenarios.rs            # Pre-built test scenarios
+├── scenarios/              # Complex scenario modules
+│   └── streaming_edge_cases.rs  # Streaming-specific edge cases
+├── media.rs                # Media-aware simulation features
+└── lib.rs                  # Public API and re-exports
 ```
 
 **Size Limits:**
+
 - **Files**: 500 lines max (split into subdirectory if larger)
 - **Functions**: 50 lines max (exception: state machines)
 - **Crates**: Related functionality only, clear boundaries
 
 ### Cross-Crate Dependencies
 
-```rust
+````rust
 // riptide-core: Core functionality, no dependencies on other riptide crates
 pub use config::RiptideConfig;
 pub use torrent::TorrentEngine;
@@ -97,7 +109,11 @@ use riptide_search::MediaSearchService;
 use riptide_core::{TorrentEngine, RiptideConfig};
 use riptide_web::{WebServer, WebHandlers};
 use riptide_search::MediaSearchService;
-```
+
+// riptide-sim: Deterministic testing environment
+use riptide_core::{TorrentEngine, RiptideConfig};
+pub use deterministic::{DeterministicSimulation, DeterministicClock};
+pub use scenarios::SimulationScenarios;
 
 ## Error Handling Strategy
 
@@ -111,10 +127,10 @@ Each crate defines its own error types, with explicit conversion between crates:
 pub enum RiptideError {
     #[error("Torrent error: {0}")]
     Torrent(#[from] TorrentError),
-    
+
     #[error("Storage error: {0}")]
     Storage(#[from] StorageError),
-    
+
     #[error("Web UI error: {reason}")]
     WebUI { reason: String },
 }
@@ -126,12 +142,12 @@ impl RiptideError {
     }
 }
 
-// riptide-web/src/lib.rs  
+// riptide-web/src/lib.rs
 #[derive(Debug, thiserror::Error)]
 pub enum WebUIError {
     #[error("Template error: {reason}")]
     TemplateError { reason: String },
-    
+
     #[error("Server failed to start on {address}: {reason}")]
     ServerStartFailed { address: std::net::SocketAddr, reason: String },
 }
@@ -149,7 +165,7 @@ impl IntoResponse for WebUIError {
 
 // riptide-cli usage
 web_server.start().await.map_err(RiptideError::from_web_ui_error)?;
-```
+````
 
 ### Error Documentation
 
@@ -178,7 +194,7 @@ pub async fn start_download(&mut self, magnet_link: &str) -> Result<DownloadHand
 mod tests {
     use super::*;
     use crate::config::RiptideConfig;
-    
+
     #[tokio::test]
     async fn test_add_magnet_link() {
         let config = RiptideConfig::default();
@@ -193,7 +209,7 @@ mod tests {
     use super::*;
     use riptide_core::config::RiptideConfig;
     use riptide_core::torrent::TorrentEngine;
-    
+
     #[tokio::test]
     async fn test_web_handlers_creation() {
         let config = RiptideConfig::default();
@@ -205,7 +221,7 @@ mod tests {
 
 ### Integration Testing
 
-```rust
+````rust
 // tests/integration_tests.rs (workspace root)
 use riptide_core::{TorrentEngine, RiptideConfig};
 use riptide_web::{WebServer, WebHandlers};
@@ -217,10 +233,32 @@ async fn test_full_workflow() {
     let config = RiptideConfig::default();
     let engine = TorrentEngine::new(config.clone());
     let search = MediaSearchService::new_demo();
-    
+
     // Integration test across all crates
-}
-```
+    }
+
+    // riptide-sim/src/scenarios.rs
+    use riptide_core::torrent::PieceIndex;
+    use crate::{DeterministicSimulation, EventType, EventPriority};
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_scenario_reproducibility() {
+            let seed = 12345;
+            // Same seed produces identical results
+            let mut sim1 = SimulationScenarios::ideal_streaming(seed);
+            let mut sim2 = SimulationScenarios::ideal_streaming(seed);
+
+            let report1 = sim1.run_for(Duration::from_secs(10)).unwrap();
+            let report2 = sim2.run_for(Duration::from_secs(10)).unwrap();
+
+            assert_eq!(report1.event_count, report2.event_count);
+        }
+    }
+    ```
 
 ### Mock Strategy
 
@@ -230,7 +268,7 @@ Mock at **crate boundaries**, not internal APIs:
 // riptide-search/src/service.rs
 #[async_trait]
 pub trait TorrentSearchProvider: Send + Sync + std::fmt::Debug {
-    async fn search_torrents(&self, query: &str, category: &str) 
+    async fn search_torrents(&self, query: &str, category: &str)
         -> Result<Vec<MediaSearchResult>, MediaSearchError>;
 }
 
@@ -246,7 +284,7 @@ impl MockSearchProvider {
         Self { results }
     }
 }
-```
+````
 
 ## Performance Standards
 
@@ -257,7 +295,7 @@ Every optimization needs proof with specific benchmarks:
 ```rust
 // BENCHMARK: torrent_piece_selection
 // Before: 847ns per piece selection, 156 allocations
-// After:  623ns per piece selection, 12 allocations  
+// After:  623ns per piece selection, 12 allocations
 // Improvement: 26.4% faster, 92% fewer allocations
 // Justification: Hot path called per-piece during streaming
 ```
@@ -301,7 +339,7 @@ impl DirectStreamingService {
 #[derive(Debug, Clone)]
 pub struct RiptideConfig {
     pub network: NetworkConfig,
-    pub storage: StorageConfig, 
+    pub storage: StorageConfig,
     pub simulation: SimulationConfig,  // Runtime, not #[cfg(simulation)]
 }
 
@@ -332,7 +370,7 @@ fn create_peer_manager() -> PeerManager {
     SimulatedPeerManager::new()
 }
 
-// RIGHT: Runtime configuration  
+// RIGHT: Runtime configuration
 fn create_peer_manager(config: &RiptideConfig) -> Box<dyn PeerManager> {
     if config.simulation.enabled {
         Box::new(SimulatedPeerManager::new(config.simulation.clone()))
@@ -342,13 +380,70 @@ fn create_peer_manager(config: &RiptideConfig) -> Box<dyn PeerManager> {
 }
 ```
 
+## Simulation Framework Patterns
+
+### Deterministic Time Control
+
+```rust
+// riptide-sim uses controlled time advancement
+pub struct DeterministicClock {
+    current_time: Instant,
+    start_time: Instant,
+}
+
+impl DeterministicClock {
+    pub fn advance(&mut self, duration: Duration) {
+        self.current_time += duration;
+    }
+
+    pub fn advance_to(&mut self, target: Instant) -> Result<()> {
+        if target < self.current_time {
+            return Err(SimulationError::TimeCannotGoBackwards);
+        }
+        self.current_time = target;
+        Ok(())
+    }
+}
+```
+
+### Event Scheduling Patterns
+
+```rust
+// Events are scheduled with deterministic ordering
+sim.schedule_delayed(
+    Duration::from_secs(5),
+    EventType::PieceRequest {
+        peer_id: "PEER_001".to_string(),
+        piece_index: PieceIndex::new(42),
+    },
+    EventPriority::Normal,
+)?;
+
+// Priority determines execution order for simultaneous events
+// Critical > High > Normal > Low
+```
+
+### Scenario Organization
+
+```rust
+// Pre-built scenarios for common test patterns
+SimulationScenarios::ideal_streaming(seed);      // Fast, reliable peers
+SimulationScenarios::peer_churn(seed);          // Frequent disconnections
+SimulationScenarios::piece_failures(seed);      // Hash mismatches, errors
+SimulationScenarios::mixed_peers(seed);         // Real-world variety
+
+// Streaming-specific edge cases in dedicated module
+StreamingEdgeCases::bandwidth_collapse_scenario(seed);
+StreamingEdgeCases::cascading_piece_failures_scenario(seed);
+```
+
 ## Documentation Standards
 
 ### Public API Documentation
 
 **Required for all public functions**:
 
-```rust
+````rust
 /// Compresses RTP/UDP/IP headers into ROHC packet.
 ///
 /// Analyzes headers and context to determine optimal packet type (IR, UO-0, etc.)
@@ -366,7 +461,7 @@ fn create_peer_manager(config: &RiptideConfig) -> Box<dyn PeerManager> {
 /// let compressed_size = compressor.compress(&headers, &mut buffer)?;
 /// ```
 pub fn compress(&mut self, headers: &Headers, buffer: &mut [u8]) -> Result<usize, RohcError>
-```
+````
 
 ### Internal Documentation
 
@@ -424,7 +519,7 @@ After: Y
 
 ```bash
 feat(core): add deadline-based piece selection
-fix(web): handle template rendering errors gracefully  
+fix(web): handle template rendering errors gracefully
 perf(search): cache torrent quality calculations
 refactor(cli): extract command parsing to separate module
 docs(workspace): update architecture documentation
@@ -467,6 +562,9 @@ cargo test -p riptide-web
 # Run CLI from workspace
 cargo run -p riptide-cli -- server --demo
 
+# Run simulation scenarios
+cargo test -p riptide-sim -- --nocapture
+
 # Format and lint
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
@@ -501,6 +599,7 @@ use tokio::sync::RwLock;
 use riptide_core::config::RiptideConfig;
 use riptide_core::torrent::TorrentEngine;
 use riptide_search::MediaSearchService;
+use riptide_sim::{DeterministicSimulation, EventType};
 
 // Local modules (relative imports)
 use super::WebUIError;
@@ -515,8 +614,8 @@ use crate::templates::TemplateEngine;
 pub enum TorrentError {
     #[error("Storage error")]
     Storage(#[from] StorageError),
-    
-    #[error("Network error")]  
+
+    #[error("Network error")]
     Network(#[from] reqwest::Error),
 }
 
@@ -540,7 +639,7 @@ impl TorrentEngine {
             peer_connections: Vec::with_capacity(config.max_peers),
         }
     }
-    
+
     // Reuse allocated memory
     pub fn process_piece(&mut self, data: &[u8]) -> Result<()> {
         self.piece_buffer.clear();  // Reuse, don't reallocate

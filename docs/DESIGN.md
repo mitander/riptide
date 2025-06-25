@@ -11,7 +11,8 @@ riptide/
 ├── riptide-core/     → Core BitTorrent and streaming functionality
 ├── riptide-web/      → Web UI and HTTP API server
 ├── riptide-search/   → Media search and metadata services
-└── riptide-cli/      → Command-line interface
+├── riptide-cli/      → Command-line interface
+└── riptide-sim/      → Deterministic simulation framework
 ```
 
 ### Core Components
@@ -19,7 +20,7 @@ riptide/
 ```
 riptide-core:
   - Torrent Engine    → BitTorrent protocol, piece management, peer connections
-  - Storage Layer     → File organization, reflink/CoW support  
+  - Storage Layer     → File organization, reflink/CoW support
   - Streaming Service → Direct streaming, piece buffering, bandwidth control
   - Configuration     → Runtime simulation config, network settings
 
@@ -37,6 +38,14 @@ riptide-search:
 riptide-cli:
   - Command Interface → Add/manage torrents, start web server
   - Simulation Mode   → Development environment with configurable parameters
+
+riptide-sim:
+  - Deterministic Clock    → Controlled time advancement for reproducible tests
+  - Event Scheduler        → Priority-based event queue with deterministic ordering
+  - Network Simulation     → Configurable latency, packet loss, bandwidth limits
+  - Peer Simulation        → Mock peers with deterministic behavior patterns
+  - Media Scenarios        → Real-world streaming patterns and edge cases
+  - Invariant Checking     → Runtime validation of system properties
 ```
 
 ## Key Design Decisions
@@ -46,18 +55,22 @@ riptide-cli:
 **Choice**: Multi-crate workspace with clear separation of concerns.
 
 **Structure**:
+
 - **riptide-core**: Essential BitTorrent and streaming functionality, no web dependencies
 - **riptide-web**: Web UI and HTTP API, depends on core and search crates
 - **riptide-search**: Media search and metadata, standalone with optional integration
 - **riptide-cli**: Command-line interface, orchestrates other crates
+- **riptide-sim**: Deterministic simulation framework for testing and development
 
 **Benefits**:
+
 - **Modular Development**: Independent versioning and testing of components
 - **Deployment Flexibility**: Core can be embedded without web UI overhead
 - **Clear Boundaries**: Web concerns separated from protocol implementation
 - **Runtime Configuration**: Simulation mode configurable at runtime vs compile-time
 
 **Architecture Patterns**:
+
 - Idiomatic Rust module organization (no domain/infrastructure split)
 - Trait-based abstractions for testability and simulation
 - Error conversion between crates via explicit mapping
@@ -68,6 +81,7 @@ riptide-cli:
 **Choice**: Trait abstractions with controlled external dependencies for non-streaming components.
 
 **Components**:
+
 - **Bencode Parsing**: Own `bencode-rs` crate for full control and streaming optimization
 - **Magnet Links**: `magnet-url` crate (zero dependencies, ultra-fast)
 - **Tracker Client**: Custom implementation using `reqwest` for HTTP, `tokio` for UDP
@@ -76,7 +90,8 @@ riptide-cli:
 
 **Rationale**: Trait abstractions enable swappable implementations while maintaining full control over streaming-critical components. External dependencies used only for non-streaming functionality.
 
-**Future Considerations**: 
+**Future Considerations**:
+
 - `bencode-rs` may be enhanced and published to crates.io as a standalone library once streaming optimizations are proven. Current git dependency provides maximum development flexibility.
 - Upgrade to nightly Rust to enable automatic import grouping in rustfmt for better code organization.
 
@@ -151,23 +166,27 @@ Kill switch if VPN disconnects during torrent activity.
 ## Development Approach
 
 ### Phase 1: Core (Weeks 1-2)
+
 - Basic torrent downloading
 - Simple file storage
 - CLI interface
 - **Ship to self for testing**
 
 ### Phase 2: Web UI (Week 3)
+
 - Browse library
 - Start/stop downloads
 - View progress
 - **Get family using it**
 
 ### Phase 3: Streaming (Weeks 4-6)
+
 - Direct streaming first
 - Device detection
 - Pre-transcoding
 
 ### Phase 4: Polish (Weeks 7-16)
+
 - Subtitles
 - Apple TV app
 - Performance optimization
@@ -188,6 +207,7 @@ pub struct StreamingService {
 ### Measured Optimizations
 
 Every performance claim requires benchmark proof:
+
 - Piece selection: O(log n) for deadline-based
 - Disk I/O: Batched writes, io_uring on Linux
 - Transcoding: Worker pool with CPU affinity
@@ -197,14 +217,30 @@ Every performance claim requires benchmark proof:
 1. **Unit tests**: Algorithm correctness
 2. **Integration tests**: Protocol compliance
 3. **Property tests**: Invariant validation
-4. **Mock environment**: Realistic network simulation
+4. **Deterministic simulation**: Reproducible scenarios with controlled time
 
 ```rust
-pub struct MockEnvironment {
-    tracker: MockTracker,
-    network: NetworkSimulator,  // Latency, packet loss, throttling
+// Using riptide-sim for deterministic testing
+pub struct SimulationEnvironment {
+    simulation: DeterministicSimulation,
+    clock: DeterministicClock,
+    network: NetworkSimulator,
 }
+
+// Pre-built scenarios for common test cases
+SimulationScenarios::ideal_streaming(seed);
+SimulationScenarios::peer_churn(seed);
+SimulationScenarios::piece_failures(seed);
+StreamingEdgeCases::bandwidth_collapse_scenario(seed);
 ```
+
+The simulation framework enables:
+
+- **Reproducible tests**: Same seed produces identical results
+- **Time control**: Advance time deterministically without delays
+- **Event scheduling**: Precise control over event ordering
+- **Resource limits**: Test behavior under constrained resources
+- **Invariant checking**: Validate system properties throughout simulation
 
 ## Anti-Patterns Avoided
 
