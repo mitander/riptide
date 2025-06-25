@@ -23,9 +23,21 @@ impl Clone for MediaSearchService {
 
 impl MediaSearchService {
     /// Creates new media search service with real Magneto provider.
+    ///
+    /// TODO: Currently returns demo data until real Magneto API is implemented.
     pub fn new() -> Self {
         Self {
-            provider: Box::new(MagnetoProvider::new()),
+            provider: Box::new(DemoProvider::new()),
+        }
+    }
+
+    /// Creates new media search service with demo data for development.
+    ///
+    /// Uses rich demo data for UI development and testing without external API calls.
+    /// Demo data includes multiple quality options and realistic metadata.
+    pub fn new_demo() -> Self {
+        Self {
+            provider: Box::new(DemoProvider::new()),
         }
     }
 
@@ -116,30 +128,37 @@ pub trait TorrentSearchProvider: Send + Sync + std::fmt::Debug {
     ) -> Result<Vec<MediaSearchResult>, MediaSearchError>;
 }
 
-/// Real Magneto provider for production use.
+/// Demo provider for development and testing.
 ///
-/// Currently returns demo data as the original Magneto API is deprecated.
-/// TODO: Implement with a working torrent search API such as:
-/// - YTS API for movies: https://yts.mx/api
-/// - RARBG API alternatives
-/// - The Pirate Bay API mirrors
-/// - Jackett API integration
+/// Returns realistic demo data for UI development without external API calls.
+/// Includes multiple quality options, realistic file sizes, and seeder counts.
 #[derive(Debug)]
-struct MagnetoProvider {
-    #[allow(dead_code)] // Will be used when implementing real API
-    client: reqwest::Client,
+struct DemoProvider {
+    #[allow(dead_code)] // For future demo data configuration
+    demo_config: DemoConfig,
 }
 
-impl MagnetoProvider {
+#[derive(Debug)]
+struct DemoConfig {
+    #[allow(dead_code)] // For future demo configuration options
+    include_4k: bool,
+    #[allow(dead_code)] // For future demo configuration options
+    realistic_seeders: bool,
+}
+
+impl DemoProvider {
     fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            demo_config: DemoConfig {
+                include_4k: true,
+                realistic_seeders: true,
+            },
         }
     }
 }
 
 #[async_trait]
-impl TorrentSearchProvider for MagnetoProvider {
+impl TorrentSearchProvider for DemoProvider {
     async fn search_torrents(
         &self,
         query: &str,

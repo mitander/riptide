@@ -1,0 +1,49 @@
+[package]
+name = "riptide-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core BitTorrent and streaming functionality for Riptide"
+repository = "https://github.com/riptide-org/riptide"
+
+[features]
+default = []
+simulation = ["rand_chacha"]
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+bencode-rs = { workspace = true }
+magnet-url = { workspace = true }
+magneto = { workspace = true }
+sha1 = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+# Web dependencies (temporary - will move to riptide-web)
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+hyper = { workspace = true }
+mime_guess = { workspace = true }
+
+# Optional simulation dependencies
+rand_chacha = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = { workspace = true }
+proptest = { workspace = true }

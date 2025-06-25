@@ -1,0 +1,42 @@
+<div class="library">
+    <header class="library-header">
+        <h1>Media Library</h1>
+        <div class="library-controls">
+            <input type="text" id="library-search" placeholder="Search library..." class="search-input">
+            <select id="library-filter" class="filter-select">
+                <option value="all">All Media</option>
+                <option value="movies">Movies</option>
+                <option value="tv">TV Shows</option>
+                <option value="downloading">Downloading</option>
+                <option value="completed">Completed</option>
+            </select>
+            <select id="library-sort" class="sort-select">
+                <option value="title">Title A-Z</option>
+                <option value="date_added">Recently Added</option>
+                <option value="size">File Size</option>
+                <option value="rating">Rating</option>
+            </select>
+        </div>
+    </header>
+    
+    <div class="library-stats">
+        <span class="stat">{{total_items}} items</span>
+        <span class="stat">{{total_size}} total</span>
+        <span class="stat">{{downloading_count}} downloading</span>
+    </div>
+    
+    <div class="library-grid" id="library-grid">
+        <!-- Library items populated by library.js -->
+    </div>
+    
+    <div class="loading" id="library-loading" style="display: none;">
+        <p>Loading library...</p>
+    </div>
+    
+    <div class="no-items" id="no-items" style="display: none;">
+        <h3>No media in library</h3>
+        <p>Start by <a href="/search">searching for media</a> or <a href="/add-torrent">adding a torrent</a>.</p>
+    </div>
+</div>
+
+<script src="/static/js/library.js"></script>

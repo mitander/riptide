@@ -1,0 +1,20 @@
+[package]
+name = "riptide-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Web UI and API server for Riptide"
+
+[dependencies]
+riptide-core = { workspace = true }
+riptide-search = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+hyper = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+mime_guess = { workspace = true }
+tracing = { workspace = true }

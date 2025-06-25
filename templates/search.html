@@ -1,0 +1,56 @@
+<div class="search">
+    <header class="search-header">
+        <h1>Search Media</h1>
+        <p>Find movies and TV shows to download</p>
+    </header>
+    
+    <div class="search-container">
+        <form class="search-input-form">
+            <div class="search-input-group">
+                <input type="text" id="search-query" placeholder="Search for movies or TV shows..." 
+                       class="search-input" required>
+                <button type="submit" class="btn btn-primary search-btn">Search</button>
+            </div>
+            
+            <div class="search-filters">
+                <div class="filter-group">
+                    <label>Category:</label>
+                    <label class="radio-label">
+                        <input type="radio" name="category" value="all" checked>
+                        All
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="category" value="movie">
+                        Movies
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="category" value="tv">
+                        TV Shows
+                    </label>
+                </div>
+            </div>
+        </form>
+        
+        <div id="search-loading" class="loading" style="display: none;">
+            <p>Searching...</p>
+        </div>
+        
+        <div id="search-results" class="search-results" style="display: none;">
+            <div id="results-grid" class="results-grid">
+                <!-- Search results populated by search.js -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="search-tips">
+        <h3>Search Tips</h3>
+        <ul>
+            <li>Use <kbd>/</kbd> to quickly focus the search box</li>
+            <li>Include year for better results (e.g., "Inception 2010")</li>
+            <li>Try alternate titles or original language titles</li>
+            <li>Use specific season/episode for TV shows</li>
+        </ul>
+    </div>
+</div>
+
+<script src="/static/js/search.js"></script>

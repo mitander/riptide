@@ -1,0 +1,17 @@
+[package]
+name = "riptide-search"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Media search and discovery for Riptide"
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+magneto = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

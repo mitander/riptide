@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use tokio::fs;
 
 use crate::config::RiptideConfig;
+use crate::media_search::MediaSearchService;
+#[cfg(feature = "simulation")]
 use crate::simulation::SimulationEnvironment;
 use crate::streaming::DirectStreamingService;
 use crate::torrent::{InfoHash, TorrentEngine, TorrentError};
@@ -135,6 +137,7 @@ pub async fn list_torrents() -> Result<()> {
 ///
 /// # Errors
 /// - Currently returns Ok but will add simulation errors in future implementation
+#[cfg(feature = "simulation")]
 pub async fn run_simulation(peers: usize, torrent: PathBuf) -> Result<()> {
     println!(
         "Running simulation with {} peers for torrent: {}",
@@ -267,11 +270,16 @@ async fn show_all_torrents_status(engine: &TorrentEngine) -> Result<()> {
 /// # Errors
 /// - `RiptideError::Io` - Failed to bind to the specified address
 /// - `RiptideError::Torrent` - Failed to initialize torrent engine
-pub async fn start_server(host: String, port: u16) -> Result<()> {
+pub async fn start_server(host: String, port: u16, demo: bool) -> Result<()> {
     println!("Starting Riptide web server...");
     println!("Host: {host}");
     println!("Port: {port}");
     println!("URL: http://{host}:{port}");
+    if demo {
+        println!("Mode: Demo (using sample data)");
+    } else {
+        println!("Mode: Production");
+    }
     println!("{:-<50}", "");
 
     let config = RiptideConfig::default();
@@ -284,7 +292,13 @@ pub async fn start_server(host: String, port: u16) -> Result<()> {
     ));
 
     // Create web components
-    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let media_search_service = if demo {
+        MediaSearchService::new_demo()
+    } else {
+        MediaSearchService::new()
+    };
+    let handlers =
+        WebHandlers::new_with_media_search(torrent_engine, streaming_service, media_search_service);
     let template_engine = TemplateEngine::new();
 
     // Configure web server

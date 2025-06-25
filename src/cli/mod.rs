@@ -65,6 +65,7 @@ pub enum Commands {
     List,
 
     /// Start the simulation environment for testing
+    #[cfg(feature = "simulation")]
     Simulate {
         /// Number of peers to simulate
         #[arg(short, long, default_value = "10")]
@@ -83,6 +84,10 @@ pub enum Commands {
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
+
+        /// Use demo data for development and testing
+        #[arg(long)]
+        demo: bool,
     },
 }
 
@@ -109,7 +114,8 @@ pub async fn run_cli() -> crate::Result<()> {
         Commands::Stop { torrent } => commands::stop_torrent(torrent).await,
         Commands::Status { torrent } => commands::show_status(torrent).await,
         Commands::List => commands::list_torrents().await,
+        #[cfg(feature = "simulation")]
         Commands::Simulate { peers, torrent } => commands::run_simulation(peers, torrent).await,
-        Commands::Server { port, host } => commands::start_server(host, port).await,
+        Commands::Server { port, host, demo } => commands::start_server(host, port, demo).await,
     }
 }

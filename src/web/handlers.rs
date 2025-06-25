@@ -31,6 +31,19 @@ impl WebHandlers {
         }
     }
 
+    /// Creates new web handlers with custom media search service.
+    pub fn new_with_media_search(
+        torrent_engine: Arc<RwLock<TorrentEngine>>,
+        streaming_service: Arc<RwLock<DirectStreamingService>>,
+        media_search_service: MediaSearchService,
+    ) -> Self {
+        Self {
+            torrent_engine,
+            streaming_service,
+            media_search_service,
+        }
+    }
+
     /// Get server statistics for dashboard.
     pub async fn get_server_stats(&self) -> Result<ServerStats, WebUIError> {
         let engine = self.torrent_engine.read().await;

@@ -1,0 +1,19 @@
+[package]
+name = "riptide-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Command-line interface for Riptide"
+
+[[bin]]
+name = "riptide"
+path = "src/main.rs"
+
+[dependencies]
+riptide-core = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

@@ -1,0 +1,42 @@
+<div class="add-torrent">
+    <header class="add-torrent-header">
+        <h1>Add Torrent</h1>
+        <p>Add a new torrent by magnet link or .torrent file</p>
+    </header>
+    
+    <div class="add-torrent-container">
+        <form class="add-torrent-form">
+            <div class="form-group">
+                <label for="magnet-link">Magnet Link</label>
+                <input type="text" id="magnet-link" name="magnet-link" 
+                       placeholder="magnet:?xt=urn:btih:..." required>
+                <small class="form-help">Paste a magnet link to add the torrent</small>
+            </div>
+            
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="start-immediately" name="start-immediately" checked>
+                    Start download immediately
+                </label>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Add Torrent</button>
+                <a href="/torrents" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+        
+        <div id="add-result" class="result-message" style="display: none;"></div>
+    </div>
+    
+    <div class="add-torrent-tips">
+        <h3>Tips</h3>
+        <ul>
+            <li>Use <kbd>Ctrl+V</kbd> to quickly paste magnet links</li>
+            <li>You can also upload .torrent files using the upload button</li>
+            <li>Streaming will start automatically for video files</li>
+        </ul>
+    </div>
+</div>
+
+<script src="/static/js/add-torrent.js"></script>

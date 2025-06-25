@@ -1,6 +1,8 @@
 //! Template rendering engine for the Riptide web UI
 
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -14,24 +16,56 @@ use super::{HtmlResponse, WebUIError};
 pub struct TemplateEngine {
     templates: HashMap<String, String>,
     base_template: String,
+    template_dir: PathBuf,
 }
 
 impl TemplateEngine {
-    /// Creates new template engine with default templates.
+    /// Creates new template engine with templates loaded from directory.
     pub fn new() -> Self {
+        Self::from_directory("templates")
+    }
+
+    /// Creates template engine loading templates from specified directory.
+    ///
+    /// # Errors
+    /// - `WebUIError::TemplateError` - Template directory not found or templates failed to load
+    pub fn from_directory<P: AsRef<Path>>(template_dir: P) -> Self {
+        let template_dir = template_dir.as_ref().to_path_buf();
         let mut templates = HashMap::new();
 
-        // Load built-in templates
-        templates.insert("home".to_string(), Self::home_template());
-        templates.insert("library".to_string(), Self::library_template());
-        templates.insert("torrents".to_string(), Self::torrents_template());
-        templates.insert("add_torrent".to_string(), Self::add_torrent_template());
-        templates.insert("search".to_string(), Self::search_template());
-        templates.insert("settings".to_string(), Self::settings_template());
+        // Template file mappings
+        let template_files = [
+            ("home", "home.html"),
+            ("library", "library.html"),
+            ("torrents", "torrents.html"),
+            ("add_torrent", "add-torrent.html"),
+            ("search", "search.html"),
+            ("settings", "settings.html"),
+        ];
+
+        // Load templates from files
+        for (name, filename) in template_files {
+            let template_path = template_dir.join(filename);
+            match fs::read_to_string(&template_path) {
+                Ok(content) => {
+                    templates.insert(name.to_string(), content);
+                }
+                Err(_) => {
+                    // Fall back to hardcoded templates for development
+                    templates.insert(name.to_string(), Self::fallback_template(name));
+                }
+            }
+        }
+
+        // Load base template
+        let base_template = template_dir.join("base.html");
+        let base_content = fs::read_to_string(&base_template)
+            .unwrap_or_else(|_| Self::base_template());
 
         Self {
             templates,
-            base_template: Self::base_template(),
+            base_template: base_content,
+            template_dir,
         }
     }
 
@@ -121,6 +155,19 @@ impl TemplateEngine {
             .replace("{{page}}", page);
 
         Ok(result)
+    }
+
+    /// Returns fallback template for given name when external template file not found.
+    fn fallback_template(name: &str) -> String {
+        match name {
+            "home" => Self::home_template(),
+            "library" => Self::library_template(),
+            "torrents" => Self::torrents_template(),
+            "add_torrent" => Self::add_torrent_template(),
+            "search" => Self::search_template(),
+            "settings" => Self::settings_template(),
+            _ => format!("<div class=\"error\">Template '{name}' not found</div>"),
+        }
     }
 
     /// Base HTML template with navigation and layout.
@@ -696,6 +743,15 @@ mod tests {
     #[test]
     fn test_template_engine_creation() {
         let engine = TemplateEngine::new();
+        assert!(!engine.templates.is_empty());
+        assert!(engine.templates.contains_key("home"));
+        assert!(engine.templates.contains_key("library"));
+    }
+
+    #[test]
+    fn test_template_engine_with_missing_directory() {
+        // Should fall back to hardcoded templates when directory doesn't exist
+        let engine = TemplateEngine::from_directory("nonexistent_templates");
         assert!(!engine.templates.is_empty());
         assert!(engine.templates.contains_key("home"));
         assert!(engine.templates.contains_key("library"));

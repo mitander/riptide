@@ -157,10 +157,10 @@ impl SimulationConfig {
     pub fn realistic_simulation() -> Self {
         Self {
             enabled: true,
-            deterministic_seed: None,     // Random for realistic behavior
-            network_latency_ms: 100,     // Realistic internet latency
-            packet_loss_rate: 0.02,      // 2% packet loss
-            max_simulated_peers: 50,     // Realistic peer count
+            deterministic_seed: None, // Random for realistic behavior
+            network_latency_ms: 100,  // Realistic internet latency
+            packet_loss_rate: 0.02,   // 2% packet loss
+            max_simulated_peers: 50,  // Realistic peer count
             simulated_download_speed: 2_097_152, // 2 MB/s realistic speed
             use_mock_data: false,
         }
