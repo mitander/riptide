@@ -66,7 +66,7 @@ impl SimulationScenarios {
 
         // Add fast, reliable peers
         for i in 0..scenario.peer_count {
-            let peer_id = format!("IDEAL{:03}", i);
+            let peer_id = format!("IDEAL{i:03}");
             sim.add_deterministic_peer(peer_id, 10_000_000); // 10 MB/s
         }
 
@@ -85,7 +85,7 @@ impl SimulationScenarios {
 
         // Add slow peers with high latency
         for i in 0..10 {
-            let peer_id = format!("SLOW{:03}", i);
+            let peer_id = format!("SLOW{i:03}");
             sim.add_deterministic_peer(peer_id, 500_000); // 500 KB/s
         }
 
@@ -107,7 +107,7 @@ impl SimulationScenarios {
 
         // Add initial peer set
         for i in 0..20 {
-            let peer_id = format!("CHURN{:03}", i);
+            let peer_id = format!("CHURN{i:03}");
             sim.add_deterministic_peer(peer_id.clone(), 2_000_000); // 2 MB/s
 
             // Schedule random disconnections
@@ -131,7 +131,7 @@ impl SimulationScenarios {
 
         // Add unreliable peers
         for i in 0..12 {
-            let peer_id = format!("UNRELIABLE{:02}", i);
+            let peer_id = format!("UNRELIABLE{i:02}");
             sim.add_deterministic_peer(peer_id, 3_000_000); // 3 MB/s
         }
 
@@ -162,25 +162,25 @@ impl SimulationScenarios {
 
         // Fast seeders (3)
         for i in 0..3 {
-            let peer_id = format!("SEEDER{:02}", i);
+            let peer_id = format!("SEEDER{i:02}");
             sim.add_deterministic_peer(peer_id, 15_000_000); // 15 MB/s
         }
 
         // Medium peers (8)
         for i in 0..8 {
-            let peer_id = format!("MEDIUM{:02}", i);
+            let peer_id = format!("MEDIUM{i:02}");
             sim.add_deterministic_peer(peer_id, 3_000_000); // 3 MB/s
         }
 
         // Slow peers (6)
         for i in 0..6 {
-            let peer_id = format!("SLOWPEER{:02}", i);
+            let peer_id = format!("SLOWPEER{i:02}");
             sim.add_deterministic_peer(peer_id, 800_000); // 800 KB/s
         }
 
         // Unreliable peers (3)
         for i in 0..3 {
-            let peer_id = format!("UNSTABLE{:02}", i);
+            let peer_id = format!("UNSTABLE{i:02}");
             sim.add_deterministic_peer(peer_id, 5_000_000); // 5 MB/s fast but unreliable
         }
 
@@ -198,7 +198,7 @@ impl SimulationScenarios {
 
         // Add peers with partial content
         for i in 0..15 {
-            let peer_id = format!("PARTIAL{:02}", i);
+            let peer_id = format!("PARTIAL{i:02}");
             sim.add_deterministic_peer(peer_id, 2_000_000); // 2 MB/s
         }
 

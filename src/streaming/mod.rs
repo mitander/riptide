@@ -55,7 +55,8 @@ impl DirectStreamingService {
     /// - `StreamingError::ServerStartFailed` - Failed to bind to port or start server
     pub async fn start(&self) -> Result<(), StreamingError> {
         // Start background tasks for peer management
-        self.peer_manager
+        let _ = self
+            .peer_manager
             .read()
             .await
             .start_background_tasks()
@@ -104,8 +105,8 @@ impl DirectStreamingService {
             active_streams: streaming_stats.active_sessions,
             total_bytes_streamed: streaming_stats.total_bytes_served,
             peer_connections: peer_stats.total_connections,
-            healthy_peers: peer_stats.healthy_connections,
-            bandwidth_utilization: peer_stats.bandwidth_utilization.download_utilization,
+            healthy_peers: peer_stats.active_connections,
+            bandwidth_utilization: peer_stats.bandwidth_utilization.download_rate_mbps,
         }
     }
 

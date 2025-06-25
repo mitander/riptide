@@ -15,17 +15,16 @@ use tokio::io::AsyncWriteExt;
 /// media files to catch subtitle sync issues, buffering problems, and
 /// piece prioritization bugs.
 async fn simulate_movie_streaming(movie_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Media Streaming Simulation: {}", movie_path);
+    println!("Media Streaming Simulation: {movie_path}");
     println!("{:-<60}", "");
 
     let movie_folder = PathBuf::from(movie_path);
 
     // Verify folder exists
     if !movie_folder.exists() {
-        println!("Movie folder not found: {}", movie_path);
+        println!("Movie folder not found: {movie_path}");
         println!(
-            "Create test folder with: mkdir -p '{}' && touch '{}/test.mp4' '{}/test.en.srt'",
-            movie_path, movie_path, movie_path
+            "Create test folder with: mkdir -p '{movie_path}' && touch '{movie_path}/test.mp4' '{movie_path}/test.en.srt'"
         );
         return Ok(());
     }

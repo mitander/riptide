@@ -105,7 +105,7 @@ impl BencodeTorrentParser {
     fn parse_bencode_data(torrent_bytes: &[u8]) -> Result<TorrentMetadata, TorrentError> {
         let parsed = bencode_rs::Value::parse(torrent_bytes).map_err(|e| {
             TorrentError::InvalidTorrentFile {
-                reason: format!("Bencode parsing failed: {:?}", e),
+                reason: format!("Bencode parsing failed: {e:?}"),
             }
         })?;
 
@@ -445,7 +445,7 @@ impl BencodeTorrentParser {
         }
 
         Err(TorrentError::InvalidTorrentFile {
-            reason: format!("Missing or invalid info hash in magnet link: {}", url_str),
+            reason: format!("Missing or invalid info hash in magnet link: {url_str}"),
         })
     }
 
@@ -461,7 +461,7 @@ impl BencodeTorrentParser {
                     hash[i] = byte;
                 } else {
                     return Err(TorrentError::InvalidTorrentFile {
-                        reason: format!("Invalid hex character in hash: {}", hash_str),
+                        reason: format!("Invalid hex character in hash: {hash_str}"),
                     });
                 }
             }
@@ -492,7 +492,7 @@ impl TorrentParser for BencodeTorrentParser {
     async fn parse_magnet_link(&self, magnet_url: &str) -> Result<MagnetLink, TorrentError> {
         let magnet =
             magnet_url::Magnet::new(magnet_url).map_err(|e| TorrentError::InvalidTorrentFile {
-                reason: format!("Invalid magnet link: {}", e),
+                reason: format!("Invalid magnet link: {e}"),
             })?;
 
         // Extract info hash from exact topic (xt) parameter

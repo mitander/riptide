@@ -33,7 +33,7 @@ async fn magneto_discovery_simulation() -> Result<(), Box<dyn std::error::Error>
     ];
 
     for query in &search_queries {
-        println!("\nSearching for: '{}'", query);
+        println!("\nSearching for: '{query}'");
 
         match tracker.search_and_add_torrents(query, 3).await {
             Ok(torrents) => {
@@ -49,7 +49,7 @@ async fn magneto_discovery_simulation() -> Result<(), Box<dyn std::error::Error>
                 }
             }
             Err(e) => {
-                println!("  Search failed: {}", e);
+                println!("  Search failed: {e}");
             }
         }
 
@@ -66,8 +66,8 @@ async fn magneto_discovery_simulation() -> Result<(), Box<dyn std::error::Error>
     let total_leechers: u32 = tracked_torrents.iter().map(|t| t.leechers).sum();
     let total_size: u64 = tracked_torrents.iter().map(|t| t.size).sum();
 
-    println!("  Total seeders: {}", total_seeders);
-    println!("  Total leechers: {}", total_leechers);
+    println!("  Total seeders: {total_seeders}");
+    println!("  Total leechers: {total_leechers}");
     println!(
         "  Total content size: {:.1} GB",
         total_size as f64 / 1_073_741_824.0
@@ -87,7 +87,7 @@ async fn magnet_link_discovery() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let query = "open source movies";
-    println!("Discovering magnet links for: '{}'", query);
+    println!("Discovering magnet links for: '{query}'");
 
     match tracker.discover_magnet_links(query, 5).await {
         Ok(magnet_links) => {
@@ -97,7 +97,7 @@ async fn magnet_link_discovery() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => {
-            println!("Discovery failed: {}", e);
+            println!("Discovery failed: {e}");
         }
     }
 
@@ -125,7 +125,7 @@ async fn tracker_announce_simulation(
 
     // Simulate announces for discovered torrents
     for (info_hash, name) in torrent_hashes {
-        println!("\nAnnouncing torrent: {}", name);
+        println!("\nAnnouncing torrent: {name}");
 
         match tracker.announce(info_hash).await {
             Ok(response) => {
@@ -143,7 +143,7 @@ async fn tracker_announce_simulation(
                 println!("    Peers available: {}", response.peers.len());
 
                 if let Some(name) = &response.torrent_name {
-                    println!("    Torrent name: {}", name);
+                    println!("    Torrent name: {name}");
                 }
 
                 if let Some(size) = response.torrent_size {
@@ -154,12 +154,12 @@ async fn tracker_announce_simulation(
                 if !response.peers.is_empty() {
                     println!("    Sample peers:");
                     for peer in response.peers.iter().take(3) {
-                        println!("      {}", peer);
+                        println!("      {peer}");
                     }
                 }
             }
             Err(e) => {
-                println!("  Announce failed: {}", e);
+                println!("  Announce failed: {e}");
             }
         }
 
@@ -191,7 +191,7 @@ async fn peer_simulation_with_content(
                 .upload_speed(10_000_000) // 10 MB/s
                 .reliability(0.98)
                 .latency(Duration::from_millis(30))
-                .peer_id(format!("SEEDER{:02}", i))
+                .peer_id(format!("SEEDER{i:02}"))
                 .build();
             peers.push(peer);
         }
@@ -202,7 +202,7 @@ async fn peer_simulation_with_content(
                 .upload_speed(2_000_000) // 2 MB/s
                 .reliability(0.85)
                 .latency(Duration::from_millis(80))
-                .peer_id(format!("LEECHER{:02}", i))
+                .peer_id(format!("LEECHER{i:02}"))
                 .build();
             peers.push(peer);
         }
@@ -213,7 +213,7 @@ async fn peer_simulation_with_content(
                 .upload_speed(100_000) // 100 KB/s
                 .reliability(0.70)
                 .latency(Duration::from_millis(300))
-                .peer_id(format!("SLOW{:02}", i))
+                .peer_id(format!("SLOW{i:02}"))
                 .build();
             peers.push(peer);
         }
@@ -232,10 +232,7 @@ async fn peer_simulation_with_content(
 
         // Estimate download time
         let download_time_seconds = torrent.size as f64 / total_upload as f64;
-        println!(
-            "  Theoretical download time: {:.1} seconds",
-            download_time_seconds
-        );
+        println!("  Theoretical download time: {download_time_seconds:.1} seconds");
 
         if download_time_seconds < 60.0 {
             println!("  Streaming viability: Excellent (sub-minute download)");

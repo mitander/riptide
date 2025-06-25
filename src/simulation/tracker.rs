@@ -239,8 +239,8 @@ impl MockTracker {
 
         let mut hasher = Sha1::new();
         hasher.update(name.as_bytes());
-        hasher.update(&index.to_le_bytes());
-        hasher.update(&self.rng.r#gen::<u32>().to_le_bytes());
+        hasher.update(index.to_le_bytes());
+        hasher.update(self.rng.r#gen::<u32>().to_le_bytes());
 
         let hash = hasher.finalize();
         let mut info_hash = [0u8; 20];
@@ -281,7 +281,7 @@ impl MockTracker {
 
             let port = self.rng.r#gen_range(6881..=6999);
 
-            if let Ok(addr) = format!("{}:{}", ip, port).parse() {
+            if let Ok(addr) = format!("{ip}:{port}").parse() {
                 peers.push(addr);
             }
         }
@@ -352,7 +352,7 @@ impl MockTrackerBuilder {
         for i in 0..(self.seeders + self.leechers) {
             let ip = format!("192.168.1.{}", 100 + (i % 50));
             let port = 6881 + (i % 100) as u16;
-            if let Ok(addr) = format!("{}:{}", ip, port).parse() {
+            if let Ok(addr) = format!("{ip}:{port}").parse() {
                 peers.push(addr);
             }
         }

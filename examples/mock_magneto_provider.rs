@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use riptide::simulation::{
-    MockMagnetoProviderBuilder, MockTracker, create_mock_magneto_client,
+    MockMagnetoProviderBuilder, MockTracker, TorrentEntryParams, create_mock_magneto_client,
     create_streaming_test_client,
 };
 
@@ -35,7 +35,7 @@ async fn basic_provider_demo() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for query in &test_queries {
-        println!("\nSearching for: '{}'", query);
+        println!("\nSearching for: '{query}'");
 
         let request = magneto::SearchRequest::new(query);
         match client.search(request).await {
@@ -54,7 +54,7 @@ async fn basic_provider_demo() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(e) => {
-                println!("  Search failed: {}", e);
+                println!("  Search failed: {e}");
             }
         }
     }
@@ -71,7 +71,7 @@ async fn deterministic_behavior_demo() -> Result<(), Box<dyn std::error::Error>>
 
     // Run same search with same seed twice
     for run in 1..=2 {
-        println!("\nRun {}: Searching with seed 0x{:X}", run, seed);
+        println!("\nRun {run}: Searching with seed 0x{seed:X}");
 
         let provider = MockMagnetoProviderBuilder::new().with_seed(seed).build();
         let mut client = create_mock_magneto_client(provider);
@@ -79,7 +79,7 @@ async fn deterministic_behavior_demo() -> Result<(), Box<dyn std::error::Error>>
         let request = magneto::SearchRequest::new("creative commons");
         let results = client.search(request).await?;
 
-        println!("  Results for run {}:", run);
+        println!("  Results for run {run}:");
         for torrent in &results {
             println!(
                 "    - {} ({} seeders, {} leechers)",
@@ -103,24 +103,30 @@ async fn custom_content_demo() -> Result<(), Box<dyn std::error::Error>> {
         .with_seed(0xC057044)
         .add_torrent(
             "test_movies".to_string(),
-            "Test Movie 2024 [4K] [HDR] [5.1]".to_string(),
-            15_000_000_000, // 15GB
-            234,
-            67,
+            TorrentEntryParams {
+                name: "Test Movie 2024 [4K] [HDR] [5.1]".to_string(),
+                size_bytes: 15_000_000_000, // 15GB
+                seeders: 234,
+                leechers: 67,
+            },
         )
         .add_torrent(
             "test_movies".to_string(),
-            "Sample Series Complete Season 1 [1080p]".to_string(),
-            25_000_000_000, // 25GB
-            456,
-            123,
+            TorrentEntryParams {
+                name: "Sample Series Complete Season 1 [1080p]".to_string(),
+                size_bytes: 25_000_000_000, // 25GB
+                seeders: 456,
+                leechers: 123,
+            },
         )
         .add_torrent(
             "test_software".to_string(),
-            "Custom Development Tools Suite v2.0".to_string(),
-            8_500_000_000, // 8.5GB
-            89,
-            23,
+            TorrentEntryParams {
+                name: "Custom Development Tools Suite v2.0".to_string(),
+                size_bytes: 8_500_000_000, // 8.5GB
+                seeders: 89,
+                leechers: 23,
+            },
         )
         .build();
 
@@ -130,7 +136,7 @@ async fn custom_content_demo() -> Result<(), Box<dyn std::error::Error>> {
     let categories = ["test_movies", "test_software"];
 
     for category in &categories {
-        println!("\nSearching category: '{}'", category);
+        println!("\nSearching category: '{category}'");
 
         let request = magneto::SearchRequest::new(category);
         let results = client.search(request).await?;

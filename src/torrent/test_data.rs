@@ -3,13 +3,12 @@
 //! Provides standardized torrent metadata and piece data for consistent
 //! testing across torrent-related modules.
 
-#![cfg(test)]
-
 use sha1::{Digest, Sha1};
 
 use super::parsing::TorrentFile;
 use super::{InfoHash, PieceIndex, TorrentMetadata};
 use crate::storage::file_storage::FileStorage;
+use crate::storage::test_fixtures::create_temp_storage_dirs;
 
 /// Creates standard test torrent metadata with predictable hashes.
 ///
@@ -23,7 +22,7 @@ pub fn create_test_torrent_metadata() -> TorrentMetadata {
     let piece_hashes = (0..3)
         .map(|i| {
             let mut hasher = Sha1::new();
-            hasher.update(&vec![i as u8; 32768]);
+            hasher.update(vec![i as u8; 32768]);
             let result = hasher.finalize();
             let mut hash = [0u8; 20];
             hash.copy_from_slice(&result);
@@ -55,7 +54,7 @@ pub fn create_simple_torrent_metadata() -> TorrentMetadata {
     let piece_hashes = (0..2)
         .map(|i| {
             let mut hasher = Sha1::new();
-            hasher.update(&vec![i as u8; 16384]);
+            hasher.update(vec![i as u8; 16384]);
             let result = hasher.finalize();
             let mut hash = [0u8; 20];
             hash.copy_from_slice(&result);
@@ -88,8 +87,7 @@ pub fn create_test_info_hash() -> InfoHash {
 /// Avoids duplicating setup code across integration tests.
 pub fn create_test_environment() -> (TorrentMetadata, FileStorage, tempfile::TempDir) {
     let metadata = create_test_torrent_metadata();
-    let (temp_dir, downloads_dir, library_dir) =
-        crate::storage::test_fixtures::create_temp_storage_dirs();
+    let (temp_dir, downloads_dir, library_dir) = create_temp_storage_dirs();
     let storage = FileStorage::new(downloads_dir, library_dir);
 
     (metadata, storage, temp_dir)

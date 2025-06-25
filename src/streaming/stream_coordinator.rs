@@ -13,7 +13,8 @@ use tokio::sync::RwLock;
 use super::range_handler::FileInfo;
 use super::{ContentInfo, RangeHandler};
 use crate::torrent::{
-    EnhancedPeerManager, InfoHash, PieceIndex, Priority, TorrentEngine, TorrentError,
+    EnhancedPeerManager, InfoHash, PieceIndex, PieceRequestParams, Priority, TorrentEngine,
+    TorrentError,
 };
 
 /// Coordinates streaming sessions between HTTP requests and BitTorrent backend.
@@ -404,15 +405,14 @@ impl StreamCoordinator {
                 super::range_handler::PiecePriority::Low => Priority::Background,
             };
 
-            let _result = peer_manager
-                .request_piece_prioritized(
-                    info_hash,
-                    piece_range.piece_index.into(),
-                    32768, // Default piece size
-                    priority,
-                    Some(Instant::now() + Duration::from_secs(10)),
-                )
-                .await;
+            let params = PieceRequestParams {
+                info_hash,
+                piece_index: piece_range.piece_index.into(),
+                piece_size: 32768, // Default piece size
+                priority,
+                deadline: Some(Instant::now() + Duration::from_secs(10)),
+            };
+            let _result = peer_manager.request_piece_prioritized(params).await;
         }
 
         Ok(())
@@ -516,15 +516,14 @@ impl From<u32> for PieceIndex {
 mod tests {
     use super::*;
     use crate::config::RiptideConfig;
+    use crate::torrent::EnhancedPeerManager;
     use crate::torrent::test_data::create_test_info_hash;
 
     #[tokio::test]
     async fn test_stream_coordinator_creation() {
         let config = RiptideConfig::default();
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-        let peer_manager = Arc::new(RwLock::new(crate::torrent::EnhancedPeerManager::new(
-            config,
-        )));
+        let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let coordinator = StreamCoordinator::new(torrent_engine, peer_manager);
         let stats = coordinator.get_stats().await;
@@ -537,9 +536,7 @@ mod tests {
     async fn test_torrent_registration() {
         let config = RiptideConfig::default();
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-        let peer_manager = Arc::new(RwLock::new(crate::torrent::EnhancedPeerManager::new(
-            config,
-        )));
+        let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let mut coordinator = StreamCoordinator::new(torrent_engine, peer_manager);
         let info_hash = create_test_info_hash();
@@ -562,9 +559,7 @@ mod tests {
     async fn test_file_info_retrieval() {
         let config = RiptideConfig::default();
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-        let peer_manager = Arc::new(RwLock::new(crate::torrent::EnhancedPeerManager::new(
-            config,
-        )));
+        let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let mut coordinator = StreamCoordinator::new(torrent_engine, peer_manager);
         let info_hash = create_test_info_hash();
@@ -587,9 +582,7 @@ mod tests {
     async fn test_range_reading() {
         let config = RiptideConfig::default();
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-        let peer_manager = Arc::new(RwLock::new(crate::torrent::EnhancedPeerManager::new(
-            config,
-        )));
+        let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let mut coordinator = StreamCoordinator::new(torrent_engine, peer_manager);
         let info_hash = create_test_info_hash();

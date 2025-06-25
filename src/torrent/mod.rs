@@ -17,7 +17,7 @@ use std::fmt;
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
 pub use engine::{EngineStats, TorrentEngine, TorrentSession};
 pub use enhanced_peer_manager::{
-    EnhancedPeerManager, EnhancedPeerManagerStats, PieceResult, Priority,
+    EnhancedPeerManager, EnhancedPeerManagerStats, PieceRequestParams, PieceResult, Priority,
 };
 pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentMetadata, TorrentParser};
 pub use peer_manager::{BandwidthLimiter, ConnectionState, PeerManager, PeerManagerStats};
@@ -29,6 +29,8 @@ pub use tracker::{
     AnnounceRequest, AnnounceResponse, HttpTrackerClient, ScrapeRequest, ScrapeResponse,
     ScrapeStats, TrackerClient,
 };
+
+use crate::storage::StorageError;
 
 /// SHA-1 hash identifying a unique torrent.
 ///
@@ -105,7 +107,7 @@ pub enum TorrentError {
     ProtocolError { message: String },
 
     #[error("Storage error")]
-    Storage(#[from] crate::storage::StorageError),
+    Storage(#[from] StorageError),
 
     #[error("Connection limit exceeded")]
     ConnectionLimitExceeded,

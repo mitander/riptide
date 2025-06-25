@@ -162,7 +162,7 @@ impl WebHandlers {
             }),
             Err(e) => Ok(AddTorrentResult {
                 success: false,
-                message: format!("Failed to add torrent: {}", e),
+                message: format!("Failed to add torrent: {e}"),
                 stream_url: None,
                 info_hash: None,
             }),

@@ -562,10 +562,10 @@ impl MediaStreamingSimulation {
             .iter()
             .filter(|e| {
                 e.event_type == EventType::PieceComplete
-                    && e.piece_index.map_or(false, |piece_idx| {
+                    && e.piece_index.is_some_and(|piece_idx| {
                         self.piece_to_file_map
                             .get(&piece_idx)
-                            .map_or(false, |&file_idx| {
+                            .is_some_and(|&file_idx| {
                                 matches!(
                                     self.movie_folder.files[file_idx].file_type,
                                     MediaFileType::Video { .. }
@@ -582,10 +582,10 @@ impl MediaStreamingSimulation {
             .iter()
             .filter(|e| {
                 e.event_type == EventType::PieceComplete
-                    && e.piece_index.map_or(false, |piece_idx| {
+                    && e.piece_index.is_some_and(|piece_idx| {
                         self.piece_to_file_map
                             .get(&piece_idx)
-                            .map_or(false, |&file_idx| {
+                            .is_some_and(|&file_idx| {
                                 matches!(
                                     self.movie_folder.files[file_idx].file_type,
                                     MediaFileType::Subtitle { .. }

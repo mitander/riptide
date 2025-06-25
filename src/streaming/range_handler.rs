@@ -280,9 +280,8 @@ impl FileInfo {
     /// Create FileInfo from torrent file metadata.
     pub fn from_torrent_file(name: String, size: u64, offset: u64) -> Self {
         let mime_type = mime_guess::from_path(&name).first_raw();
-        let is_media = mime_type.map_or(false, |mime| {
-            mime.starts_with("video/") || mime.starts_with("audio/")
-        });
+        let is_media =
+            mime_type.is_some_and(|mime| mime.starts_with("video/") || mime.starts_with("audio/"));
 
         Self {
             name,

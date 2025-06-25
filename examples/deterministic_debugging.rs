@@ -20,7 +20,7 @@ fn reproduce_bug_report() {
 
     let mut simulation = SimulationScenarios::peer_churn(bug_seed);
 
-    println!("Running simulation with seed: 0x{:X}", bug_seed);
+    println!("Running simulation with seed: 0x{bug_seed:X}");
 
     // Run simulation and capture events
     let events = simulation.run_for(Duration::from_secs(120));
@@ -44,9 +44,9 @@ fn reproduce_bug_report() {
         .count();
 
     println!("Analysis:");
-    println!("  Piece requests: {}", piece_requests);
-    println!("  Piece completions: {}", piece_completions);
-    println!("  Peer disconnections: {}", peer_disconnects);
+    println!("  Piece requests: {piece_requests}");
+    println!("  Piece completions: {piece_completions}");
+    println!("  Peer disconnections: {peer_disconnects}");
 
     let completion_rate = if piece_requests > 0 {
         piece_completions as f64 / piece_requests as f64 * 100.0
@@ -54,7 +54,7 @@ fn reproduce_bug_report() {
         0.0
     };
 
-    println!("  Completion rate: {:.1}%", completion_rate);
+    println!("  Completion rate: {completion_rate:.1}%");
 
     if completion_rate < 85.0 {
         println!("  ⚠️  BUG REPRODUCED: Low completion rate during peer churn");
@@ -80,7 +80,7 @@ fn streaming_performance_analysis() {
     ];
 
     for (name, scenario_type) in &scenarios {
-        println!("Testing {}", name);
+        println!("Testing {name}");
 
         let mut simulation = match *scenario_type {
             "ideal" => SimulationScenarios::ideal_streaming(test_seed),
@@ -134,7 +134,7 @@ fn regression_test_suite() {
     ];
 
     for (seed, description) in &regression_seeds {
-        println!("Testing seed 0x{:X}: {}", seed, description);
+        println!("Testing seed 0x{seed:X}: {description}");
 
         let mut runner = ScenarioRunner::new(*seed);
         let results = runner.run_all_scenarios();
@@ -182,7 +182,7 @@ fn performance_benchmarking() {
 
     // Add consistent peer set
     for i in 0..20 {
-        let peer_id = format!("BENCH{:03}", i);
+        let peer_id = format!("BENCH{i:03}");
         sim.add_deterministic_peer(peer_id, 5_000_000); // 5 MB/s
     }
 
@@ -205,10 +205,10 @@ fn performance_benchmarking() {
     let throughput_mbps = (total_mb * 8.0) / duration_secs; // Convert to Mbps
 
     println!("Results:");
-    println!("  Pieces completed: {} / 1000", piece_completions);
-    println!("  Data transferred: {:.1} MB", total_mb);
-    println!("  Duration: {:.1} seconds", duration_secs);
-    println!("  Throughput: {:.1} Mbps", throughput_mbps);
+    println!("  Pieces completed: {piece_completions} / 1000");
+    println!("  Data transferred: {total_mb:.1} MB");
+    println!("  Duration: {duration_secs:.1} seconds");
+    println!("  Throughput: {throughput_mbps:.1} Mbps");
     println!("  Events processed: {}", events.len());
 
     // Performance thresholds

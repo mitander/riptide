@@ -192,7 +192,7 @@ impl HttpTrackerClient {
 
     /// URL encode bytes for tracker communication per RFC 3986.
     fn url_encode_bytes(bytes: &[u8]) -> String {
-        bytes.iter().map(|&b| format!("%{:02X}", b)).collect()
+        bytes.iter().map(|&b| format!("%{b:02X}")).collect()
     }
 
     /// Convert announce event to tracker protocol string.
@@ -229,7 +229,7 @@ impl HttpTrackerClient {
     ) -> Result<AnnounceResponse, TorrentError> {
         let parsed = bencode_rs::Value::parse(response_bytes).map_err(|e| {
             TorrentError::TrackerConnectionFailed {
-                url: format!("Failed to parse tracker response: {:?}", e),
+                url: format!("Failed to parse tracker response: {e:?}"),
             }
         })?;
 
@@ -306,7 +306,7 @@ impl HttpTrackerClient {
     fn parse_scrape_response(&self, response_bytes: &[u8]) -> Result<ScrapeResponse, TorrentError> {
         let parsed = bencode_rs::Value::parse(response_bytes).map_err(|e| {
             TorrentError::TrackerConnectionFailed {
-                url: format!("Failed to parse scrape response: {:?}", e),
+                url: format!("Failed to parse scrape response: {e:?}"),
             }
         })?;
 
@@ -381,7 +381,7 @@ impl TrackerClient for HttpTrackerClient {
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP request failed: {}", e),
+                url: format!("HTTP request failed: {e}"),
             }
         })?;
 
@@ -395,7 +395,7 @@ impl TrackerClient for HttpTrackerClient {
             .bytes()
             .await
             .map_err(|e| TorrentError::TrackerConnectionFailed {
-                url: format!("Failed to read response body: {}", e),
+                url: format!("Failed to read response body: {e}"),
             })?;
 
         self.parse_announce_response(&body)
@@ -406,7 +406,7 @@ impl TrackerClient for HttpTrackerClient {
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP scrape request failed: {}", e),
+                url: format!("HTTP scrape request failed: {e}"),
             }
         })?;
 
@@ -424,7 +424,7 @@ impl TrackerClient for HttpTrackerClient {
             .bytes()
             .await
             .map_err(|e| TorrentError::TrackerConnectionFailed {
-                url: format!("Failed to read scrape response: {}", e),
+                url: format!("Failed to read scrape response: {e}"),
             })?;
 
         self.parse_scrape_response(&body)
@@ -692,7 +692,7 @@ mod tests {
             Err(TorrentError::TrackerConnectionFailed { url }) => {
                 assert!(url.contains("Failed to parse tracker response"));
             }
-            Err(other) => panic!("Unexpected error type: {:?}", other),
+            Err(other) => panic!("Unexpected error type: {other:?}"),
             Ok(_) => panic!("Expected error"),
         }
     }

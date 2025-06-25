@@ -12,7 +12,7 @@
 //! - Proper error handling for network protocols
 //!
 //! **Level 1: Critical** - Fails CI, breaks streaming
-//! **Level 2: Ratchet** - Prevents regression 
+//! **Level 2: Ratchet** - Prevents regression
 //! **Level 3: Guideline** - Human judgment
 
 use std::fs;
@@ -20,9 +20,7 @@ use std::path::{Path, PathBuf};
 
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
-use syn::{
-    Expr, FnArg, ItemFn, ItemStruct, Pat, PatType, Stmt, Type, TypePath, Visibility,
-};
+use syn::{Expr, FnArg, ItemFn, ItemStruct, Pat, PatType, Stmt, Type, TypePath, Visibility};
 
 // --- Riptide-Specific Configuration ---
 
@@ -35,10 +33,10 @@ const MODULE_SIZE_HIGH_WATER_MARK: usize = 500;
 /// LEVEL 1: Forbidden marketing terms in documentation
 const MARKETING_TERMS: &[&str] = &[
     "production-ready",
-    "comprehensive", 
+    "comprehensive",
     "complete",
     "advanced",
-    "intelligent", 
+    "intelligent",
     "optimal",
     "powerful",
     "robust",
@@ -52,7 +50,7 @@ const MARKETING_TERMS: &[&str] = &[
 /// LEVEL 1: Required abbreviation replacements in public APIs
 const FORBIDDEN_ABBREVIATIONS: &[(&str, &str)] = &[
     ("ctx", "context"),
-    ("seq", "sequence"), 
+    ("seq", "sequence"),
     ("msg", "message"),
     ("mgr", "manager"),
     ("hdlr", "handler"),
@@ -77,7 +75,12 @@ struct TidyViolation {
 }
 
 impl TidyViolation {
-    fn new(severity: Severity, path: &Path, span: proc_macro2::Span, message: impl Into<String>) -> Self {
+    fn new(
+        severity: Severity,
+        path: &Path,
+        _span: proc_macro2::Span,
+        message: impl Into<String>,
+    ) -> Self {
         // Extract line number from span - approximation since proc_macro2::Span doesn't expose line directly
         let line = 1; // Default to line 1 for now
         Self {
@@ -88,7 +91,12 @@ impl TidyViolation {
         }
     }
 
-    fn new_at_line(severity: Severity, path: &Path, line: usize, message: impl Into<String>) -> Self {
+    fn new_at_line(
+        severity: Severity,
+        path: &Path,
+        line: usize,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             severity,
             path: path.to_string_lossy().to_string(),
@@ -127,7 +135,12 @@ impl<'a> RiptideTidyVisitor<'a> {
         }
     }
 
-    fn add_violation(&mut self, severity: Severity, span: proc_macro2::Span, message: impl Into<String>) {
+    fn add_violation(
+        &mut self,
+        severity: Severity,
+        span: proc_macro2::Span,
+        message: impl Into<String>,
+    ) {
         self.violations
             .push(TidyViolation::new(severity, self.file.path, span, message));
     }
@@ -160,7 +173,7 @@ impl<'ast> Visit<'ast> for RiptideTidyVisitor<'_> {
                 self.add_violation(
                     Severity::Critical,
                     item.sig.fn_token.span(),
-                    format!("Public function '{}' missing documentation", func_name),
+                    format!("Public function '{func_name}' missing documentation"),
                 );
             }
 
@@ -179,10 +192,7 @@ impl<'ast> Visit<'ast> for RiptideTidyVisitor<'_> {
                             self.add_violation(
                                 Severity::Critical,
                                 item.sig.fn_token.span(),
-                                format!(
-                                    "Public function '{}' returns Result but missing '# Errors' documentation",
-                                    func_name
-                                ),
+                                format!("Public function '{func_name}' returns Result but missing '# Errors' documentation"),
                             );
                         }
                     }
@@ -195,10 +205,7 @@ impl<'ast> Visit<'ast> for RiptideTidyVisitor<'_> {
                     self.add_violation(
                         Severity::Critical,
                         item.sig.ident.span(),
-                        format!(
-                            "Public function name contains '{}', use '{}' instead",
-                            abbrev, full
-                        ),
+                        format!("Public function name contains '{abbrev}', use '{full}' instead"),
                     );
                 }
             }
@@ -213,10 +220,7 @@ impl<'ast> Visit<'ast> for RiptideTidyVisitor<'_> {
                                 self.add_violation(
                                     Severity::Critical,
                                     pat_ident.span(),
-                                    format!(
-                                        "Public parameter '{}' should be '{}'",
-                                        abbrev, full
-                                    ),
+                                    format!("Public parameter '{abbrev}' should be '{full}'"),
                                 );
                             }
                         }
@@ -226,34 +230,32 @@ impl<'ast> Visit<'ast> for RiptideTidyVisitor<'_> {
         }
 
         // LEVEL 1: Async network functions should have timeout handling
-        if item.sig.asyncness.is_some() && Self::is_network_function(&func_name) && !self.is_test_context {
+        if item.sig.asyncness.is_some()
+            && Self::is_network_function(&func_name)
+            && !self.is_test_context
+        {
             let func_body_text = format!("{:?}", item.block);
             if !func_body_text.contains("timeout") && !func_body_text.contains("Duration") {
                 self.add_violation(
                     Severity::Critical,
                     item.sig.fn_token.span(),
-                    format!(
-                        "Async network function '{}' should include timeout handling",
-                        func_name
-                    ),
+                    format!("Async network function '{func_name}' should include timeout handling"),
                 );
             }
         }
 
-        // LEVEL 2: Streaming functions should not allocate in hot paths  
+        // LEVEL 2: Streaming functions should not allocate in hot paths
         if Self::is_streaming_hot_path(item) && !self.is_test_context {
             let func_body_text = format!("{:?}", item.block);
-            if func_body_text.contains("Vec::new") 
+            if func_body_text.contains("Vec::new")
                 || func_body_text.contains("to_vec")
                 || func_body_text.contains("to_string")
-                || func_body_text.contains("format!") {
+                || func_body_text.contains("format!")
+            {
                 self.add_violation(
                     Severity::Ratchet,
                     item.sig.fn_token.span(),
-                    format!(
-                        "Streaming function '{}' may allocate in hot path - consider pre-allocated buffers",
-                        func_name
-                    ),
+                    format!("Streaming function '{func_name}' may allocate in hot path - consider pre-allocated buffers"),
                 );
             }
         }
@@ -320,11 +322,12 @@ impl<'ast> Visit<'ast> for RiptideTidyVisitor<'_> {
             // LEVEL 1: No .unwrap() without safety comment
             if let Some(_span) = find_unwrap_in_stmt(stmt) {
                 // For simplicity, we'll check the entire statement text for safety comments
-                let stmt_text = format!("{:?}", stmt);
-                
-                if !stmt_text.contains("// unwrap: safe because") 
+                let stmt_text = format!("{stmt:?}");
+
+                if !stmt_text.contains("// unwrap: safe because")
                     && !stmt_text.contains("// unwrap: ")
-                    && !stmt_text.contains("// SAFETY:") {
+                    && !stmt_text.contains("// SAFETY:")
+                {
                     // Use span from the statement itself
                     self.add_violation(
                         Severity::Critical,
@@ -400,7 +403,7 @@ fn check_marketing_language(file: &SourceFile, violations: &mut Vec<TidyViolatio
                         Severity::Critical,
                         file.path,
                         i + 1,
-                        format!("Module doc contains marketing term '{}' - use technical description", term),
+                        format!("Module doc contains marketing term '{term}' - use technical description"),
                     ));
                 }
             }
@@ -419,14 +422,14 @@ fn check_todo_quality(file: &SourceFile, violations: &mut Vec<TidyViolation>) {
                 "TODO should have format 'TODO: [scope] specific action'",
             ));
         }
-        
+
         // Check for vague TODOs
-        if line.contains("TODO:") && (
-            line.to_lowercase().contains("fix this") ||
-            line.to_lowercase().contains("clean up") ||
-            line.to_lowercase().contains("improve") ||
-            line.to_lowercase().contains("optimize")
-        ) {
+        if line.contains("TODO:")
+            && (line.to_lowercase().contains("fix this")
+                || line.to_lowercase().contains("clean up")
+                || line.to_lowercase().contains("improve")
+                || line.to_lowercase().contains("optimize"))
+        {
             violations.push(TidyViolation::new_at_line(
                 Severity::Guideline,
                 file.path,
@@ -458,11 +461,15 @@ fn check_inline_module_refs(file: &SourceFile, violations: &mut Vec<TidyViolatio
         if file.path.to_string_lossy().contains("test") {
             continue;
         }
-        
-        // Check for crate::module::function pattern
+
+        // Check for crate::module::function pattern (but not in use statements)
         if line.contains("crate::") && line.matches("::").count() >= 2 {
-            // Allow test_data and test_fixtures 
-            if !line.contains("test_data") && !line.contains("test_fixtures") {
+            // Allow test_data and test_fixtures
+            // Skip use statements - these are proper imports
+            if !line.contains("test_data")
+                && !line.contains("test_fixtures")
+                && !line.trim_start().starts_with("use ")
+            {
                 violations.push(TidyViolation::new_at_line(
                     Severity::Critical,
                     file.path,
@@ -479,10 +486,17 @@ fn check_inline_module_refs(file: &SourceFile, violations: &mut Vec<TidyViolatio
 /// LEVEL 1: Anti-pattern module detection
 fn check_anti_pattern_modules() -> Result<(), TidyViolation> {
     const ANTI_PATTERNS: &[&str] = &[
-        "utils.rs", "helpers.rs", "misc.rs", "common.rs", "shared.rs"
+        "utils.rs",
+        "helpers.rs",
+        "misc.rs",
+        "common.rs",
+        "shared.rs",
     ];
-    
-    for entry in walkdir::WalkDir::new("src").into_iter().filter_map(Result::ok) {
+
+    for entry in walkdir::WalkDir::new("src")
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         let file_name = entry.file_name().to_string_lossy();
         if ANTI_PATTERNS.iter().any(|&pattern| pattern == file_name) {
             return Err(TidyViolation {
@@ -490,8 +504,7 @@ fn check_anti_pattern_modules() -> Result<(), TidyViolation> {
                 path: entry.path().display().to_string(),
                 line: 0,
                 message: format!(
-                    "Anti-pattern module '{}' found - use domain-specific names",
-                    file_name
+                    "Anti-pattern module '{file_name}' found - use domain-specific names"
                 ),
             });
         }
@@ -506,8 +519,8 @@ fn list_rust_files() -> Vec<PathBuf> {
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| {
-            e.file_type().is_file() 
-                && e.path().extension().map_or(false, |ext| ext == "rs")
+            e.file_type().is_file()
+                && e.path().extension().is_some_and(|ext| ext == "rs")
                 && !e.path().to_string_lossy().contains("tidy.rs")
         })
         .map(|e| e.path().to_path_buf())
@@ -554,7 +567,7 @@ mod tests {
                         severity: Severity::Critical,
                         path: path.to_string_lossy().to_string(),
                         line: 0,
-                        message: format!("Failed to parse file: {}", e),
+                        message: format!("Failed to parse file: {e}"),
                     });
                 }
             }
@@ -571,10 +584,7 @@ mod tests {
                 severity: Severity::Ratchet,
                 path: "Project-wide".to_string(),
                 line: 0,
-                message: format!(
-                    "Module grown to {} lines, exceeding limit of {}. Refactor or update limit.",
-                    max_module_loc, MODULE_SIZE_HIGH_WATER_MARK
-                ),
+                message: format!("Module grown to {max_module_loc} lines, exceeding limit of {MODULE_SIZE_HIGH_WATER_MARK}. Refactor or update limit."),
             });
         }
 
@@ -621,7 +631,7 @@ mod tests {
     fn tidy_coverage_report() {
         println!("\n--- Riptide Tidy Coverage Report ---");
         println!("Mechanical enforcement of Riptide streaming media standards.\n");
-        
+
         println!("CRITICAL RULES (Fail CI):");
         println!("  [✓] No marketing language in documentation");
         println!("  [✓] No .unwrap()/.expect() without safety documentation");
@@ -631,16 +641,16 @@ mod tests {
         println!("  [✓] No inline module references (use proper imports)");
         println!("  [✓] Network functions must handle timeouts");
         println!("  [✓] No FIXME comments (fix or create issue)");
-        
+
         println!("\nREGRESSION PREVENTION (Ratchets):");
-        println!("  [✓] Module size ≤ {} lines", MODULE_SIZE_HIGH_WATER_MARK);
-        println!("  [✓] Struct fields ≤ {} (encourage composition)", STRUCT_FIELD_COUNT_MAX);
+        println!("  [✓] Module size ≤ {MODULE_SIZE_HIGH_WATER_MARK} lines");
+        println!("  [✓] Struct fields ≤ {STRUCT_FIELD_COUNT_MAX} (encourage composition)");
         println!("  [✓] Streaming hot paths avoid allocation");
-        
+
         println!("\nSTYLE GUIDELINES (Human Judgment):");
         println!("  [✓] TODO format: 'TODO: [scope] specific action'");
         println!("  [✓] Avoid vague TODOs ('fix this', 'clean up')");
-        
+
         println!("\nThis enforces patterns critical for streaming media servers.");
         println!("Human reviewers focus on protocol correctness and architecture.");
     }

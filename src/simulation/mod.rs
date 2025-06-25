@@ -12,8 +12,8 @@ use std::time::Duration;
 
 pub use deterministic::{DeterministicClock, DeterministicSimulation, EventType, SimulationEvent};
 pub use magneto_provider::{
-    MockMagnetoProvider, MockMagnetoProviderBuilder, create_mock_magneto_client,
-    create_streaming_test_client,
+    MockMagnetoProvider, MockMagnetoProviderBuilder, TorrentEntryParams,
+    create_mock_magneto_client, create_streaming_test_client,
 };
 pub use media::{MediaStreamingSimulation, MovieFolder, StreamingResult};
 pub use network::NetworkSimulator;
@@ -73,7 +73,7 @@ impl SimulationEnvironment {
                 .upload_speed(5_000_000) // 5 MB/s
                 .reliability(0.99)
                 .latency(Duration::from_millis(20))
-                .peer_id(format!("FAST{:04}", i))
+                .peer_id(format!("FAST{i:04}"))
                 .build();
             self.peers.push(peer);
         }
@@ -86,7 +86,7 @@ impl SimulationEnvironment {
                 .upload_speed(500_000) // 500 KB/s
                 .reliability(0.95)
                 .latency(Duration::from_millis(100))
-                .peer_id(format!("SLOW{:04}", i))
+                .peer_id(format!("SLOW{i:04}"))
                 .build();
             self.peers.push(peer);
         }
@@ -99,7 +99,7 @@ impl SimulationEnvironment {
                 .upload_speed(1_000_000) // 1 MB/s
                 .reliability(0.70) // Drops connections frequently
                 .latency(Duration::from_millis(200))
-                .peer_id(format!("UNREL{:03}", i))
+                .peer_id(format!("UNREL{i:03}"))
                 .build();
             self.peers.push(peer);
         }

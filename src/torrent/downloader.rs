@@ -2,7 +2,7 @@
 //!
 //! Coordinates piece requests, downloads, hash verification, and storage.
 //! Integrates with tracker client, storage layer, and piece picker to manage
-//! the complete download process.
+//! the full download process.
 
 use std::collections::HashMap;
 use std::sync::Arc;

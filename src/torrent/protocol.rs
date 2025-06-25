@@ -425,7 +425,7 @@ impl BitTorrentPeerProtocol {
                 Ok(PeerMessage::Port { port })
             }
             _ => Err(TorrentError::ProtocolError {
-                message: format!("Unknown message ID: {}", message_id),
+                message: format!("Unknown message ID: {message_id}"),
             }),
         }
     }
@@ -453,7 +453,7 @@ impl PeerProtocol for BitTorrentPeerProtocol {
                 self.state = PeerState::Disconnected;
                 self.peer_address = None;
                 return Err(TorrentError::PeerConnectionError {
-                    reason: format!("Failed to connect to {}", address),
+                    reason: format!("Failed to connect to {address}"),
                 });
             }
         };

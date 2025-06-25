@@ -18,6 +18,14 @@ use super::range_handler::FileInfo;
 use super::{StreamCoordinator, StreamingError};
 use crate::config::RiptideConfig;
 
+/// Parameters for handling file range requests.
+#[derive(Debug)]
+struct FileRangeParams {
+    info_hash: [u8; 20],
+    file_index: usize,
+    file_info: FileInfo,
+}
+
 /// HTTP server configuration for streaming service.
 #[derive(Debug, Clone)]
 pub struct StreamingServerConfig {
@@ -52,7 +60,7 @@ pub struct StreamingHttpServer {
 #[derive(Clone)]
 struct AppState {
     coordinator: Arc<RwLock<StreamCoordinator>>,
-    config: StreamingServerConfig,
+    _config: StreamingServerConfig,
 }
 
 /// Query parameters for streaming requests.
@@ -61,7 +69,7 @@ struct StreamQuery {
     #[serde(default)]
     seek: Option<u64>,
     #[serde(default)]
-    format: Option<String>,
+    _format: Option<String>,
 }
 
 impl StreamingHttpServer {
@@ -81,7 +89,7 @@ impl StreamingHttpServer {
     pub async fn start(&self) -> Result<(), StreamingError> {
         let app_state = AppState {
             coordinator: Arc::clone(&self.coordinator),
-            config: self.config.clone(),
+            _config: self.config.clone(),
         };
 
         let app = Router::new()
@@ -211,16 +219,13 @@ async fn stream_file_handler(
     // Parse range header
     let range_request = parse_range_header(&headers, file_info.size);
 
-    match handle_file_range_request(
-        &coordinator,
-        info_hash_bytes,
+    let params = FileRangeParams {
+        info_hash: info_hash_bytes,
         file_index,
-        range_request,
-        &file_info,
-        query.seek,
-    )
-    .await
-    {
+        file_info,
+    };
+
+    match handle_file_range_request(&coordinator, params, range_request, query.seek).await {
         Ok(response) => response.into_response(),
         Err(e) => {
             tracing::error!("File stream error: {}", e);
@@ -367,10 +372,8 @@ async fn handle_range_request(
 /// Handle range request for specific file within torrent.
 async fn handle_file_range_request(
     coordinator: &StreamCoordinator,
-    info_hash: [u8; 20],
-    file_index: usize,
+    params: FileRangeParams,
     range_request: Option<super::RangeRequest>,
-    file_info: &FileInfo,
     _seek_position: Option<u64>,
 ) -> Result<Response, StreamingError> {
     let (start, end, status_code) = match range_request {
@@ -383,15 +386,15 @@ async fn handle_file_range_request(
             let (start, end) = range.ranges[0];
             (start, end, StatusCode::PARTIAL_CONTENT)
         }
-        None => (0, file_info.size - 1, StatusCode::OK),
+        None => (0, params.file_info.size - 1, StatusCode::OK),
     };
 
     // Read file data from torrent
     let data = coordinator
-        .read_file_range(info_hash, file_index, start, end - start + 1)
+        .read_file_range(params.info_hash, params.file_index, start, end - start + 1)
         .await?;
 
-    let content_type = from_path(&file_info.name)
+    let content_type = from_path(&params.file_info.name)
         .first_or_octet_stream()
         .to_string();
 
@@ -404,7 +407,7 @@ async fn handle_file_range_request(
     if status_code == StatusCode::PARTIAL_CONTENT {
         response = response.header(
             CONTENT_RANGE,
-            format!("bytes {}-{}/{}", start, end, file_info.size),
+            format!("bytes {}-{}/{}", start, end, params.file_info.size),
         );
     }
 

@@ -1,8 +1,8 @@
 //! Web UI module for library browsing and torrent management
 //!
 //! Provides a modern web interface for managing torrents, browsing the media library,
-//! and monitoring streaming activity. Built with server-side rendering for optimal
-//! performance and SEO compatibility.
+//! and monitoring streaming activity. Built with server-side rendering for fast
+//! response times and SEO compatibility.
 
 pub mod handlers;
 pub mod server;
@@ -28,9 +28,9 @@ use crate::torrent::TorrentEngine;
 /// web-based interface for managing the Riptide media server.
 pub struct WebUIService {
     web_server: WebServer,
-    template_engine: TemplateEngine,
-    torrent_engine: Arc<RwLock<TorrentEngine>>,
-    streaming_service: Arc<RwLock<DirectStreamingService>>,
+    _template_engine: TemplateEngine,
+    _torrent_engine: Arc<RwLock<TorrentEngine>>,
+    _streaming_service: Arc<RwLock<DirectStreamingService>>,
 }
 
 impl WebUIService {
@@ -48,9 +48,9 @@ impl WebUIService {
 
         Self {
             web_server,
-            template_engine,
-            torrent_engine,
-            streaming_service,
+            _template_engine: template_engine,
+            _torrent_engine: torrent_engine,
+            _streaming_service: streaming_service,
         }
     }
 

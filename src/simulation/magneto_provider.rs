@@ -32,6 +32,15 @@ pub struct MockTorrentEntry {
     pub categories: Vec<String>,
 }
 
+/// Parameters for creating a new torrent entry.
+#[derive(Debug)]
+pub struct TorrentEntryParams {
+    pub name: String,
+    pub size_bytes: u64,
+    pub seeders: u32,
+    pub leechers: u32,
+}
+
 impl MockMagnetoProvider {
     /// Creates new mock provider with default content database.
     pub fn new() -> Self {
@@ -252,12 +261,13 @@ impl MockMagnetoProvider {
         if results.len() < limit {
             for entries in database.values() {
                 for entry in entries {
-                    if entry.name.to_lowercase().contains(&query_lower) {
-                        if !processed_names.contains(&entry.name) && results.len() < limit {
-                            let torrent = self.create_torrent_from_entry(entry);
-                            processed_names.insert(torrent.name.clone());
-                            results.push(torrent);
-                        }
+                    if entry.name.to_lowercase().contains(&query_lower)
+                        && !processed_names.contains(&entry.name)
+                        && results.len() < limit
+                    {
+                        let torrent = self.create_torrent_from_entry(entry);
+                        processed_names.insert(torrent.name.clone());
+                        results.push(torrent);
                     }
                 }
             }
@@ -302,7 +312,7 @@ impl MockMagnetoProvider {
 
         let mut hasher = Sha1::new();
         hasher.update(name.as_bytes());
-        hasher.update(&self.rng.r#gen::<u64>().to_le_bytes());
+        hasher.update(self.rng.r#gen::<u64>().to_le_bytes());
 
         let hash = hasher.finalize();
         hex::encode(&hash[..20])
@@ -391,27 +401,17 @@ impl MockMagnetoProviderBuilder {
     }
 
     /// Adds single torrent entry for specific testing.
-    pub fn add_torrent(
-        mut self,
-        category: String,
-        name: String,
-        size_bytes: u64,
-        seeders: u32,
-        leechers: u32,
-    ) -> Self {
+    pub fn add_torrent(mut self, category: String, params: TorrentEntryParams) -> Self {
         let entry = MockTorrentEntry {
-            name,
-            size_bytes,
-            seeders,
-            leechers,
+            name: params.name,
+            size_bytes: params.size_bytes,
+            seeders: params.seeders,
+            leechers: params.leechers,
             magnet_template: "magnet:?xt=urn:btih:CUSTOM_HASH".to_string(),
             categories: vec![category.clone()],
         };
 
-        self.custom_content
-            .entry(category)
-            .or_insert_with(Vec::new)
-            .push(entry);
+        self.custom_content.entry(category).or_default().push(entry);
 
         self
     }
@@ -468,24 +468,30 @@ pub fn create_streaming_test_client(seed: u64) -> MockMagnetoClient {
         .with_seed(seed)
         .add_torrent(
             "streaming_test".to_string(),
-            "Test Movie 2024 [1080p] [5.1]".to_string(),
-            4_500_000_000, // 4.5GB
-            156,
-            23,
+            TorrentEntryParams {
+                name: "Test Movie 2024 [1080p] [5.1]".to_string(),
+                size_bytes: 4_500_000_000, // 4.5GB
+                seeders: 156,
+                leechers: 23,
+            },
         )
         .add_torrent(
             "streaming_test".to_string(),
-            "Sample Series S01E01-E10 [720p]".to_string(),
-            12_000_000_000, // 12GB
-            89,
-            45,
+            TorrentEntryParams {
+                name: "Sample Series S01E01-E10 [720p]".to_string(),
+                size_bytes: 12_000_000_000, // 12GB
+                seeders: 89,
+                leechers: 45,
+            },
         )
         .add_torrent(
             "streaming_test".to_string(),
-            "Documentary Collection [4K]".to_string(),
-            35_000_000_000, // 35GB
-            234,
-            67,
+            TorrentEntryParams {
+                name: "Documentary Collection [4K]".to_string(),
+                size_bytes: 35_000_000_000, // 35GB
+                seeders: 234,
+                leechers: 67,
+            },
         )
         .build();
 
@@ -541,10 +547,12 @@ mod tests {
             .with_failure_rate(0.1)
             .add_torrent(
                 "test".to_string(),
-                "Test Torrent".to_string(),
-                1_000_000_000,
-                50,
-                10,
+                TorrentEntryParams {
+                    name: "Test Torrent".to_string(),
+                    size_bytes: 1_000_000_000,
+                    seeders: 50,
+                    leechers: 10,
+                },
             )
             .build();
 
