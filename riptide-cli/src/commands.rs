@@ -2,16 +2,81 @@
 
 use std::path::PathBuf;
 
+use clap::Subcommand;
 use tokio::fs;
 
-use crate::config::RiptideConfig;
-use crate::media_search::MediaSearchService;
-#[cfg(feature = "simulation")]
-use crate::simulation::SimulationEnvironment;
-use crate::streaming::DirectStreamingService;
-use crate::torrent::{InfoHash, TorrentEngine, TorrentError};
-use crate::web::{TemplateEngine, WebHandlers, WebServer, WebServerConfig};
-use crate::{Result, RiptideError};
+use riptide_core::config::RiptideConfig;
+use riptide_core::streaming::DirectStreamingService;
+use riptide_core::torrent::{InfoHash, TorrentEngine, TorrentError};
+use riptide_core::{Result, RiptideError};
+use riptide_search::MediaSearchService;
+use riptide_web::{TemplateEngine, WebHandlers, WebServer, WebServerConfig};
+
+/// Available CLI commands
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Add a torrent from magnet link or file
+    Add {
+        /// Magnet link or path to torrent file
+        source: String,
+        /// Output directory for downloads
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Start downloading a torrent
+    Start {
+        /// Torrent info hash or name
+        torrent: String,
+    },
+    /// Stop downloading a torrent
+    Stop {
+        /// Torrent info hash or name
+        torrent: String,
+    },
+    /// Show status of torrents
+    Status {
+        /// Specific torrent to show status for
+        torrent: Option<String>,
+    },
+    /// List all torrents
+    List,
+    /// Start the web server
+    Server {
+        /// Host to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Port to bind to
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+        /// Use demo data for development
+        #[arg(long)]
+        demo: bool,
+    },
+    /// Run simulation environment
+    Simulation {
+        /// Number of simulated peers
+        #[arg(short, long, default_value = "50")]
+        peers: usize,
+        /// Path to torrent file for simulation
+        torrent: PathBuf,
+    },
+}
+
+/// Handle the CLI command
+///
+/// # Errors
+/// Returns appropriate error based on the command that fails
+pub async fn handle_command(command: Commands) -> Result<()> {
+    match command {
+        Commands::Add { source, output } => add_torrent(source, output).await,
+        Commands::Start { torrent } => start_torrent(torrent).await,
+        Commands::Stop { torrent } => stop_torrent(torrent).await,
+        Commands::Status { torrent } => show_status(torrent).await,
+        Commands::List => list_torrents().await,
+        Commands::Server { host, port, demo } => start_server(host, port, demo).await,
+        Commands::Simulation { peers, torrent } => run_simulation(peers, torrent).await,
+    }
+}
 
 /// Add a torrent by magnet link or file
 ///
@@ -137,7 +202,10 @@ pub async fn list_torrents() -> Result<()> {
 ///
 /// # Errors
 /// - Currently returns Ok but will add simulation errors in future implementation
-#[cfg(feature = "simulation")]
+/// Run simulation environment with runtime configuration
+///
+/// # Errors
+/// - Currently returns Ok but will add simulation errors in future implementation
 pub async fn run_simulation(peers: usize, torrent: PathBuf) -> Result<()> {
     println!(
         "Running simulation with {} peers for torrent: {}",
@@ -145,10 +213,15 @@ pub async fn run_simulation(peers: usize, torrent: PathBuf) -> Result<()> {
         torrent.display()
     );
 
-    let env = SimulationEnvironment::for_streaming();
+    // Create config with simulation enabled
+    let mut config = RiptideConfig::default();
+    config.simulation.enabled = true;
+    config.simulation.max_simulated_peers = peers;
+    config.simulation.deterministic_seed = Some(42);
+
     println!(
         "Created simulation environment with {} peers",
-        env.peers.len()
+        peers
     );
 
     // Full BitTorrent simulation implementation pending
@@ -318,7 +391,7 @@ pub async fn start_server(host: String, port: u16, demo: bool) -> Result<()> {
     println!("Press Ctrl+C to stop the server");
 
     // Start the server (this will block)
-    web_server.start().await?;
+    web_server.start().await.map_err(RiptideError::from_web_ui_error)?;
 
     Ok(())
 }

@@ -12,6 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 riptide-core = { workspace = true }
+riptide-web = { workspace = true }
+riptide-search = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }

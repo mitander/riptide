@@ -38,6 +38,9 @@ pub enum RiptideError {
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Web UI error: {reason}")]
+    WebUI { reason: String },
 }
 
 impl RiptideError {
@@ -58,6 +61,7 @@ impl RiptideError {
             RiptideError::Streaming(_) => "Streaming error occurred".to_string(),
             RiptideError::Configuration { .. } => "Configuration error occurred".to_string(),
             RiptideError::Io(_) => "File system error occurred".to_string(),
+            RiptideError::WebUI { reason } => format!("Web interface error: {reason}"),
         }
     }
 
@@ -72,3 +76,12 @@ impl RiptideError {
 }
 
 pub type Result<T> = std::result::Result<T, RiptideError>;
+
+/// Convert WebUIError to RiptideError
+impl RiptideError {
+    pub fn from_web_ui_error(error: impl std::fmt::Display) -> Self {
+        RiptideError::WebUI {
+            reason: error.to_string(),
+        }
+    }
+}

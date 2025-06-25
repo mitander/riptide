@@ -9,7 +9,7 @@ use tower_http::cors::CorsLayer;
 
 use super::static_files::StaticFileHandler;
 use super::{TemplateEngine, WebHandlers, WebUIError};
-use crate::config::RiptideConfig;
+use riptide_core::config::RiptideConfig;
 
 /// Web server configuration for the UI service.
 #[derive(Debug, Clone)]

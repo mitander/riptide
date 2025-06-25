@@ -1570,6 +1570,8 @@ dependencies = [
  "anyhow",
  "clap",
  "riptide-core",
+ "riptide-search",
+ "riptide-web",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1580,13 +1582,16 @@ name = "riptide-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "bencode-rs",
  "bytes",
  "chrono",
  "futures",
  "hex",
+ "hyper",
  "magnet-url",
  "magneto",
+ "mime_guess",
  "proptest",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -1598,6 +1603,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
+ "tower 0.4.13",
+ "tower-http 0.5.2",
  "tracing",
  "url",
  "urlencoding",
@@ -1608,7 +1615,10 @@ dependencies = [
 name = "riptide-search"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "chrono",
  "magneto",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -1616,6 +1626,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "urlencoding",
 ]
 
 [[package]]
@@ -1623,12 +1634,14 @@ name = "riptide-web"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "hyper",
  "mime_guess",
  "riptide-core",
  "riptide-search",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tower 0.4.13",
  "tower-http 0.5.2",

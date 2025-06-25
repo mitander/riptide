@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use super::WebUIError;
-use crate::media_search::{MediaSearchResult, MediaSearchService, TorrentResult};
-use crate::streaming::DirectStreamingService;
-use crate::torrent::TorrentEngine;
+use riptide_core::streaming::DirectStreamingService;
+use riptide_core::torrent::TorrentEngine;
+use riptide_search::{MediaSearchResult, MediaSearchService, TorrentResult};
 
 /// Web request handlers providing data for UI pages and API endpoints.
 #[derive(Clone)]

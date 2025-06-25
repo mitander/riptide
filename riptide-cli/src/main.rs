@@ -2,6 +2,8 @@
 //!
 //! Provides command-line access to Riptide functionality.
 
+mod commands;
+
 use clap::Parser;
 
 #[derive(Parser)]
@@ -9,33 +11,15 @@ use clap::Parser;
 #[command(about = "A BitTorrent media server")]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(clap::Subcommand)]
-enum Commands {
-    /// Start the media server
-    Server,
-    /// Download a torrent
-    Download { magnet: String },
+    command: commands::Commands,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::init();
+    tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-
-    match &cli.command {
-        Commands::Server => {
-            println!("Starting Riptide server...");
-            // TODO: Start server
-        }
-        Commands::Download { magnet } => {
-            println!("Downloading: {}", magnet);
-            // TODO: Start download
-        }
-    }
+    commands::handle_command(cli.command).await?;
 
     Ok(())
 }
