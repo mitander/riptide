@@ -2,22 +2,68 @@
 
 ## Architecture Overview
 
-A Rust-based torrent media server focused on streaming performance and rapid iteration.
+A Rust-based torrent media server focused on streaming performance and rapid iteration, organized as a multi-crate workspace for modular development and deployment.
+
+### Workspace Structure
+
+```
+riptide/
+├── riptide-core/     → Core BitTorrent and streaming functionality
+├── riptide-web/      → Web UI and HTTP API server
+├── riptide-search/   → Media search and metadata services
+└── riptide-cli/      → Command-line interface
+```
 
 ### Core Components
 
 ```
-API Gateway      → HTTP interface, authentication, rate limiting
-Torrent Engine   → BitTorrent protocol, piece management, peer connections
-Storage Layer    → File organization, reflink/CoW support
-Streaming Service → Direct streaming, pre-transcoding, HLS generation
-Media Service    → Metadata, library management, search
-Subtitle Service → OpenSubtitles integration, sync adjustment
+riptide-core:
+  - Torrent Engine    → BitTorrent protocol, piece management, peer connections
+  - Storage Layer     → File organization, reflink/CoW support  
+  - Streaming Service → Direct streaming, piece buffering, bandwidth control
+  - Configuration     → Runtime simulation config, network settings
+
+riptide-web:
+  - Web Server        → Axum-based HTTP server with template rendering
+  - API Handlers      → RESTful API for torrent management and streaming
+  - Template Engine   → Server-side rendering with external template files
+  - Static Files      → Asset serving for CSS, JavaScript, images
+
+riptide-search:
+  - Media Search      → Torrent discovery via search providers
+  - Metadata Service  → IMDb integration, poster/artwork fetching
+  - Demo Provider     → Rich demo data for UI development
+
+riptide-cli:
+  - Command Interface → Add/manage torrents, start web server
+  - Simulation Mode   → Development environment with configurable parameters
 ```
 
 ## Key Design Decisions
 
-### 1. Torrent Implementation
+### 1. Workspace Architecture
+
+**Choice**: Multi-crate workspace with clear separation of concerns.
+
+**Structure**:
+- **riptide-core**: Essential BitTorrent and streaming functionality, no web dependencies
+- **riptide-web**: Web UI and HTTP API, depends on core and search crates
+- **riptide-search**: Media search and metadata, standalone with optional integration
+- **riptide-cli**: Command-line interface, orchestrates other crates
+
+**Benefits**:
+- **Modular Development**: Independent versioning and testing of components
+- **Deployment Flexibility**: Core can be embedded without web UI overhead
+- **Clear Boundaries**: Web concerns separated from protocol implementation
+- **Runtime Configuration**: Simulation mode configurable at runtime vs compile-time
+
+**Architecture Patterns**:
+- Idiomatic Rust module organization (no domain/infrastructure split)
+- Trait-based abstractions for testability and simulation
+- Error conversion between crates via explicit mapping
+- Workspace-level dependency management for consistency
+
+### 2. Torrent Implementation
 
 **Choice**: Trait abstractions with controlled external dependencies for non-streaming components.
 

@@ -5,11 +5,11 @@ use std::net::SocketAddr;
 use axum::Router;
 use axum::response::IntoResponse;
 use axum::routing::get;
+use riptide_core::config::RiptideConfig;
 use tower_http::cors::CorsLayer;
 
 use super::static_files::StaticFileHandler;
 use super::{TemplateEngine, WebHandlers, WebUIError};
-use riptide_core::config::RiptideConfig;
 
 /// Web server configuration for the UI service.
 #[derive(Debug, Clone)]
@@ -307,11 +307,11 @@ async fn static_file_handler(
 mod tests {
     use std::sync::Arc;
 
+    use riptide_core::streaming::DirectStreamingService;
+    use riptide_core::torrent::TorrentEngine;
     use tokio::sync::RwLock;
 
     use super::*;
-    use crate::streaming::DirectStreamingService;
-    use crate::torrent::TorrentEngine;
 
     #[test]
     fn test_web_server_config_from_riptide() {

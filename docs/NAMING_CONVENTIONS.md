@@ -4,7 +4,42 @@ Clear names prevent bugs. Ambiguous names cause them.
 
 ## Core Principle: Domain Clarity Over Brevity
 
-BitTorrent and media streaming have overlapping terminology. A "piece" in BitTorrent is not a "segment" in HLS. A "peer" is not a "client". Names must disambiguate.
+BitTorrent and media streaming have overlapping terminology. A "piece" in BitTorrent is not a "segment" in HLS. A "peer" is not a "client". Names must disambiguate context across workspace crates.
+
+## Workspace-Specific Naming
+
+### Crate Naming Pattern
+
+```
+riptide-{domain}
+```
+
+- **riptide-core** - Essential functionality (protocol + streaming)
+- **riptide-web** - Web interface concerns
+- **riptide-search** - Media discovery and metadata
+- **riptide-cli** - Command-line interface
+
+### Cross-Crate Type Disambiguation
+
+When types might conflict across crates, use descriptive prefixes:
+
+```rust
+// riptide-core
+pub struct TorrentEngine;        // Core BitTorrent engine
+pub struct StreamingService;     // Direct streaming service
+
+// riptide-web  
+pub struct WebServer;            // HTTP server
+pub struct WebHandlers;          // Request handlers
+pub struct TemplateEngine;       // HTML rendering
+
+// riptide-search
+pub struct MediaSearchService;   // Search coordination
+pub struct TorrentResult;        // Search result item
+
+// riptide-cli
+pub enum Commands;               // CLI commands
+```
 
 ## Functions
 
@@ -43,6 +78,50 @@ try_reserve_buffer()      // Returns Result on allocation failure
 async fn connect_to_peer()     // Not connect()
 async fn fetch_piece()         // Not get_piece()
 async fn announce_to_tracker() // Not announce()
+```
+
+### Workspace Error Naming
+
+Each crate defines specific error types with descriptive names:
+
+```rust
+// riptide-core/src/lib.rs
+pub enum RiptideError {
+    Torrent(TorrentError),
+    Storage(StorageError), 
+    Streaming(StreamingError),
+    WebUI { reason: String },        // Cross-crate conversion
+}
+
+// riptide-web/src/lib.rs
+pub enum WebUIError {
+    TemplateError { reason: String },
+    ServerStartFailed { address: SocketAddr, reason: String },
+    HandlerError { reason: String },
+}
+
+// riptide-search/src/lib.rs  
+pub enum MediaSearchError {
+    SearchFailed { query: String, reason: String },
+    NetworkError { reason: String },
+    ParseError { reason: String },
+}
+```
+
+### Cross-Crate Function Naming
+
+Functions that work across crate boundaries should be explicit:
+
+```rust
+// riptide-cli/src/commands.rs
+pub async fn start_server(host: String, port: u16, demo: bool) -> Result<()>
+pub async fn add_torrent(source: String, output: Option<PathBuf>) -> Result<()>
+
+// riptide-core/src/lib.rs - conversion helpers
+impl RiptideError {
+    pub fn from_web_ui_error(error: impl std::fmt::Display) -> Self
+    pub fn from_search_error(error: impl std::fmt::Display) -> Self  
+}
 ```
 
 ### The Specificity Rule
@@ -407,3 +486,99 @@ type CompletionHandler = Box<dyn FnOnce(Result<()>) + Send>;
 - Does it disambiguate from similar concepts?
 - Is the abbreviation universally understood?
 - Does the name indicate fallibility (try_) or asyncness?
+
+## Workspace-Specific Guidelines
+
+### Module Naming by Crate
+
+```rust
+// riptide-core/src/ - Technical focus
+torrent/engine.rs               // Core BitTorrent protocol
+streaming/http_server.rs        // HTTP range request handling  
+storage/file_storage.rs         // Copy-on-write file operations
+config.rs                       // Configuration management
+
+// riptide-web/src/ - Web focus  
+handlers.rs                     // HTTP request handlers
+server.rs                       // Web server setup and routing
+templates.rs                    // HTML template rendering
+static_files.rs                 // CSS, JS, image serving
+
+// riptide-search/src/ - Search focus
+service.rs                      // Search coordination and providers
+// Future: providers/magneto.rs, providers/imdb.rs
+
+// riptide-cli/src/ - Command focus
+commands.rs                     // CLI command implementations 
+main.rs                         // Argument parsing and dispatch
+```
+
+### Import Naming Conventions
+
+```rust
+// Avoid naming conflicts by using crate-specific aliases when needed
+use riptide_core::config::RiptideConfig;
+use riptide_core::torrent::TorrentEngine as CoreEngine;
+use riptide_web::server::WebServer;
+use riptide_search::service::MediaSearchService;
+
+// For common types, use fully qualified names
+use riptide_core::{Result as CoreResult, RiptideError};
+use riptide_web::{Result as WebResult, WebUIError};
+use riptide_search::{Result as SearchResult, MediaSearchError};
+```
+
+### Test Naming by Crate
+
+```rust
+// riptide-core tests - Focus on protocol correctness
+#[test]
+fn test_torrent_engine_handles_invalid_info_hash() { }
+#[test] 
+fn test_piece_picker_streaming_prioritizes_sequential() { }
+#[test]
+fn test_storage_copy_on_write_preserves_data() { }
+
+// riptide-web tests - Focus on HTTP behavior
+#[test]
+fn test_web_handlers_return_valid_json() { }
+#[test]
+fn test_template_engine_renders_without_errors() { }
+#[test]
+fn test_static_files_serve_correct_mime_types() { }
+
+// riptide-search tests - Focus on search quality
+#[test]
+fn test_search_results_ranked_by_quality() { }
+#[test]
+fn test_demo_provider_returns_realistic_data() { }
+
+// riptide-cli tests - Focus on command parsing
+#[test]
+fn test_add_command_validates_magnet_links() { }
+#[test]
+fn test_server_command_starts_with_correct_config() { }
+
+// Integration tests - Cross-crate workflows
+#[test]
+fn test_search_to_stream_complete_workflow() { }
+```
+
+### Error Message Consistency
+
+```rust
+// Include crate context in error messages for debugging
+impl fmt::Display for RiptideError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RiptideError::WebUI { reason } => 
+                write!(f, "Web UI error: {reason}"),
+            RiptideError::Torrent(e) => 
+                write!(f, "Core torrent error: {e}"),
+            // Always prefix with component context
+        }
+    }
+}
+```
+
+These workspace-specific guidelines ensure **consistent naming** across all crates while maintaining **clear separation of concerns** and enabling **efficient cross-crate development**.

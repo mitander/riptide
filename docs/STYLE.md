@@ -1,396 +1,352 @@
 # Riptide Style Guide
 
-Write code that streams movies, not code that impresses Rust evangelists.
+Write code that streams movies reliably, not code that impresses Rust evangelists.
 
 ## Core Philosophy
 
 1. **Working > Clever** - Ship features users can use
-2. **Measured > Assumed** - Prove performance improvements
+2. **Measured > Assumed** - Prove performance improvements with benchmarks
 3. **Simple > Flexible** - YAGNI until you need it
+4. **Modular > Monolithic** - Clear crate boundaries enable focused development
 
-## Architecture
+## Workspace Architecture
 
-### Module Organization
+### Crate Organization
+
+Riptide uses a **multi-crate workspace** with clear separation of concerns:
+
+```
+riptide/
+├── riptide-core/     → Core BitTorrent and streaming (no web dependencies)
+├── riptide-web/      → Web UI and HTTP API (depends on core + search)
+├── riptide-search/   → Media search and metadata (standalone)
+└── riptide-cli/      → Command interface (orchestrates other crates)
+```
+
+**Design Rules:**
+- **riptide-core** has zero web dependencies (pure protocol + streaming)
+- **riptide-web** depends on core and search, handles all HTTP concerns
+- **riptide-search** is standalone, can be used independently
+- **riptide-cli** orchestrates other crates, provides unified interface
+
+### Module Organization Within Crates
 
 Deep modules for complex domains, shallow for simple ones:
 
 ```
-src/
-├── torrent/                 # Deep: Complex protocol
+riptide-core/src/
+├── torrent/                 # Deep: Complex BitTorrent protocol
 │   ├── mod.rs              # Public API only
 │   ├── engine.rs           # Core orchestration
-│   ├── peer/               # Peer-related subsystem
+│   ├── enhanced_peer_manager/  # Peer management subsystem
 │   │   ├── mod.rs
-│   │   ├── connection.rs   # Wire protocol
-│   │   ├── messages.rs     # Message types
-│   │   └── handshake.rs    # Connection setup
-│   ├── piece/              # Piece management subsystem
-│   │   ├── mod.rs
-│   │   ├── picker.rs       # Selection algorithms
-│   │   ├── storage.rs      # Disk I/O
-│   │   └── verification.rs # Hash checking
-│   └── tracker/            # Tracker subsystem
-│       ├── mod.rs
-│       ├── http.rs         # HTTP tracker
-│       └── udp.rs          # UDP tracker
-├── streaming/              # Shallow: Simple HTTP
+│   │   ├── connection.rs   # Wire protocol handling
+│   │   ├── bandwidth.rs    # Rate limiting
+│   │   └── metrics.rs      # Performance tracking
+│   ├── piece_picker.rs     # Selection algorithms
+│   ├── peer_connection.rs  # Individual peer handling
+│   └── tracker.rs          # Tracker communication
+├── streaming/              # Medium: HTTP streaming logic
 │   ├── mod.rs
-│   ├── direct.rs           # Range requests
-│   └── hls.rs              # HLS generation
-└── config.rs               # Shallow: Just config
+│   ├── http_server.rs      # Range request handling
+│   ├── range_handler.rs    # Byte range logic
+│   └── stream_coordinator.rs # Session management
+├── storage/                # Medium: File management
+│   ├── mod.rs
+│   ├── file_storage.rs     # Copy-on-write operations
+│   └── test_fixtures.rs    # Development utilities
+└── config.rs               # Shallow: Configuration only
+
+riptide-web/src/
+├── handlers.rs             # Request handlers and API logic
+├── server.rs               # Axum server setup and routing
+├── templates.rs            # Server-side rendering engine
+├── static_files.rs         # CSS, JS, image serving
+└── lib.rs                  # Public API and error types
+
+riptide-search/src/
+├── service.rs              # Search coordination and demo data
+└── lib.rs                  # Public API and error types
+
+riptide-cli/src/
+├── commands.rs             # CLI command implementations
+└── main.rs                 # Command parsing and execution
 ```
 
-**Rule**: If a module exceeds 500 lines, it needs a subdirectory.
+**Size Limits:**
+- **Files**: 500 lines max (split into subdirectory if larger)
+- **Functions**: 50 lines max (exception: state machines)
+- **Crates**: Related functionality only, clear boundaries
 
-### Abstraction Boundaries
-
-Only abstract when you have 2+ implementations:
+### Cross-Crate Dependencies
 
 ```rust
-// WRONG: Premature abstraction
-trait Storage {
-    async fn store(&mut self, data: &[u8]) -> Result<()>;
-}
-struct FileStorage;
-impl Storage for FileStorage { ... }
+// riptide-core: Core functionality, no dependencies on other riptide crates
+pub use config::RiptideConfig;
+pub use torrent::TorrentEngine;
+pub use streaming::DirectStreamingService;
 
-// RIGHT: Concrete first
-struct PieceStorage {
-    base_path: PathBuf,
-}
-impl PieceStorage {
-    pub async fn store(&mut self, piece: &Piece) -> Result<()> { ... }
-}
+// riptide-search: Standalone search functionality
+pub use service::MediaSearchService;
 
-// Later, when adding S3 storage, THEN make the trait
+// riptide-web: Depends on core and search
+use riptide_core::{TorrentEngine, DirectStreamingService};
+use riptide_search::MediaSearchService;
+
+// riptide-cli: Orchestrates all other crates
+use riptide_core::{TorrentEngine, RiptideConfig};
+use riptide_web::{WebServer, WebHandlers};
+use riptide_search::MediaSearchService;
 ```
 
-## Type Safety
+## Error Handling Strategy
 
-### When to Newtype
+### Cross-Crate Error Conversion
 
-Use newtypes to prevent catastrophic mix-ups, not for every integer:
-
-```rust
-// NECESSARY: Easy to swap parameters
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InfoHash([u8; 20]);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PieceIndex(u32);
-
-// OVERKILL: Context makes it obvious
-pub struct FileSize(u64);  // Just use u64
-pub struct PortNumber(u16); // Just use u16
-```
-
-### Builder Pattern
-
-Only for 4+ optional parameters:
+Each crate defines its own error types, with explicit conversion between crates:
 
 ```rust
-// OVERKILL: Just use a function
-TorrentBuilder::new()
-    .info_hash(hash)
-    .build()
-
-// APPROPRIATE: Many optional configs
-TorrentEngineBuilder::new()
-    .download_dir("/media")
-    .max_connections(50)
-    .encryption_required(true)
-    .dht_enabled(false)
-    .piece_picker(Sequential)
-    .build()
-```
-
-## Error Handling
-
-### Error Strategy
-
-```rust
-// Application errors: thiserror with context
+// riptide-core/src/lib.rs
 #[derive(Debug, thiserror::Error)]
-pub enum TorrentError {
-    #[error("Tracker {url} unreachable: {source}")]
-    TrackerUnreachable {
-        url: String,
-        #[source]
-        source: reqwest::Error,
-    },
-
-    #[error("Piece {index} verification failed")]
-    PieceCorrupt { index: PieceIndex },
+pub enum RiptideError {
+    #[error("Torrent error: {0}")]
+    Torrent(#[from] TorrentError),
+    
+    #[error("Storage error: {0}")]
+    Storage(#[from] StorageError),
+    
+    #[error("Web UI error: {reason}")]
+    WebUI { reason: String },
 }
 
-// Library boundaries: Specific enums
-pub enum StreamingError {
-    NotReady,
-    InvalidRange { requested: Range<u64>, available: u64 },
-}
-
-// Internal helpers: Simple strings
-fn validate_piece_size(size: u32) -> Result<(), &'static str> {
-    if size.is_power_of_two() && size >= 16384 {
-        Ok(())
-    } else {
-        Err("Piece size must be power of 2, minimum 16 KiB")
-    }
-}
-```
-
-### Assertions vs Errors
-
-```rust
-// Network input: Always Result
-if packet.len() < 68 {
-    return Err(TorrentError::PacketTooSmall);
-}
-
-// Internal invariants: debug_assert
-debug_assert!(!self.pieces.is_empty(), "Torrent has no pieces");
-
-// Safety-critical: document why assert is needed
-// SAFETY: piece_index bounds-checked above, panic prevents memory corruption
-assert!(piece_index < self.pieces.len());
-```
-
-## Memory Management
-
-### Zero-Allocation Streaming
-
-The streaming path must not allocate:
-
-```rust
-pub struct StreamingService {
-    // Pre-allocated at startup
-    segment_buffer: Box<[u8; SEGMENT_SIZE]>,
-    header_buffer: Box<[u8; 1024]>,
-}
-
-// GOOD: Writes into provided buffer
-pub async fn read_segment(&mut self, output: &mut [u8]) -> Result<usize>
-
-// BAD: Allocates on every call
-pub async fn read_segment(&mut self) -> Result<Vec<u8>>
-```
-
-### Buffer Reuse Pattern
-
-```rust
-pub struct TorrentEngine {
-    // Reused across all operations
-    piece_buffer: BytesMut,
-    message_buffer: BytesMut,
-
-    // Object pools for concurrent operations  
-    verification_pool: Pool<sha1::Sha1>,
-}
-
-impl TorrentEngine {
-    async fn download_piece(&mut self, index: PieceIndex) -> Result<()> {
-        self.piece_buffer.clear();
-        self.piece_buffer.reserve(self.piece_size);
-        // Use buffer...
+impl RiptideError {
+    // Manual conversion for cross-crate errors
+    pub fn from_web_ui_error(error: impl std::fmt::Display) -> Self {
+        RiptideError::WebUI { reason: error.to_string() }
     }
 }
 
-// PATTERN: Always clear/reuse buffers rather than allocate new ones
-// PATTERN: Use Vec::with_capacity() when size is known
-// PATTERN: For protocol parsing, reuse fixed-size buffers on stack
-```
-
-## Async Patterns
-
-### Async vs Sync
-
-**Async for I/O, sync for CPU:**
-
-```rust
-// GOOD: Network I/O: async
-async fn connect_to_peer(addr: SocketAddr) -> Result<PeerConnection>
-
-// GOOD: Disk I/O: async
-async fn load_torrent_file(path: &Path) -> Result<Torrent>
-
-// BAD: CPU-bound: Should be sync + spawn_blocking
-async fn calculate_piece_hash(data: &[u8]) -> Hash  // WRONG!
-
-// GOOD: CPU-bound: Correct approach
-fn calculate_piece_hash(data: &[u8]) -> Hash {
-    // Synchronous computation
+// riptide-web/src/lib.rs  
+#[derive(Debug, thiserror::Error)]
+pub enum WebUIError {
+    #[error("Template error: {reason}")]
+    TemplateError { reason: String },
+    
+    #[error("Server failed to start on {address}: {reason}")]
+    ServerStartFailed { address: std::net::SocketAddr, reason: String },
 }
 
-// Called as:
-let hash = tokio::task::spawn_blocking(move || {
-    calculate_piece_hash(&data)
-}).await?;
-```
-
-### RwLock Scope Management
-
-**MANDATORY**: Use explicit scopes to drop RwLock guards before `.await` calls to prevent deadlocks:
-
-```rust
-// REQUIRED: Explicit scope drops the guard before .await
-{
-    let mut status_map = self.piece_status.write().await;
-    status_map.insert(piece_index, PieceStatus::Downloading);
+// Implement IntoResponse for Axum compatibility
+impl IntoResponse for WebUIError {
+    fn into_response(self) -> Response {
+        let (status, message) = match self {
+            WebUIError::TemplateError { reason } => (StatusCode::INTERNAL_SERVER_ERROR, reason),
+            WebUIError::ServerStartFailed { reason, .. } => (StatusCode::INTERNAL_SERVER_ERROR, reason),
+        };
+        (status, format!("Error: {}", message)).into_response()
+    }
 }
 
-// Next async operation is safe - no lock held across .await
-let piece_data = self.download_from_peers(piece_index).await?;
-
-// BAD: Lock held across .await - potential deadlock
-let mut status_map = self.piece_status.write().await;
-status_map.insert(piece_index, PieceStatus::Downloading);
-let piece_data = self.download_from_peers(piece_index).await?; // DEADLOCK RISK
+// riptide-cli usage
+web_server.start().await.map_err(RiptideError::from_web_ui_error)?;
 ```
 
-**Why explicit scopes are necessary**:
-- RwLock guards must be dropped before `.await` points
-- Prevents deadlocks when multiple async tasks need the same lock
-- Explicit scopes make the lifetime boundaries obvious
-- This pattern is standard in async Rust code
+### Error Documentation
 
-### Cancellation Safety
-
-Every async function must be cancellation-safe:
+All public functions returning `Result` **must** document their errors:
 
 ```rust
-// BAD: Partial write on cancellation
-async fn save_piece(&mut self, piece: Piece) -> Result<()> {
-    self.file.write_all(&piece.data).await?;
-    self.mark_complete(piece.index);  // Never reached if cancelled!
-}
-
-// GOOD: Atomic operation
-async fn save_piece(&mut self, piece: Piece) -> Result<()> {
-    let temp_path = self.temp_path_for(piece.index);
-    tokio::fs::write(&temp_path, &piece.data).await?;
-    tokio::fs::rename(&temp_path, self.final_path_for(piece.index)).await?;
-    self.mark_complete(piece.index);
-}
+/// Starts downloading the specified torrent.
+///
+/// Connects to trackers, discovers peers, and begins piece acquisition using
+/// the configured piece selection strategy.
+///
+/// # Errors
+/// - `TorrentError::InvalidTorrentFile` - Failed to parse torrent data
+/// - `TorrentError::TrackerConnectionFailed` - Could not reach tracker
+/// - `TorrentError::InsufficientDiskSpace` - Not enough storage available
+pub async fn start_download(&mut self, magnet_link: &str) -> Result<DownloadHandle, TorrentError>
 ```
 
-## Testing
+## Testing Strategy
 
-### Test Organization
+### Test Organization by Crate
 
 ```rust
-// Unit tests: Same file, focused
+// riptide-core/src/torrent/engine.rs
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_piece_picker_rarest_first_selects_minimum() {
-        // Test ONE specific behavior
+    use crate::config::RiptideConfig;
+    
+    #[tokio::test]
+    async fn test_add_magnet_link() {
+        let config = RiptideConfig::default();
+        let mut engine = TorrentEngine::new(config);
+        // Test core functionality
     }
 }
 
-// Integration tests: tests/ directory
-// tests/torrent_download.rs
-#[tokio::test]
-async fn test_download_ubuntu_iso() {
-    // Real torrent, real tracker, verify completion
+// riptide-web/src/handlers.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use riptide_core::config::RiptideConfig;
+    use riptide_core::torrent::TorrentEngine;
+    
+    #[tokio::test]
+    async fn test_web_handlers_creation() {
+        let config = RiptideConfig::default();
+        let engine = Arc::new(RwLock::new(TorrentEngine::new(config)));
+        // Test web layer
+    }
 }
+```
 
-// Benchmarks: benches/ directory
-// benches/piece_selection.rs
-use criterion::{criterion_group, criterion_main, Criterion};
+### Integration Testing
+
+```rust
+// tests/integration_tests.rs (workspace root)
+use riptide_core::{TorrentEngine, RiptideConfig};
+use riptide_web::{WebServer, WebHandlers};
+use riptide_search::MediaSearchService;
+
+#[tokio::test]
+async fn test_full_workflow() {
+    // Test complete search -> download -> stream workflow
+    let config = RiptideConfig::default();
+    let engine = TorrentEngine::new(config.clone());
+    let search = MediaSearchService::new_demo();
+    
+    // Integration test across all crates
+}
 ```
 
 ### Mock Strategy
 
-Mock at protocol boundaries, not internal APIs:
+Mock at **crate boundaries**, not internal APIs:
 
 ```rust
-// GOOD: Mock the wire protocol
-pub trait TrackerProtocol: Send + Sync {
-    async fn announce(&self, req: AnnounceRequest) -> Result<AnnounceResponse>;
+// riptide-search/src/service.rs
+#[async_trait]
+pub trait TorrentSearchProvider: Send + Sync + std::fmt::Debug {
+    async fn search_torrents(&self, query: &str, category: &str) 
+        -> Result<Vec<MediaSearchResult>, MediaSearchError>;
+}
+
+// Mock for testing web layer
+#[cfg(test)]
+pub struct MockSearchProvider {
+    results: Vec<MediaSearchResult>,
 }
 
 #[cfg(test)]
-pub struct MockTracker {
-    responses: Vec<AnnounceResponse>,
-}
-
-// BAD: Mock internal components
-trait PiecePickerTrait {  // Don't make traits just for mocking
-    fn next_piece(&self) -> Option<PieceIndex>;
-}
-```
-
-### Property Testing
-
-Use proptest for protocol invariants:
-
-```rust
-proptest! {
-    #[test]
-    fn test_bitfield_never_exceeds_piece_count(
-        piece_count: u32,
-        set_pieces: Vec<u32>
-    ) {
-        let bitfield = Bitfield::new(piece_count);
-        for &piece in &set_pieces {
-            if piece < piece_count {
-                bitfield.set(piece);
-            }
-        }
-        prop_assert_eq!(bitfield.count_set(),
-                       set_pieces.iter().filter(|&&p| p < piece_count).count());
+impl MockSearchProvider {
+    pub fn with_results(results: Vec<MediaSearchResult>) -> Self {
+        Self { results }
     }
 }
 ```
 
-## Performance
+## Performance Standards
 
-### Measurement First
+### Measurement Requirements
 
-Every optimization needs proof:
+Every optimization needs proof with specific benchmarks:
 
 ```rust
-// BENCHMARK: peer_message_parsing
-// Before: 847ns per message
-// After:  623ns per message
-//
-// Change: Reuse message buffer instead of allocating
-// Worth it: 26% improvement × millions of messages = yes
+// BENCHMARK: torrent_piece_selection
+// Before: 847ns per piece selection, 156 allocations
+// After:  623ns per piece selection, 12 allocations  
+// Improvement: 26.4% faster, 92% fewer allocations
+// Justification: Hot path called per-piece during streaming
 ```
 
-### Common Patterns
+### Zero-Allocation Streaming Paths
 
 ```rust
-// Pre-size collections when size is known
-let mut peers = Vec::with_capacity(announce_response.peers.len());
-
-// Use SmallVec for usually-small collections
-use smallvec::SmallVec;
-type PieceList = SmallVec<[PieceIndex; 8]>;  // Stack storage for ≤8 pieces
-
-// Avoid allocating in loops
-// BAD
-for piece in pieces {
-    let hash = piece.data.to_vec();  // Allocates every iteration
+// riptide-core/src/streaming/
+pub struct DirectStreamingService {
+    // Pre-allocated at startup, reused for all streams
+    segment_buffer: Box<[u8; SEGMENT_SIZE]>,
+    header_buffer: Box<[u8; 1024]>,
+    piece_cache: HashMap<PieceIndex, Vec<u8>>,
 }
 
-// GOOD
-let mut hash_buffer = Vec::with_capacity(20);
-for piece in pieces {
-    hash_buffer.clear();
-    hash_buffer.extend_from_slice(&piece.data);
+impl DirectStreamingService {
+    // Write into provided buffer, never allocate
+    pub async fn read_segment(&mut self, output: &mut [u8]) -> Result<usize> {
+        // Reuse pre-allocated buffers
+        self.segment_buffer.clear();
+        // ... streaming logic
+    }
 }
 ```
 
-## Documentation
+### Performance Targets
 
-Comments explain WHY, not WHAT. Omit obvious comments.
+- **Piece selection**: <1000ns per operation
+- **HTTP response**: <100ms from request to first byte
+- **Memory usage**: <50MB baseline, <1MB per active stream
+- **Startup time**: <500ms for web server initialization
+
+## Configuration Architecture
+
+### Runtime vs Compile-time Configuration
+
+**Use runtime configuration** for all behavior changes:
+
+```rust
+// riptide-core/src/config.rs
+#[derive(Debug, Clone)]
+pub struct RiptideConfig {
+    pub network: NetworkConfig,
+    pub storage: StorageConfig, 
+    pub simulation: SimulationConfig,  // Runtime, not #[cfg(simulation)]
+}
+
+#[derive(Debug, Clone)]
+pub struct SimulationConfig {
+    pub enabled: bool,                    // Runtime flag
+    pub deterministic_seed: Option<u64>,  // Deterministic testing
+    pub max_simulated_peers: usize,       // Configurable simulation
+    pub use_mock_data: bool,              // Development vs production
+}
+
+// Environment variable support
+impl RiptideConfig {
+    pub fn from_env() -> Self {
+        let simulation_enabled = std::env::var("RIPTIDE_SIMULATION")
+            .unwrap_or_default() == "true";
+        // ... load from environment
+    }
+}
+```
+
+**Never use compile-time features** for behavior changes:
+
+```rust
+// WRONG: Compile-time simulation
+#[cfg(feature = "simulation")]
+fn create_peer_manager() -> PeerManager {
+    SimulatedPeerManager::new()
+}
+
+// RIGHT: Runtime configuration  
+fn create_peer_manager(config: &RiptideConfig) -> Box<dyn PeerManager> {
+    if config.simulation.enabled {
+        Box::new(SimulatedPeerManager::new(config.simulation.clone()))
+    } else {
+        Box::new(ProductionPeerManager::new())
+    }
+}
+```
+
+## Documentation Standards
 
 ### Public API Documentation
 
-**Required for all public functions:**
+**Required for all public functions**:
 
 ```rust
 /// Compresses RTP/UDP/IP headers into ROHC packet.
@@ -412,9 +368,9 @@ Comments explain WHY, not WHAT. Omit obvious comments.
 pub fn compress(&mut self, headers: &Headers, buffer: &mut [u8]) -> Result<usize, RohcError>
 ```
 
-### Internal Function Documentation
+### Internal Documentation
 
-**Brief docs for complex algorithms only:**
+Brief docs for complex algorithms only:
 
 ```rust
 /// RFC 3095 4.5.1: Calculate minimum k-bits for W-LSB encoding
@@ -424,314 +380,174 @@ fn calculate_k_bits(v_ref: u16, v: u16) -> u8
 fn get_sequence_number(&self) -> u16
 ```
 
-### Module Documentation
+### Cross-Crate Documentation
 
-**Document module purpose and key concepts:**
+Document **why** crates are separated, not just **what** they do:
 
 ```rust
-//! BitTorrent tracker communication abstractions and implementations.
+//! Riptide Core - Essential BitTorrent and streaming functionality
 //!
-//! Provides HTTP and UDP tracker clients following BEP 3 and BEP 15.
-//! Supports announce/scrape operations with automatic URL encoding
-//! and compact peer list parsing.
+//! This crate provides the fundamental building blocks for BitTorrent-based
+//! media streaming: torrent protocol implementation, file storage, streaming
+//! services, and configuration management.
+//!
+//! **Design Philosophy**: Core functionality with zero web dependencies.
+//! This enables embedding in CLI tools, desktop applications, or alternative
+//! web frameworks without pulling in HTTP server dependencies.
+
+//! Riptide Web - Web UI and API server
+//!
+//! Provides HTTP-based interface for managing torrents and streaming media.
+//! Built on Axum with server-side rendering and RESTful API endpoints.
+//!
+//! **Design Philosophy**: All web concerns isolated here. Template rendering,
+//! static file serving, HTTP routing, and WebSocket connections. Depends on
+//! riptide-core for business logic and riptide-search for media discovery.
 ```
 
-### Inline Comments
+## Commit Message Standards
 
-**Explain WHY, not WHAT. Reference specs when applicable:**
-
-```rust
-// BEP 3: Use 16 KiB blocks for peer compatibility
-const BLOCK_SIZE: u32 = 16384;
-
-// BitTorrent protocol: Peers MUST send bitfield after handshake
-self.expect_bitfield = true;
-
-// Avoid TCP slow start by requesting next piece immediately
-self.request_next_piece_optimistically()?;
-```
-
-### What NOT to Comment
-
-```rust
-// BAD - obvious from code
-let count = count + 1;  // Increment counter
-
-// BAD - implementation detail
-// TODO: optimize this later
-
-// BAD - restating types/names
-let parser: BencodeTorrentParser = BencodeTorrentParser::new();
-
-// BAD - explaining obvious control flow
-if result.is_err() {  // Check if there was an error
-    return result;
-}
-```
-
-### TODO Comment Standards
-
-**DO Use TODOs for:**
-- Specific implementation tasks with clear scope
-- Protocol features requiring standardized implementation
-- Performance optimizations with measurable targets
-- Error handling improvements with specific scenarios
-
-**TODO Format:**
-```rust
-// TODO: [Scope] Specific action - context if needed
-// TODO: Add DHT support per BEP 5 for trackerless operation
-// TODO: Implement piece priority queue for streaming optimization
-// TODO: Add connection pooling - current approach creates too many sockets
-```
-
-**DON'T Use TODOs for:**
-- Vague intentions without actionable steps
-- Features that may never be implemented
-- Architecture decisions still under debate
-- Comments that should be issues in the tracker instead
-
-## Patterns and Anti-Patterns
-
-### Do This
-
-```rust
-// Early returns for clarity
-pub fn validate_torrent(data: &[u8]) -> Result<Torrent> {
-    if data.len() < 100 {
-        return Err(TorrentError::TooSmall);
-    }
-
-    let dict = bencode::decode(data)?;
-    let info = dict.get("info").ok_or(TorrentError::MissingInfo)?;
-    // ...
-}
-
-// Explicit types for clarity
-let peers: Vec<SocketAddr> = response.peers
-    .into_iter()
-    .filter_map(|p| p.parse().ok())
-    .collect();
-
-// Separate concerns
-impl Torrent {
-    pub fn info_hash(&self) -> InfoHash { ... }      // Pure computation
-    pub async fn save(&self, path: &Path) -> Result<()> { ... }  // I/O operation
-}
-```
-
-### Not This
-
-```rust
-// BAD: Deeply nested code
-if let Some(torrent) = torrents.get(&info_hash) {
-    if torrent.is_complete() {
-        if let Some(peer) = torrent.fastest_peer() {
-            // ... 5 more levels
-        }
-    }
-}
-
-// BAD: Boolean parameters
-engine.start_download(info_hash, true, false);  // What do these mean?
-
-// GOOD: Use enums or builder
-engine.start_download(info_hash, DownloadMode::Sequential, Encryption::Optional);
-
-// BAD: Stringly-typed APIs
-tracker.set_event("started");
-
-// GOOD: Use enums
-tracker.set_event(TrackerEvent::Started);
-```
-
-## Commit Messages
-
-### Critical Rules
-
-1. **NEVER mention code generation tools** - commits should appear human-authored
-2. **Be concise but complete** - include WHAT changed and WHY
-3. **Assume competent reader** - skip obvious explanations
-4. **List key changes** - use bullet points for multi-component commits
-
-### Format
+### Workspace-Aware Commit Format
 
 ```
 type(scope): concise description
 
-- Key change or addition explanation
-- Another important change if multi-component
+- Key change explanation if multi-component
 - Brief WHY if not obvious from changes
 
-BENCHMARK: name_of_benchmark (only if performance changed)
+BENCHMARK: benchmark_name (only if performance changed)
 Before: X
 After: Y
 ```
 
-### Examples
+### Scope Examples
 
 ```bash
-feat(torrent): add sequential piece selection
-
-Required for streaming playback without buffering delays.
-
-fix(tracker): handle compact peer response
-
-Support BEP 23 compact format used by some trackers.
-
-feat(simulation): implement comprehensive mock environment
-
-- MockTracker with configurable announce responses and failure injection
-- NetworkSimulator for realistic latency, packet loss, bandwidth limits
-- MockPeer with configurable reliability and upload speeds
-- Enables offline development and deterministic testing
-
-perf(streaming): reuse segment buffers
-
-BENCHMARK: stream_segment
-Before: 1.2ms per segment, 847 allocations
-After: 0.3ms per segment, 2 allocations
+feat(core): add deadline-based piece selection
+fix(web): handle template rendering errors gracefully  
+perf(search): cache torrent quality calculations
+refactor(cli): extract command parsing to separate module
+docs(workspace): update architecture documentation
+test(integration): add full search-to-stream workflow test
 ```
 
-### Types
+### Cross-Crate Changes
 
-- `feat`: New functionality
-- `fix`: Bug fix
-- `perf`: Performance improvement
-- `refactor`: Code restructuring
-- `test`: Test additions/changes
-- `docs`: Documentation only
-- `chore`: Build/tooling/dependencies
+```bash
+feat(workspace): implement unified streaming interface
 
-## Code Review Checklist
+Add StreamSource enum in riptide-core and update web handlers
+to support both torrent and local file streaming.
 
-Before merging, ensure:
+CHANGES:
+- riptide-core: Add StreamSource enum and UnifiedStreamer
+- riptide-web: Update handlers to use unified streaming API
+- riptide-cli: Add local file streaming command support
 
-- [ ] **Correctness**: Follows BitTorrent/HTTP/HLS specs
-- [ ] **Performance**: No allocations in hot paths
-- [ ] **Safety**: All unwraps justified or removed
-- [ ] **Testing**: Unit tests for logic, integration for protocols
-- [ ] **Documentation**: Public APIs fully documented
-- [ ] **Naming**: Follows conventions, no ambiguity
-- [ ] **Errors**: Proper context, helpful messages
-- [ ] **Future-proof**: Won't break when adding features
-
-## Tool Configuration
-
-### Clippy Settings
-
-```toml
-# clippy.toml
-cognitive-complexity-threshold = 20  # Lower than default
-too-many-lines-threshold = 400      # Modules, not monoliths
-too-many-arguments-threshold = 5    # Use builders instead
-
-# Warn on these
-warn = [
-    "clippy::missing_errors_doc",
-    "clippy::missing_panics_doc",
-    "clippy::exhaustive_enums",
-]
-
-# Allow pragmatic code
-allow = [
-    "clippy::match_bool",           # Sometimes clearer
-    "clippy::single_match_else",    # Often more readable
-]
+BENCHMARK: stream_initialization
+Before: 245ms (torrent-only)
+After: 198ms (unified interface)
 ```
 
-### Rustfmt Settings
+## Essential Commands
 
-```toml
-# rustfmt.toml
-max_width = 100                    # Not too wide
-use_field_init_shorthand = true    # Clean struct init
-imports_granularity = "Module"     # One import per module
-group_imports = "StdExternalCrate" # Stdlib, external, crate
+### Workspace Development
+
+```bash
+# Build entire workspace
+cargo build --workspace
+
+# Test all crates with output
+cargo test --workspace -- --nocapture
+
+# Check specific crate
+cargo check -p riptide-core
+cargo test -p riptide-web
+
+# Run CLI from workspace
+cargo run -p riptide-cli -- server --demo
+
+# Format and lint
+cargo fmt --all
+cargo clippy --workspace -- -D warnings
 ```
 
-## Standardized Patterns
+### Performance Measurement
 
-These patterns MUST be used consistently throughout the codebase:
+```bash
+# Run benchmarks for specific crate
+cargo bench -p riptide-core
 
-### Error Conversion
+# Profile streaming performance
+cargo run --release -p riptide-cli -- server &
+# Use profiling tools against running server
+```
+
+## Code Quality Standards
+
+### Import Organization
+
 ```rust
-// ALWAYS use #[from] for automatic conversion
+// Standard library
+use std::collections::HashMap;
+use std::sync::Arc;
+
+// External crates (alphabetical)
+use axum::response::IntoResponse;
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+
+// Internal workspace crates (dependency order)
+use riptide_core::config::RiptideConfig;
+use riptide_core::torrent::TorrentEngine;
+use riptide_search::MediaSearchService;
+
+// Local modules (relative imports)
+use super::WebUIError;
+use crate::templates::TemplateEngine;
+```
+
+### Error Handling
+
+```rust
+// Within same crate: Use #[from] for automatic conversion
 #[derive(Debug, thiserror::Error)]
 pub enum TorrentError {
     #[error("Storage error")]
-    Storage(#[from] crate::storage::StorageError),
+    Storage(#[from] StorageError),
+    
+    #[error("Network error")]  
+    Network(#[from] reqwest::Error),
 }
 
-// Then use simple ? operator
-self.storage.store_piece(...).await?;  // Not .map_err()
+// Cross-crate: Use explicit conversion
+web_server.start().await.map_err(RiptideError::from_web_ui_error)?;
 ```
 
-### Configuration Access
+### Memory Management
+
 ```rust
-// ALWAYS use centralized config, never hard-coded values
-use crate::config::RiptideConfig;
-
-let config = RiptideConfig::default();
-let timeout = config.network.tracker_timeout;  // Not Duration::from_secs(30)
-```
-
-### Test Data Creation  
-```rust
-// ALWAYS use domain-specific test modules, not global helpers
-use crate::torrent::test_data::*;        // Torrent-specific test data
-use crate::storage::test_fixtures::*;    // Storage-specific test fixtures
-
-let metadata = create_test_torrent_metadata();  // Not inline creation
-let (temp_dir, downloads, library) = create_temp_storage_dirs();
-
-// For complex setups, use composition functions
-let (metadata, storage, _temp) = create_test_environment();  // Combines both
-```
-
-### Async Lock Pattern
-```rust
-// ALWAYS use this pattern for shared state
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-struct SharedState {
-    data: Arc<RwLock<HashMap<Key, Value>>>,
+// Pre-allocate in constructors
+pub struct TorrentEngine {
+    piece_buffer: Vec<u8>,           // Pre-allocated to max piece size
+    peer_connections: Vec<PeerConnection>, // Pre-sized connection pool
 }
 
-// Access pattern
-{
-    let guard = self.data.read().await;
-    // Read operations
+impl TorrentEngine {
+    pub fn new(config: RiptideConfig) -> Self {
+        Self {
+            piece_buffer: Vec::with_capacity(config.max_piece_size),
+            peer_connections: Vec::with_capacity(config.max_peers),
+        }
+    }
+    
+    // Reuse allocated memory
+    pub fn process_piece(&mut self, data: &[u8]) -> Result<()> {
+        self.piece_buffer.clear();  // Reuse, don't reallocate
+        self.piece_buffer.extend_from_slice(data);
+        // Process...
+    }
 }
-{
-    let mut guard = self.data.write().await;
-    // Write operations  
-}
-// Locks released at block end
 ```
 
-### Function Naming Consistency
-```rust
-// Network operations: verb + target
-async fn connect_to_peer()      // Not connect()
-async fn announce_to_tracker()  // Not announce()
-
-// Parsing operations: descriptive names (no try_ prefix)
-fn parse_torrent_data()         // Not try_parse_torrent_data()
-fn deserialize_handshake()      // Not try_deserialize_handshake()
-```
-
-## Final Wisdom
-
-**Remember**: You're building a media server, not entering an obfuscated code contest.
-
-When making decisions:
-1. Will this stream movies reliably?
-2. Can someone debug this at 3 AM?
-3. Does it actually make things faster? (prove it)
-4. Are we solving real problems or theoretical ones?
-
-> "There are two ways of constructing software: make it so simple that there are obviously no deficiencies, or make it so complicated that there are no obvious deficiencies." - C.A.R. Hoare
-
-Choose simple. Every time.
+This style guide reflects the **current workspace architecture** and provides **concrete patterns** for maintaining code quality across all crates while enabling independent development and deployment.

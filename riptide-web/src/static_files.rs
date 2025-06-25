@@ -1,8 +1,9 @@
 //! Static file serving for web UI assets
 
 use std::path::PathBuf;
-use axum::response::{Response, IntoResponse};
+
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 
 /// Simple static file handler for serving web assets
 #[derive(Debug, Clone)]

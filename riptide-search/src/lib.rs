@@ -4,7 +4,7 @@
 
 mod service;
 
-// Re-export main types  
+// Re-export main types
 pub use service::{MediaSearchResult, MediaSearchService, TorrentResult};
 
 /// Search-specific errors.

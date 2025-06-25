@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
+use riptide_core::streaming::DirectStreamingService;
+use riptide_core::torrent::TorrentEngine;
+use riptide_search::{MediaSearchResult, MediaSearchService, TorrentResult};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use super::WebUIError;
-use riptide_core::streaming::DirectStreamingService;
-use riptide_core::torrent::TorrentEngine;
-use riptide_search::{MediaSearchResult, MediaSearchService, TorrentResult};
 
 /// Web request handlers providing data for UI pages and API endpoints.
 #[derive(Clone)]
@@ -370,8 +370,9 @@ pub struct ServerSettings {
 
 #[cfg(test)]
 mod tests {
+    use riptide_core::config::RiptideConfig;
+
     use super::*;
-    use crate::config::RiptideConfig;
 
     #[tokio::test]
     async fn test_web_handlers_creation() {

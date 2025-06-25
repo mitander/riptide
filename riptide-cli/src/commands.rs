@@ -3,14 +3,13 @@
 use std::path::PathBuf;
 
 use clap::Subcommand;
-use tokio::fs;
-
 use riptide_core::config::RiptideConfig;
 use riptide_core::streaming::DirectStreamingService;
 use riptide_core::torrent::{InfoHash, TorrentEngine, TorrentError};
 use riptide_core::{Result, RiptideError};
 use riptide_search::MediaSearchService;
 use riptide_web::{TemplateEngine, WebHandlers, WebServer, WebServerConfig};
+use tokio::fs;
 
 /// Available CLI commands
 #[derive(Subcommand)]
@@ -219,10 +218,7 @@ pub async fn run_simulation(peers: usize, torrent: PathBuf) -> Result<()> {
     config.simulation.max_simulated_peers = peers;
     config.simulation.deterministic_seed = Some(42);
 
-    println!(
-        "Created simulation environment with {} peers",
-        peers
-    );
+    println!("Created simulation environment with {} peers", peers);
 
     // Full BitTorrent simulation implementation pending
     println!("Simulation running... (press Ctrl+C to stop)");
@@ -391,7 +387,10 @@ pub async fn start_server(host: String, port: u16, demo: bool) -> Result<()> {
     println!("Press Ctrl+C to stop the server");
 
     // Start the server (this will block)
-    web_server.start().await.map_err(RiptideError::from_web_ui_error)?;
+    web_server
+        .start()
+        .await
+        .map_err(RiptideError::from_web_ui_error)?;
 
     Ok(())
 }

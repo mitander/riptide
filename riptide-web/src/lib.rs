@@ -2,8 +2,8 @@
 //!
 //! Provides HTTP-based interface for managing torrents and streaming media.
 
-use axum::response::{Html, IntoResponse, Response};
 use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
 
 pub mod handlers;
 pub mod server;
@@ -31,7 +31,10 @@ pub enum WebUIError {
     InternalError { reason: String },
 
     #[error("Server failed to start on {address}: {reason}")]
-    ServerStartFailed { address: std::net::SocketAddr, reason: String },
+    ServerStartFailed {
+        address: std::net::SocketAddr,
+        reason: String,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, WebUIError>;
@@ -42,7 +45,9 @@ impl IntoResponse for WebUIError {
             WebUIError::TemplateError { reason } => (StatusCode::INTERNAL_SERVER_ERROR, reason),
             WebUIError::HandlerError { reason } => (StatusCode::BAD_REQUEST, reason),
             WebUIError::InternalError { reason } => (StatusCode::INTERNAL_SERVER_ERROR, reason),
-            WebUIError::ServerStartFailed { reason, .. } => (StatusCode::INTERNAL_SERVER_ERROR, reason),
+            WebUIError::ServerStartFailed { reason, .. } => {
+                (StatusCode::INTERNAL_SERVER_ERROR, reason)
+            }
         };
 
         let body = format!("Error: {}", error_message);

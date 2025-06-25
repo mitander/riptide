@@ -59,8 +59,8 @@ impl TemplateEngine {
 
         // Load base template
         let base_template = template_dir.join("base.html");
-        let base_content = fs::read_to_string(&base_template)
-            .unwrap_or_else(|_| Self::base_template());
+        let base_content =
+            fs::read_to_string(&base_template).unwrap_or_else(|_| Self::base_template());
 
         Self {
             templates,
