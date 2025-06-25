@@ -43,7 +43,7 @@ impl TemplateEngine {
             self.templates
                 .get(template_name)
                 .ok_or_else(|| WebUIError::TemplateError {
-                    reason: format!("Template '{}' not found", template_name),
+                    reason: format!("Template '{template_name}' not found"),
                 })?;
 
         let content = self.interpolate_template(template, context)?;
@@ -56,25 +56,49 @@ impl TemplateEngine {
     fn interpolate_template(&self, template: &str, context: &Value) -> Result<String, WebUIError> {
         let mut result = template.to_string();
 
-        // Simple template variable replacement
-        if let Value::Object(map) = context {
-            for (key, value) in map {
-                let placeholder = format!("{{{{{}}}}}", key);
-                let replacement = match value {
-                    Value::String(s) => s.clone(),
-                    Value::Number(n) => n.to_string(),
-                    Value::Bool(b) => b.to_string(),
-                    Value::Array(_) | Value::Object(_) => {
-                        // For complex values, render as JSON for JavaScript consumption
-                        serde_json::to_string(value).unwrap_or_default()
-                    }
-                    Value::Null => String::new(),
-                };
-                result = result.replace(&placeholder, &replacement);
+        // Find all {{...}} placeholders using simple string search
+        let mut start = 0;
+        while let Some(begin) = result[start..].find("{{") {
+            let begin = start + begin;
+            if let Some(end) = result[begin..].find("}}") {
+                let end = begin + end + 2; // Include the }}
+                let full_placeholder = &result[begin..end];
+                let property_path = &result[begin + 2..end - 2].trim();
+
+                if let Some(value) = self.get_nested_value(context, property_path) {
+                    let replacement = match value {
+                        Value::String(s) => s.clone(),
+                        Value::Number(n) => n.to_string(),
+                        Value::Bool(b) => b.to_string(),
+                        Value::Array(_) | Value::Object(_) => {
+                            // For complex values, render as JSON for JavaScript consumption
+                            serde_json::to_string(value).unwrap_or_default()
+                        }
+                        Value::Null => String::new(),
+                    };
+                    result = result.replace(full_placeholder, &replacement);
+                    start = begin + replacement.len();
+                } else {
+                    start = end;
+                }
+            } else {
+                break;
             }
         }
 
         Ok(result)
+    }
+
+    /// Get nested value from JSON using dot notation (e.g., "stats.total_torrents").
+    fn get_nested_value<'a>(&self, value: &'a Value, path: &str) -> Option<&'a Value> {
+        let parts: Vec<&str> = path.split('.').collect();
+        let mut current = value;
+
+        for part in parts {
+            current = current.get(part)?;
+        }
+
+        Some(current)
     }
 
     /// Wraps content in base template layout.

@@ -3,6 +3,7 @@
 use std::net::SocketAddr;
 
 use axum::Router;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use tower_http::cors::CorsLayer;
 
@@ -98,11 +99,13 @@ impl WebServer {
 
         tracing::info!("Web UI server starting on {}", self.config.bind_address);
 
-        tokio::spawn(async move {
-            if let Err(e) = axum::serve(listener, app).await {
-                tracing::error!("Web server error: {}", e);
-            }
-        });
+        // Run the server directly (blocking)
+        axum::serve(listener, app)
+            .await
+            .map_err(|e| WebUIError::ServerStartFailed {
+                address: self.config.bind_address,
+                reason: e.to_string(),
+            })?;
 
         Ok(())
     }
@@ -243,7 +246,10 @@ async fn static_file_handler(
     axum::extract::State(state): axum::extract::State<AppState>,
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> axum::response::Response {
-    state.static_handler.serve(&path)
+    match state.static_handler.serve(&path) {
+        Ok(response) => response,
+        Err(status_code) => (status_code, "File not found").into_response(),
+    }
 }
 
 #[cfg(test)]
@@ -253,6 +259,8 @@ mod tests {
     use tokio::sync::RwLock;
 
     use super::*;
+    use crate::streaming::DirectStreamingService;
+    use crate::torrent::TorrentEngine;
 
     #[test]
     fn test_web_server_config_from_riptide() {
@@ -268,10 +276,8 @@ mod tests {
     fn test_web_server_base_url() {
         let config = WebServerConfig::from_riptide_config(&RiptideConfig::default());
         let handlers = WebHandlers::new(
-            Arc::new(RwLock::new(crate::torrent::TorrentEngine::new(
-                RiptideConfig::default(),
-            ))),
-            Arc::new(RwLock::new(crate::streaming::DirectStreamingService::new(
+            Arc::new(RwLock::new(TorrentEngine::new(RiptideConfig::default()))),
+            Arc::new(RwLock::new(DirectStreamingService::new(
                 RiptideConfig::default(),
             ))),
         );

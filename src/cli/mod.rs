@@ -73,6 +73,17 @@ pub enum Commands {
         /// Torrent file to simulate downloading
         torrent: PathBuf,
     },
+
+    /// Start the web server for the dashboard and API
+    Server {
+        /// Port to bind to
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+
+        /// Host to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
 }
 
 /// Main CLI entry point
@@ -99,5 +110,6 @@ pub async fn run_cli() -> crate::Result<()> {
         Commands::Status { torrent } => commands::show_status(torrent).await,
         Commands::List => commands::list_torrents().await,
         Commands::Simulate { peers, torrent } => commands::run_simulation(peers, torrent).await,
+        Commands::Server { port, host } => commands::start_server(host, port).await,
     }
 }

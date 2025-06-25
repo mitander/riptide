@@ -25,6 +25,9 @@ pub enum RiptideError {
     #[error("Storage error: {0}")]
     Storage(#[from] storage::StorageError),
 
+    #[error("Web UI error: {0}")]
+    WebUI(#[from] web::WebUIError),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }

@@ -6,14 +6,17 @@ use tokio::fs;
 
 use crate::config::RiptideConfig;
 use crate::simulation::SimulationEnvironment;
-use crate::torrent::{InfoHash, TorrentEngine};
+use crate::streaming::DirectStreamingService;
+use crate::torrent::{InfoHash, TorrentEngine, TorrentError};
+use crate::web::{TemplateEngine, WebHandlers, WebServer, WebServerConfig};
+use crate::{Result, RiptideError};
 
 /// Add a torrent by magnet link or file
 ///
 /// # Errors
-/// - `crate::Error::TorrentError` - Failed to parse or add torrent
-/// - `crate::Error::IoError` - File system operation failed
-pub async fn add_torrent(source: String, output: Option<PathBuf>) -> crate::Result<()> {
+/// - `RiptideError::Torrent` - Failed to parse or add torrent
+/// - `RiptideError::Io` - File system operation failed
+pub async fn add_torrent(source: String, output: Option<PathBuf>) -> Result<()> {
     let config = RiptideConfig::default();
     let mut engine = TorrentEngine::new(config);
 
@@ -28,7 +31,7 @@ pub async fn add_torrent(source: String, output: Option<PathBuf>) -> crate::Resu
         engine.add_torrent_data(&torrent_data).await?
     };
 
-    println!("Successfully added torrent: {}", info_hash);
+    println!("Successfully added torrent: {info_hash}");
 
     if let Some(output_dir) = output {
         println!("  Download directory: {}", output_dir.display());
@@ -40,17 +43,17 @@ pub async fn add_torrent(source: String, output: Option<PathBuf>) -> crate::Resu
 /// Start downloading a torrent
 ///
 /// # Errors
-/// - `crate::Error::TorrentError` - Torrent not found or download failed to start
-pub async fn start_torrent(torrent: String) -> crate::Result<()> {
+/// - `RiptideError::Torrent` - Torrent not found or download failed to start
+pub async fn start_torrent(torrent: String) -> Result<()> {
     let config = RiptideConfig::default();
     let mut engine = TorrentEngine::new(config);
 
     let info_hash = parse_torrent_identifier(&torrent)?;
 
-    println!("Starting download for torrent: {}", info_hash);
+    println!("Starting download for torrent: {info_hash}");
     engine.start_download(info_hash).await?;
 
-    println!("Download started for torrent: {}", info_hash);
+    println!("Download started for torrent: {info_hash}");
     println!("  Connecting to peers and beginning piece downloads...");
 
     Ok(())
@@ -59,18 +62,18 @@ pub async fn start_torrent(torrent: String) -> crate::Result<()> {
 /// Stop downloading a torrent
 ///
 /// # Errors
-/// - `crate::Error::TorrentError` - Torrent not found or stop failed
-pub async fn stop_torrent(torrent: String) -> crate::Result<()> {
+/// - `RiptideError::Torrent` - Torrent not found or stop failed
+pub async fn stop_torrent(torrent: String) -> Result<()> {
     let config = RiptideConfig::default();
     let _engine = TorrentEngine::new(config);
 
     let info_hash = parse_torrent_identifier(&torrent)?;
 
-    println!("Stopping download for torrent: {}", info_hash);
+    println!("Stopping download for torrent: {info_hash}");
     // TODO: Add stop_download method to engine
     println!("Note: Stop functionality pending engine enhancement");
 
-    println!("Download stopped for torrent: {}", info_hash);
+    println!("Download stopped for torrent: {info_hash}");
     println!("  Connections closed and resources released");
 
     Ok(())
@@ -79,8 +82,8 @@ pub async fn stop_torrent(torrent: String) -> crate::Result<()> {
 /// Show status of torrents
 ///
 /// # Errors
-/// - `crate::Error::TorrentError` - Failed to retrieve torrent status
-pub async fn show_status(torrent: Option<String>) -> crate::Result<()> {
+/// - `RiptideError::Torrent` - Failed to retrieve torrent status
+pub async fn show_status(torrent: Option<String>) -> Result<()> {
     let config = RiptideConfig::default();
     let engine = TorrentEngine::new(config);
 
@@ -96,8 +99,8 @@ pub async fn show_status(torrent: Option<String>) -> crate::Result<()> {
 /// List all torrents
 ///
 /// # Errors
-/// - `crate::Error::TorrentError` - Failed to retrieve torrent list
-pub async fn list_torrents() -> crate::Result<()> {
+/// - `RiptideError::Torrent` - Failed to retrieve torrent list
+pub async fn list_torrents() -> Result<()> {
     let config = RiptideConfig::default();
     let engine = TorrentEngine::new(config);
 
@@ -132,7 +135,7 @@ pub async fn list_torrents() -> crate::Result<()> {
 ///
 /// # Errors
 /// - Currently returns Ok but will add simulation errors in future implementation
-pub async fn run_simulation(peers: usize, torrent: PathBuf) -> crate::Result<()> {
+pub async fn run_simulation(peers: usize, torrent: PathBuf) -> Result<()> {
     println!(
         "Running simulation with {} peers for torrent: {}",
         peers,
@@ -159,15 +162,25 @@ pub async fn run_simulation(peers: usize, torrent: PathBuf) -> crate::Result<()>
 }
 
 /// Simple hex decoder for info hashes
-fn decode_hex(hex_str: &str) -> Result<Vec<u8>, ()> {
+fn decode_hex(hex_str: &str) -> Result<Vec<u8>> {
     if hex_str.len() % 2 != 0 {
-        return Err(());
+        return Err(RiptideError::Torrent(TorrentError::InvalidTorrentFile {
+            reason: "Invalid hex string length".to_string(),
+        }));
     }
 
     let mut bytes = Vec::new();
     for chunk in hex_str.as_bytes().chunks(2) {
-        let hex_byte = std::str::from_utf8(chunk).map_err(|_| ())?;
-        let byte = u8::from_str_radix(hex_byte, 16).map_err(|_| ())?;
+        let hex_byte = std::str::from_utf8(chunk).map_err(|_| {
+            RiptideError::Torrent(TorrentError::InvalidTorrentFile {
+                reason: "Invalid UTF-8 in hex string".to_string(),
+            })
+        })?;
+        let byte = u8::from_str_radix(hex_byte, 16).map_err(|_| {
+            RiptideError::Torrent(TorrentError::InvalidTorrentFile {
+                reason: "Invalid hex digit".to_string(),
+            })
+        })?;
         bytes.push(byte);
     }
 
@@ -175,7 +188,7 @@ fn decode_hex(hex_str: &str) -> Result<Vec<u8>, ()> {
 }
 
 /// Parse torrent identifier (info hash or name) into InfoHash
-fn parse_torrent_identifier(identifier: &str) -> crate::Result<InfoHash> {
+fn parse_torrent_identifier(identifier: &str) -> Result<InfoHash> {
     // Try parsing as hex info hash first
     if identifier.len() == 40 {
         if let Ok(hash_bytes) = decode_hex(identifier) {
@@ -188,27 +201,21 @@ fn parse_torrent_identifier(identifier: &str) -> crate::Result<InfoHash> {
     }
 
     // If not a valid hex hash, treat as torrent name (not implemented yet)
-    Err(crate::RiptideError::Torrent(
-        crate::torrent::TorrentError::InvalidTorrentFile {
-            reason: format!(
-                "Invalid torrent identifier: '{}'. Please use 40-character hex info hash.",
-                identifier
-            ),
-        },
-    ))
+    Err(RiptideError::Torrent(TorrentError::InvalidTorrentFile {
+        reason: format!(
+            "Invalid torrent identifier: '{identifier}'. Please use 40-character hex info hash."
+        ),
+    }))
 }
 
 /// Display status for a single torrent
-async fn show_single_torrent_status(
-    engine: &TorrentEngine,
-    info_hash: InfoHash,
-) -> crate::Result<()> {
+async fn show_single_torrent_status(engine: &TorrentEngine, info_hash: InfoHash) -> Result<()> {
     println!("Torrent Status");
     println!("{:-<60}", "");
 
     let stats = engine.get_download_stats().await;
 
-    println!("Info Hash: {}", info_hash);
+    println!("Info Hash: {info_hash}");
 
     // TODO: Once engine provides per-torrent status, show detailed info
     println!("Status: Active");
@@ -224,7 +231,7 @@ async fn show_single_torrent_status(
 }
 
 /// Display status for all torrents
-async fn show_all_torrents_status(engine: &TorrentEngine) -> crate::Result<()> {
+async fn show_all_torrents_status(engine: &TorrentEngine) -> Result<()> {
     println!("All Torrents Status");
     println!("{:-<60}", "");
 
@@ -251,6 +258,53 @@ async fn show_all_torrents_status(engine: &TorrentEngine) -> crate::Result<()> {
 
     // TODO: Once engine provides torrent iteration, show per-torrent details
     println!("\nUse 'riptide status <info-hash>' for detailed torrent information.");
+
+    Ok(())
+}
+
+/// Start the web server for dashboard and API access
+///
+/// # Errors
+/// - `RiptideError::Io` - Failed to bind to the specified address
+/// - `RiptideError::Torrent` - Failed to initialize torrent engine
+pub async fn start_server(host: String, port: u16) -> Result<()> {
+    println!("Starting Riptide web server...");
+    println!("Host: {host}");
+    println!("Port: {port}");
+    println!("URL: http://{host}:{port}");
+    println!("{:-<50}", "");
+
+    let config = RiptideConfig::default();
+
+    // Initialize core services
+    let torrent_engine =
+        std::sync::Arc::new(tokio::sync::RwLock::new(TorrentEngine::new(config.clone())));
+    let streaming_service = std::sync::Arc::new(tokio::sync::RwLock::new(
+        DirectStreamingService::new(config.clone()),
+    ));
+
+    // Create web components
+    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let template_engine = TemplateEngine::new();
+
+    // Configure web server
+    let mut web_config = WebServerConfig::from_riptide_config(&config);
+    web_config.bind_address = format!("{host}:{port}")
+        .parse()
+        .map_err(|e| RiptideError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
+
+    let web_server = WebServer::new(web_config, handlers, template_engine);
+
+    println!("Web server starting...");
+    println!("Dashboard: http://{host}:{port}/");
+    println!("Torrents: http://{host}:{port}/torrents");
+    println!("Library: http://{host}:{port}/library");
+    println!("API: http://{host}:{port}/api/*");
+    println!();
+    println!("Press Ctrl+C to stop the server");
+
+    // Start the server (this will block)
+    web_server.start().await?;
 
     Ok(())
 }
