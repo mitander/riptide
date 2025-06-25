@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use super::WebUIError;
+use crate::media_search::{MediaSearchResult, MediaSearchService, TorrentResult};
 use crate::streaming::DirectStreamingService;
 use crate::torrent::TorrentEngine;
 
@@ -14,6 +15,7 @@ use crate::torrent::TorrentEngine;
 pub struct WebHandlers {
     torrent_engine: Arc<RwLock<TorrentEngine>>,
     streaming_service: Arc<RwLock<DirectStreamingService>>,
+    media_search_service: MediaSearchService,
 }
 
 impl WebHandlers {
@@ -25,6 +27,7 @@ impl WebHandlers {
         Self {
             torrent_engine,
             streaming_service,
+            media_search_service: MediaSearchService::new(),
         }
     }
 
@@ -182,6 +185,61 @@ impl WebHandlers {
             enable_dht: true,
             enable_pex: true,
         })
+    }
+
+    /// Search for media using query string.
+    ///
+    /// # Errors
+    /// - `WebUIError::InternalError` - Failed to perform search
+    pub async fn search_media(&self, query: &str) -> Result<Vec<MediaSearchResult>, WebUIError> {
+        self.media_search_service
+            .search_all(query)
+            .await
+            .map_err(|e| WebUIError::InternalError {
+                reason: format!("Media search failed: {e}"),
+            })
+    }
+
+    /// Search for movies using query string.
+    ///
+    /// # Errors
+    /// - `WebUIError::InternalError` - Failed to perform search
+    pub async fn search_movies(&self, query: &str) -> Result<Vec<MediaSearchResult>, WebUIError> {
+        self.media_search_service
+            .search_movies(query)
+            .await
+            .map_err(|e| WebUIError::InternalError {
+                reason: format!("Movie search failed: {e}"),
+            })
+    }
+
+    /// Search for TV shows using query string.
+    ///
+    /// # Errors
+    /// - `WebUIError::InternalError` - Failed to perform search
+    pub async fn search_tv_shows(&self, query: &str) -> Result<Vec<MediaSearchResult>, WebUIError> {
+        self.media_search_service
+            .search_tv_shows(query)
+            .await
+            .map_err(|e| WebUIError::InternalError {
+                reason: format!("TV search failed: {e}"),
+            })
+    }
+
+    /// Get detailed torrent results for media.
+    ///
+    /// # Errors
+    /// - `WebUIError::InternalError` - Failed to retrieve torrent details
+    pub async fn get_media_torrents(
+        &self,
+        media_title: &str,
+    ) -> Result<Vec<TorrentResult>, WebUIError> {
+        self.media_search_service
+            .get_media_torrents(media_title)
+            .await
+            .map_err(|e| WebUIError::InternalError {
+                reason: format!("Failed to get torrents: {e}"),
+            })
     }
 }
 

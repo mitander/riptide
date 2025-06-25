@@ -74,12 +74,16 @@ impl WebServer {
             .route("/library", get(library_handler))
             .route("/torrents", get(torrents_handler))
             .route("/add-torrent", get(add_torrent_page_handler))
+            .route("/search", get(search_page_handler))
             .route("/settings", get(settings_handler))
             // API routes
             .route("/api/torrents", get(api_torrents_handler))
             .route("/api/torrents/add", get(api_add_torrent_handler))
             .route("/api/stats", get(api_stats_handler))
             .route("/api/library", get(api_library_handler))
+            .route("/api/search", get(api_search_handler))
+            .route("/api/search/movies", get(api_search_movies_handler))
+            .route("/api/search/tv", get(api_search_tv_handler))
             // Built-in static files
             .route("/static/*path", get(static_file_handler))
             .with_state(app_state);
@@ -203,6 +207,17 @@ async fn settings_handler(
     state.template_engine.render("settings", &context)
 }
 
+async fn search_page_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Result<super::HtmlResponse, WebUIError> {
+    let context = serde_json::json!({
+        "title": "Search Media - Riptide",
+        "page": "search"
+    });
+
+    state.template_engine.render("search", &context)
+}
+
 // API handlers
 
 async fn api_torrents_handler(
@@ -238,6 +253,42 @@ async fn api_library_handler(
 ) -> Result<axum::Json<serde_json::Value>, WebUIError> {
     let library = state.handlers.get_library_items().await?;
     Ok(axum::Json(serde_json::json!({ "library": library })))
+}
+
+async fn api_search_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, WebUIError> {
+    let query = params.get("q").ok_or_else(|| WebUIError::InternalError {
+        reason: "Missing query parameter 'q'".to_string(),
+    })?;
+
+    let results = state.handlers.search_media(query).await?;
+    Ok(axum::Json(serde_json::json!({ "results": results })))
+}
+
+async fn api_search_movies_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, WebUIError> {
+    let query = params.get("q").ok_or_else(|| WebUIError::InternalError {
+        reason: "Missing query parameter 'q'".to_string(),
+    })?;
+
+    let results = state.handlers.search_movies(query).await?;
+    Ok(axum::Json(serde_json::json!({ "results": results })))
+}
+
+async fn api_search_tv_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, WebUIError> {
+    let query = params.get("q").ok_or_else(|| WebUIError::InternalError {
+        reason: "Missing query parameter 'q'".to_string(),
+    })?;
+
+    let results = state.handlers.search_tv_shows(query).await?;
+    Ok(axum::Json(serde_json::json!({ "results": results })))
 }
 
 // Static file handler

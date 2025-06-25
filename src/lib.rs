@@ -5,6 +5,7 @@
 
 pub mod cli;
 pub mod config;
+pub mod media_search;
 pub mod simulation;
 pub mod storage;
 pub mod streaming;
@@ -27,6 +28,9 @@ pub enum RiptideError {
 
     #[error("Web UI error: {0}")]
     WebUI(#[from] web::WebUIError),
+
+    #[error("Media search error: {0}")]
+    MediaSearch(#[from] media_search::MediaSearchError),
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
