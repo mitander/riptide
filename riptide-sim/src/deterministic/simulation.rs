@@ -77,13 +77,13 @@ impl SimulationReport {
         summary.push_str("\nEvent breakdown:\n");
 
         for (event_type, count) in &self.metrics.events_by_type {
-            summary.push_str(&format!("  {}: {}\n", event_type, count));
+            summary.push_str(&format!("  {event_type}: {count}\n"));
         }
 
         if !self.metrics.invariant_violations.is_empty() {
             summary.push_str("\nInvariant violations:\n");
             for violation in &self.metrics.invariant_violations {
-                summary.push_str(&format!("  - {}\n", violation));
+                summary.push_str(&format!("  - {violation}\n"));
             }
         }
 
@@ -319,7 +319,7 @@ impl DeterministicSimulation {
             } => {
                 self.state
                     .bandwidth_throttles
-                    .insert(format!("{:?}", direction), *rate_bytes_per_sec);
+                    .insert(format!("{direction:?}"), *rate_bytes_per_sec);
             }
             EventType::ResourceLimit {
                 resource,
@@ -433,7 +433,7 @@ impl DeterministicSimulation {
             self.schedule_delayed(
                 connect_delay,
                 EventType::PeerConnect {
-                    peer_id: format!("PEER_{:04}", i),
+                    peer_id: format!("PEER_{i:04}"),
                 },
                 EventPriority::Normal,
             )?;
@@ -447,23 +447,21 @@ impl DeterministicSimulation {
             self.schedule_delayed(
                 piece_delay,
                 EventType::PieceRequest {
-                    peer_id: format!("PEER_{:04}", peer_index),
+                    peer_id: format!("PEER_{peer_index:04}"),
                     piece_index: PieceIndex::new(piece_index),
                 },
                 EventPriority::Normal,
             )?;
 
             // Schedule completion
-            // TODO: Calculate realistic download time based on:
-            // - piece_size (currently unused)
-            // - configured bandwidth (simulated_download_speed)
-            // - network conditions (latency, packet loss)
-            // For now using fixed 200ms per piece
-            let download_time = Duration::from_millis(200);
+            // Calculate realistic download time based on piece size and bandwidth
+            let bytes_per_second = self.config.simulated_download_speed;
+            let download_seconds = piece_size as f64 / bytes_per_second as f64;
+            let download_time = Duration::from_secs_f64(download_seconds.max(0.1)); // Minimum 100ms
             self.schedule_delayed(
                 piece_delay + download_time,
                 EventType::PieceComplete {
-                    peer_id: format!("PEER_{:04}", peer_index),
+                    peer_id: format!("PEER_{peer_index:04}"),
                     piece_index: PieceIndex::new(piece_index),
                     download_time,
                 },
