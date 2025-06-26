@@ -427,16 +427,15 @@ fn extract_media_title(name: &str) -> String {
 /// Extract year from torrent name.
 #[allow(dead_code)] // Will be used when implementing real API
 fn extract_year(name: &str) -> Option<u16> {
-    if let Ok(re) = regex::Regex::new(r"\b(19|20)\d{2}\b") {
-        if let Some(capture) = re.find(name) {
-            if let Ok(year) = capture.as_str().parse::<u16>() {
-                if (1900..=2030).contains(&year) {
-                    return Some(year);
-                }
-            }
-        }
+    if let Ok(re) = regex::Regex::new(r"\b(19|20)\d{2}\b")
+        && let Some(capture) = re.find(name)
+        && let Ok(year) = capture.as_str().parse::<u16>()
+        && (1900..=2030).contains(&year)
+    {
+        Some(year)
+    } else {
+        None
     }
-    None
 }
 
 /// Extract video quality from torrent name.
