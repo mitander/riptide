@@ -19,6 +19,101 @@ impl Default for NetworkSimulator {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_network_simulator_default() {
+        let sim = NetworkSimulator::new();
+        assert_eq!(sim.latency.start, 10);
+        assert_eq!(sim.latency.end, 50);
+        assert_eq!(sim.packet_loss, 0.0);
+        assert_eq!(sim.bandwidth_limit, u64::MAX);
+    }
+
+    #[tokio::test]
+    async fn test_network_simulator_builder() {
+        let sim = NetworkSimulator::builder()
+            .latency(100..200)
+            .packet_loss(0.05)
+            .bandwidth_limit(1_000_000)
+            .build();
+
+        assert_eq!(sim.latency.start, 100);
+        assert_eq!(sim.latency.end, 200);
+        assert_eq!(sim.packet_loss, 0.05);
+        assert_eq!(sim.bandwidth_limit, 1_000_000);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_latency() {
+        let sim = NetworkSimulator::builder()
+            .latency(50..51) // Very narrow range for predictable testing
+            .build();
+
+        let start = std::time::Instant::now();
+        sim.simulate_latency().await;
+        let elapsed = start.elapsed();
+
+        // Should be approximately 50ms, allowing for some variance
+        assert!(elapsed >= std::time::Duration::from_millis(49));
+        assert!(elapsed <= std::time::Duration::from_millis(60));
+    }
+
+    #[test]
+    fn test_packet_drop_no_loss() {
+        let sim = NetworkSimulator::builder()
+            .packet_loss(0.0)
+            .build();
+
+        // With 0% packet loss, should never drop
+        for _ in 0..100 {
+            assert!(!sim.should_drop_packet());
+        }
+    }
+
+    #[test]
+    fn test_packet_drop_always_loss() {
+        let sim = NetworkSimulator::builder()
+            .packet_loss(1.0)
+            .build();
+
+        // With 100% packet loss, should always drop
+        for _ in 0..100 {
+            assert!(sim.should_drop_packet());
+        }
+    }
+
+    #[test]
+    fn test_bandwidth_delay_unlimited() {
+        let sim = NetworkSimulator::new(); // Default has unlimited bandwidth
+
+        let delay = sim.bandwidth_delay(1_000_000); // 1MB
+        assert_eq!(delay, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_bandwidth_delay_limited() {
+        let sim = NetworkSimulator::builder()
+            .bandwidth_limit(1_000_000) // 1MB/s
+            .build();
+
+        let delay = sim.bandwidth_delay(500_000); // 500KB
+        assert_eq!(delay, Duration::from_millis(500)); // Should take 0.5 seconds
+    }
+
+    #[test]
+    fn test_bandwidth_delay_calculation() {
+        let sim = NetworkSimulator::builder()
+            .bandwidth_limit(2_000_000) // 2MB/s
+            .build();
+
+        let delay = sim.bandwidth_delay(1_000_000); // 1MB
+        assert_eq!(delay, Duration::from_millis(500)); // Should take 0.5 seconds
+    }
+}
+
 impl NetworkSimulator {
     /// Creates network simulator with default low-latency settings.
     pub fn new() -> Self {

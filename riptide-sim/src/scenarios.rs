@@ -4,6 +4,7 @@
 //! network conditions and edge cases for systematic testing.
 
 pub mod streaming_edge_cases;
+pub mod streaming_invariants;
 
 use std::time::Duration;
 

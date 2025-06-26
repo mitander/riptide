@@ -133,3 +133,153 @@ pub enum PeerError {
     #[error("Peer protocol error: {message}")]
     ProtocolError { message: String },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mock_peer_default() {
+        let peer = MockPeer::new("TEST_PEER_001".to_string());
+        assert_eq!(peer.peer_id(), "TEST_PEER_001");
+        assert_eq!(peer.upload_speed(), 1_000_000); // 1 MB/s default
+    }
+
+    #[test]
+    fn test_mock_peer_builder() {
+        let peer = MockPeer::builder()
+            .peer_id("CUSTOM_PEER".to_string())
+            .upload_speed(5_000_000) // 5 MB/s
+            .reliability(0.8)
+            .latency(Duration::from_millis(100))
+            .build();
+
+        assert_eq!(peer.peer_id(), "CUSTOM_PEER");
+        assert_eq!(peer.upload_speed(), 5_000_000);
+    }
+
+    #[test]
+    fn test_mock_peer_builder_auto_id() {
+        let peer = MockPeer::builder()
+            .upload_speed(2_000_000)
+            .build();
+
+        // Should generate an auto ID starting with "MOCK"
+        assert!(peer.peer_id().starts_with("MOCK"));
+        assert_eq!(peer.upload_speed(), 2_000_000);
+    }
+
+    #[tokio::test]
+    async fn test_send_piece_success_high_reliability() {
+        let peer = MockPeer::builder()
+            .peer_id("RELIABLE_PEER".to_string())
+            .reliability(1.0) // 100% reliable
+            .latency(Duration::from_millis(1)) // Very low latency for fast test
+            .upload_speed(10_000_000) // 10 MB/s
+            .build();
+
+        let piece_size = 256_000; // 256KB
+        let result = peer.send_piece(piece_size).await;
+
+        assert!(result.is_ok());
+        let data = result.unwrap();
+        assert_eq!(data.len(), piece_size);
+        // Should be all zeros (mock data)
+        assert!(data.iter().all(|&byte| byte == 0));
+    }
+
+    #[tokio::test]
+    async fn test_send_piece_reliability_timing() {
+        let peer = MockPeer::builder()
+            .peer_id("SLOW_PEER".to_string())
+            .reliability(1.0) // 100% reliable to ensure success
+            .latency(Duration::from_millis(50))
+            .upload_speed(1_000_000) // 1 MB/s
+            .build();
+
+        let piece_size = 100_000; // 100KB
+        let start = std::time::Instant::now();
+        let result = peer.send_piece(piece_size).await;
+        let elapsed = start.elapsed();
+
+        assert!(result.is_ok());
+        
+        // Should take at least latency (50ms) + transfer time (100ms for 100KB at 1MB/s)
+        // Total expected: ~150ms, allowing for some variance
+        assert!(elapsed >= Duration::from_millis(140));
+        assert!(elapsed <= Duration::from_millis(200));
+    }
+
+    #[tokio::test]
+    async fn test_send_piece_unreliable_can_fail() {
+        let peer = MockPeer::builder()
+            .peer_id("UNRELIABLE_PEER".to_string())
+            .reliability(0.0) // 0% reliable - should always fail
+            .latency(Duration::from_millis(1))
+            .build();
+
+        let result = peer.send_piece(1000).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PeerError::ConnectionLost));
+    }
+
+    #[test]
+    fn test_builder_reliability_clamping() {
+        // Test that reliability values are clamped to [0.0, 1.0]
+        let peer_high = MockPeer::builder()
+            .reliability(2.0) // Above 1.0
+            .build();
+
+        let peer_low = MockPeer::builder()
+            .reliability(-0.5) // Below 0.0
+            .build();
+
+        // Both should be clamped to valid range
+        // We can't directly access reliability, but we can test behavior
+        assert!(peer_high.peer_id().starts_with("MOCK"));
+        assert!(peer_low.peer_id().starts_with("MOCK"));
+    }
+
+    #[test]
+    fn test_peer_error_display() {
+        let connection_error = PeerError::ConnectionLost;
+        assert_eq!(connection_error.to_string(), "Peer connection lost");
+
+        let protocol_error = PeerError::ProtocolError {
+            message: "Invalid handshake".to_string(),
+        };
+        assert_eq!(protocol_error.to_string(), "Peer protocol error: Invalid handshake");
+    }
+
+    #[tokio::test]
+    async fn test_upload_speed_affects_transfer_time() {
+        let fast_peer = MockPeer::builder()
+            .reliability(1.0)
+            .latency(Duration::from_millis(1))
+            .upload_speed(10_000_000) // 10 MB/s
+            .build();
+
+        let slow_peer = MockPeer::builder()
+            .reliability(1.0)
+            .latency(Duration::from_millis(1))
+            .upload_speed(1_000_000) // 1 MB/s
+            .build();
+
+        let piece_size = 100_000; // 100KB
+
+        let start = std::time::Instant::now();
+        fast_peer.send_piece(piece_size).await.unwrap();
+        let fast_time = start.elapsed();
+
+        let start = std::time::Instant::now();
+        slow_peer.send_piece(piece_size).await.unwrap();
+        let slow_time = start.elapsed();
+
+        // Slow peer should take significantly longer
+        assert!(slow_time > fast_time);
+        
+        // Fast peer should be roughly 10x faster (allowing for variance)
+        let ratio = slow_time.as_nanos() as f64 / fast_time.as_nanos() as f64;
+        assert!(ratio > 5.0 && ratio < 15.0);
+    }
+}

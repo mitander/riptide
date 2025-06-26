@@ -10,7 +10,7 @@ use rand_chacha::ChaCha8Rng;
 use riptide_core::torrent::InfoHash;
 
 use super::magneto_provider::{
-    create_mock_magneto_client, MockMagnetoClient, MockMagnetoProviderBuilder,
+    MockMagnetoClient, MockMagnetoProviderBuilder, create_mock_magneto_client,
 };
 
 /// Mock tracker for offline development with magneto integration.
