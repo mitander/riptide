@@ -4,7 +4,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use super::super::{InfoHash, TorrentError};
+use crate::torrent::{InfoHash, TorrentError};
 
 /// Torrent file metadata
 #[derive(Debug, Clone, PartialEq)]

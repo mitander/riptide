@@ -2,8 +2,8 @@
 
 use bytes::{Buf, BufMut, Bytes};
 
-use super::super::{PieceIndex, TorrentError};
 use super::types::PeerMessage;
+use crate::torrent::{PieceIndex, TorrentError};
 
 /// Message serialization utilities for BitTorrent wire protocol.
 pub struct MessageCodec;

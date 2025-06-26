@@ -4,10 +4,10 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use super::super::TorrentError;
 use super::bencode::BencodeParser;
 use super::magnet::MagnetParser;
 use super::types::{MagnetLink, TorrentMetadata, TorrentParser};
+use crate::torrent::TorrentError;
 
 /// Reference implementation using bencode-rs and magnet-url.
 ///

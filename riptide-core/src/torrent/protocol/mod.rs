@@ -21,7 +21,7 @@ mod tests {
     use super::handshake::HandshakeCodec;
     use super::messages::MessageCodec;
     use super::types::{PeerHandshake, PeerId, PeerMessage, PeerProtocol, PeerState};
-    use super::super::{InfoHash, PieceIndex};
+    use crate::torrent::{InfoHash, PieceIndex};
 
     #[test]
     fn test_peer_id_generation() {

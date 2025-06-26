@@ -2,9 +2,11 @@
 
 use async_trait::async_trait;
 
-use super::super::TorrentError;
 use super::client::HttpTrackerClient;
-use super::types::{AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, TrackerClient};
+use super::types::{
+    AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, TrackerClient,
+};
+use crate::torrent::TorrentError;
 
 #[async_trait]
 impl TrackerClient for HttpTrackerClient {

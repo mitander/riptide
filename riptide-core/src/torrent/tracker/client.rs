@@ -4,9 +4,12 @@ use std::net::SocketAddr;
 
 use url::Url;
 
-use super::super::{InfoHash, TorrentError};
-use super::types::{AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, ScrapeStats, PeerList};
+use super::types::{
+    AnnounceEvent, AnnounceRequest, AnnounceResponse, PeerList, ScrapeRequest, ScrapeResponse,
+    ScrapeStats,
+};
 use crate::config::NetworkConfig;
+use crate::torrent::{InfoHash, TorrentError};
 
 /// HTTP tracker client implementation
 pub struct HttpTrackerClient {
@@ -42,7 +45,10 @@ impl HttpTrackerClient {
     }
 
     /// Build announce URL with query parameters
-    pub(super) fn build_announce_url(&self, request: &AnnounceRequest) -> Result<String, TorrentError> {
+    pub(super) fn build_announce_url(
+        &self,
+        request: &AnnounceRequest,
+    ) -> Result<String, TorrentError> {
         let mut url = Url::parse(&self.announce_url)?;
 
         // Add required parameters
@@ -197,7 +203,10 @@ impl HttpTrackerClient {
     }
 
     /// Parse tracker scrape response from bencode data
-    pub(super) fn parse_scrape_response(&self, response_bytes: &[u8]) -> Result<ScrapeResponse, TorrentError> {
+    pub(super) fn parse_scrape_response(
+        &self,
+        response_bytes: &[u8],
+    ) -> Result<ScrapeResponse, TorrentError> {
         let parsed = bencode_rs::Value::parse(response_bytes).map_err(|e| {
             TorrentError::TrackerConnectionFailed {
                 url: format!("Failed to parse scrape response: {e:?}"),

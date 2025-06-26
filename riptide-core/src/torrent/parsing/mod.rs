@@ -19,7 +19,7 @@ mod tests {
     use super::bencode::BencodeParser;
     use super::parser::BencodeTorrentParser;
     use super::types::{TorrentFile, TorrentMetadata, TorrentParser};
-    use super::super::InfoHash;
+    use crate::torrent::InfoHash;
 
     #[tokio::test]
     async fn test_magnet_link_parsing() {

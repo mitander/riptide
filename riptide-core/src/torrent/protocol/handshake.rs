@@ -1,7 +1,7 @@
 //! BitTorrent handshake serialization and deserialization
 
-use super::super::{InfoHash, TorrentError};
-use super::types::{PeerId, PeerHandshake};
+use super::types::{PeerHandshake, PeerId};
+use crate::torrent::{InfoHash, TorrentError};
 
 /// Handshake serialization utilities for BitTorrent wire protocol.
 pub struct HandshakeCodec;

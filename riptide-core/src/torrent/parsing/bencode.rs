@@ -2,8 +2,8 @@
 
 use sha1::{Digest, Sha1};
 
-use super::super::{InfoHash, TorrentError};
 use super::types::{TorrentFile, TorrentMetadata};
+use crate::torrent::{InfoHash, TorrentError};
 
 // Type aliases for complex bencode types
 pub(super) type BencodeDict<'a> = std::collections::HashMap<&'a [u8], bencode_rs::Value<'a>>;

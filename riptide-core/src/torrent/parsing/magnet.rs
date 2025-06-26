@@ -1,7 +1,7 @@
 //! Magnet link parsing utilities
 
-use super::super::{InfoHash, TorrentError};
 use super::types::MagnetLink;
+use crate::torrent::{InfoHash, TorrentError};
 
 /// Magnet link parsing utilities.
 pub struct MagnetParser;

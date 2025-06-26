@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-use super::super::range_handler::FileInfo;
+use crate::streaming::range_handler::{FileInfo, PiecePriority};
 use crate::torrent::{EnhancedPeerManager, InfoHash, TorrentEngine, TorrentError};
 
 /// Coordinates streaming sessions between HTTP requests and BitTorrent backend.
@@ -58,7 +58,7 @@ pub struct StreamingBufferState {
 pub struct ActiveRange {
     pub start: u64,
     pub end: u64,
-    pub priority: super::super::range_handler::PiecePriority,
+    pub priority: PiecePriority,
     pub requested_at: Instant,
     pub estimated_completion: Option<Instant>,
 }

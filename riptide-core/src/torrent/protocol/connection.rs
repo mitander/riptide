@@ -6,10 +6,10 @@ use async_trait::async_trait;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-use super::super::TorrentError;
 use super::handshake::HandshakeCodec;
 use super::messages::MessageCodec;
 use super::types::{PeerHandshake, PeerMessage, PeerProtocol, PeerState};
+use crate::torrent::TorrentError;
 
 /// Reference implementation of BitTorrent wire protocol.
 ///

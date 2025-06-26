@@ -18,8 +18,8 @@ pub use types::{
 mod tests {
     use super::client::HttpTrackerClient;
     use super::types::{AnnounceEvent, AnnounceRequest, ScrapeRequest, ScrapeStats, TrackerClient};
-    use super::super::{InfoHash, TorrentError};
     use crate::config::NetworkConfig;
+    use crate::torrent::{InfoHash, TorrentError};
 
     #[test]
     fn test_announce_request_structure() {

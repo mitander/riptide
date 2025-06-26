@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 
 use async_trait::async_trait;
 
-use super::super::{InfoHash, TorrentError};
+use crate::torrent::{InfoHash, TorrentError};
 
 // Type aliases for complex types
 pub(super) type PeerList = Result<Vec<SocketAddr>, TorrentError>;

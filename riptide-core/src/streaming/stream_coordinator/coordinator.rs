@@ -6,11 +6,11 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 
-use super::super::{ContentInfo, RangeHandler};
-use super::super::range_handler::FileInfo;
 use super::types::{
     StreamCoordinator, StreamingError, StreamingSession, StreamingStats, TorrentMetadata,
 };
+use crate::streaming::range_handler::{FileInfo, PiecePriority, PieceRange};
+use crate::streaming::{ContentInfo, RangeHandler};
 use crate::torrent::{InfoHash, PieceRequestParams, Priority};
 
 impl StreamCoordinator {
@@ -230,7 +230,7 @@ impl StreamCoordinator {
     async fn prioritize_pieces_for_streaming(
         &self,
         info_hash: InfoHash,
-        required_pieces: &[super::super::range_handler::PieceRange],
+        required_pieces: &[PieceRange],
         _current_position: u64,
     ) -> Result<(), StreamingError> {
         let peer_manager = self.peer_manager.read().await;
@@ -238,10 +238,10 @@ impl StreamCoordinator {
         // Request pieces with streaming priorities
         for piece_range in required_pieces {
             let priority = match piece_range.priority {
-                super::super::range_handler::PiecePriority::Critical => Priority::Critical,
-                super::super::range_handler::PiecePriority::High => Priority::High,
-                super::super::range_handler::PiecePriority::Normal => Priority::Normal,
-                super::super::range_handler::PiecePriority::Low => Priority::Background,
+                PiecePriority::Critical => Priority::Critical,
+                PiecePriority::High => Priority::High,
+                PiecePriority::Normal => Priority::Normal,
+                PiecePriority::Low => Priority::Background,
             };
 
             let params = PieceRequestParams {

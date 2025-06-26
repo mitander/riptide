@@ -4,8 +4,8 @@
 //! media streaming with buffering and piece prioritization.
 
 pub use types::{
-    ActiveRange, StreamCoordinator, StreamingBufferState, StreamingError, StreamingPerformanceMetrics,
-    StreamingSession, StreamingStats, TorrentMetadata,
+    ActiveRange, StreamCoordinator, StreamingBufferState, StreamingError,
+    StreamingPerformanceMetrics, StreamingSession, StreamingStats, TorrentMetadata,
 };
 
 mod coordinator;
@@ -20,8 +20,8 @@ mod tests {
 
     use super::*;
     use crate::config::RiptideConfig;
-    use crate::torrent::{EnhancedPeerManager, TorrentEngine};
     use crate::torrent::test_data::create_test_info_hash;
+    use crate::torrent::{EnhancedPeerManager, TorrentEngine};
 
     #[tokio::test]
     async fn test_stream_coordinator_creation() {
