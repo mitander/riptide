@@ -368,20 +368,16 @@ impl MediaStreamingSimulation {
         files: &[MediaFile],
         primary_video: Option<usize>,
     ) -> StreamingProfile {
-        if let Some(video_index) = primary_video {
-            if let MediaFileType::Video { bitrate, .. } = &files[video_index].file_type {
-                return StreamingProfile {
-                    bitrate: *bitrate,
-                    buffer_duration: Duration::from_secs(if *bitrate > 10_000_000 {
-                        60
-                    } else {
-                        30
-                    }),
-                    startup_buffer: Duration::from_secs(if *bitrate > 5_000_000 { 8 } else { 5 }),
-                    seek_buffer: Duration::from_secs(15),
-                    subtitle_sync_tolerance: Duration::from_millis(200),
-                };
-            }
+        if let Some(video_index) = primary_video
+            && let MediaFileType::Video { bitrate, .. } = &files[video_index].file_type
+        {
+            return StreamingProfile {
+                bitrate: *bitrate,
+                buffer_duration: Duration::from_secs(if *bitrate > 10_000_000 { 60 } else { 30 }),
+                startup_buffer: Duration::from_secs(if *bitrate > 5_000_000 { 8 } else { 5 }),
+                seek_buffer: Duration::from_secs(15),
+                subtitle_sync_tolerance: Duration::from_millis(200),
+            };
         }
 
         StreamingProfile::default()

@@ -260,14 +260,13 @@ fn decode_hex(hex_str: &str) -> Result<Vec<u8>> {
 /// Parse torrent identifier (info hash or name) into InfoHash
 fn parse_torrent_identifier(identifier: &str) -> Result<InfoHash> {
     // Try parsing as hex info hash first
-    if identifier.len() == 40 {
-        if let Ok(hash_bytes) = decode_hex(identifier) {
-            if hash_bytes.len() == 20 {
-                let mut hash_array = [0u8; 20];
-                hash_array.copy_from_slice(&hash_bytes);
-                return Ok(InfoHash::new(hash_array));
-            }
-        }
+    if identifier.len() == 40
+        && let Ok(hash_bytes) = decode_hex(identifier)
+        && hash_bytes.len() == 20
+    {
+        let mut hash_array = [0u8; 20];
+        hash_array.copy_from_slice(&hash_bytes);
+        return Ok(InfoHash::new(hash_array));
     }
 
     // If not a valid hex hash, treat as torrent name (not implemented yet)
