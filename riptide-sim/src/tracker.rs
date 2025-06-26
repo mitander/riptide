@@ -10,7 +10,7 @@ use rand_chacha::ChaCha8Rng;
 use riptide_core::torrent::InfoHash;
 
 use super::magneto_provider::{
-    MockMagnetoClient, MockMagnetoProviderBuilder, create_mock_magneto_client,
+    create_mock_magneto_client, MockMagnetoClient, MockMagnetoProviderBuilder,
 };
 
 /// Mock tracker for offline development with magneto integration.
@@ -118,8 +118,8 @@ impl MockTracker {
                 } else {
                     torrent_info.size_bytes
                 }, // Default 1GB if 0
-                seeders: self.rng.r#gen_range(1..=50),
-                leechers: self.rng.r#gen_range(0..=20),
+                seeders: self.rng.random_range(1..=50),
+                leechers: self.rng.random_range(0..=20),
                 last_announce: SystemTime::now(),
             };
 
@@ -140,11 +140,11 @@ impl MockTracker {
         info_hash: InfoHash,
     ) -> Result<AnnounceResponse, TrackerError> {
         // Simulate network delay
-        let delay = self.rng.gen_range(20..=200);
+        let delay = self.rng.random_range(20..=200);
         tokio::time::sleep(Duration::from_millis(delay)).await;
 
         // Simulate failure if configured
-        if self.rng.gen_bool(self.failure_rate as f64) {
+        if self.rng.random_bool(self.failure_rate as f64) {
             return Err(TrackerError::ConnectionFailed);
         }
 
@@ -169,7 +169,7 @@ impl MockTracker {
             // Generate peer list after borrowing ends
             let peer_count = dynamic_seeders + dynamic_leechers;
             let peers = self.generate_peer_list(peer_count);
-            let downloaded = base_seeders + self.rng.r#gen_range(0..=100);
+            let downloaded = base_seeders + self.rng.random_range(0..=100);
 
             Ok(AnnounceResponse {
                 interval: 1800,
@@ -191,7 +191,7 @@ impl MockTracker {
                 peers: self.peers.clone(),
                 complete: self.seeders,
                 incomplete: self.leechers,
-                downloaded: self.seeders + self.rng.r#gen_range(0..=50),
+                downloaded: self.seeders + self.rng.random_range(0..=50),
                 torrent_name: None,
                 torrent_size: None,
             })
@@ -240,7 +240,7 @@ impl MockTracker {
         let mut hasher = Sha1::new();
         hasher.update(name.as_bytes());
         hasher.update(index.to_le_bytes());
-        hasher.update(self.rng.r#gen::<u32>().to_le_bytes());
+        hasher.update(self.rng.random::<u32>().to_le_bytes());
 
         let hash = hasher.finalize();
         let mut info_hash = [0u8; 20];
@@ -258,28 +258,28 @@ impl MockTracker {
             let ip = match i % 4 {
                 0 => format!(
                     "192.168.{}.{}",
-                    self.rng.r#gen_range(1..=255),
-                    self.rng.r#gen_range(1..=254)
+                    self.rng.random_range(1..=255),
+                    self.rng.random_range(1..=254)
                 ),
                 1 => format!(
                     "10.0.{}.{}",
-                    self.rng.r#gen_range(1..=255),
-                    self.rng.r#gen_range(1..=254)
+                    self.rng.random_range(1..=255),
+                    self.rng.random_range(1..=254)
                 ),
                 2 => format!(
                     "172.16.{}.{}",
-                    self.rng.r#gen_range(1..=255),
-                    self.rng.r#gen_range(1..=254)
+                    self.rng.random_range(1..=255),
+                    self.rng.random_range(1..=254)
                 ),
                 _ => format!(
                     "203.{}.{}.{}",
-                    self.rng.r#gen_range(1..=255),
-                    self.rng.r#gen_range(1..=255),
-                    self.rng.r#gen_range(1..=254)
+                    self.rng.random_range(1..=255),
+                    self.rng.random_range(1..=255),
+                    self.rng.random_range(1..=254)
                 ),
             };
 
-            let port = self.rng.r#gen_range(6881..=6999);
+            let port = self.rng.random_range(6881..=6999);
 
             if let Ok(addr) = format!("{ip}:{port}").parse() {
                 peers.push(addr);

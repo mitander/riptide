@@ -276,10 +276,10 @@ impl MockMagnetoProvider {
         // Add some variation to results
         for torrent in &mut results {
             // Vary peer counts slightly
-            let variation = self.rng.gen_range(-10..=20);
+            let variation = self.rng.random_range(-10..=20);
             torrent.seeders = (torrent.seeders as i32 + variation).max(1) as u32;
 
-            let leecher_variation = self.rng.gen_range(-5..=15);
+            let leecher_variation = self.rng.random_range(-5..=15);
             torrent.peers = (torrent.peers as i32 + leecher_variation).max(0) as u32;
         }
 
@@ -312,7 +312,7 @@ impl MockMagnetoProvider {
 
         let mut hasher = Sha1::new();
         hasher.update(name.as_bytes());
-        hasher.update(self.rng.r#gen::<u64>().to_le_bytes());
+        hasher.update(self.rng.random::<u64>().to_le_bytes());
 
         let hash = hasher.finalize();
         hex::encode(&hash[..20])
@@ -335,13 +335,13 @@ impl MockMagnetoProvider {
         tokio::time::sleep(self.response_delay).await;
 
         // Simulate network failures
-        if self.rng.gen_bool(self.failure_rate) {
+        if self.rng.random_bool(self.failure_rate) {
             return Err(ClientError::ResponseError(anyhow::anyhow!(
                 "Simulated network failure"
             )));
         }
 
-        let limit = request.number_of_results.min(50) as usize;
+        let limit = request.number_of_results.min(50);
         let results = self.search_content(request.query, limit);
 
         Ok(results)

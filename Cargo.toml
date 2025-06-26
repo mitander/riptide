@@ -34,22 +34,22 @@ url = "2.5"
 urlencoding = "2.1"
 
 # Web framework
-axum = "0.7"
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "fs"] }
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs"] }
 hyper = "1.0"
 mime_guess = "2.0"
 
 # BitTorrent-specific dependencies
 bencode-rs = { git = "https://github.com/mitander/bencode-rs" }
 magnet-url = "3.0"
-magneto = "0.1"
+magneto = "0.2"
 
 # Cryptography and utilities
 sha1 = "0.10"
 hex = "0.4"
-rand = "0.8"
-rand_chacha = "0.3"
+rand = "0.9"
+rand_chacha = "0.9"
 bytes = "1.8"
 
 # Time and data structures
@@ -68,7 +68,7 @@ tracing-subscriber = "0.3"
 tempfile = "3.0"
 tokio-test = "0.4"
 proptest = "1.0"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.6", features = ["html_reports"] }
 
 # Internal workspace dependencies
 riptide-core = { path = "riptide-core" }
