@@ -9,12 +9,13 @@ use std::time::Duration;
 use riptide_core::config::SimulationConfig;
 use riptide_core::torrent::{InfoHash, PieceIndex};
 
+use super::streaming_invariants::{
+    DataIntegrityInvariant, MaxPeersInvariant, StreamingBufferInvariant,
+};
 use crate::{
     DeterministicSimulation, EventPriority, EventType, ResourceLimitInvariant, ResourceLimits,
     ResourceType, SimulationError, SimulationReport, ThrottleDirection,
 };
-
-use super::streaming_invariants::{DataIntegrityInvariant, MaxPeersInvariant, StreamingBufferInvariant};
 
 /// Simulates streaming under severe network degradation.
 ///

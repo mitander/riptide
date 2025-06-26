@@ -63,9 +63,7 @@ mod tests {
 
     #[test]
     fn test_packet_drop_no_loss() {
-        let sim = NetworkSimulator::builder()
-            .packet_loss(0.0)
-            .build();
+        let sim = NetworkSimulator::builder().packet_loss(0.0).build();
 
         // With 0% packet loss, should never drop
         for _ in 0..100 {
@@ -75,9 +73,7 @@ mod tests {
 
     #[test]
     fn test_packet_drop_always_loss() {
-        let sim = NetworkSimulator::builder()
-            .packet_loss(1.0)
-            .build();
+        let sim = NetworkSimulator::builder().packet_loss(1.0).build();
 
         // With 100% packet loss, should always drop
         for _ in 0..100 {

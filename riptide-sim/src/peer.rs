@@ -160,9 +160,7 @@ mod tests {
 
     #[test]
     fn test_mock_peer_builder_auto_id() {
-        let peer = MockPeer::builder()
-            .upload_speed(2_000_000)
-            .build();
+        let peer = MockPeer::builder().upload_speed(2_000_000).build();
 
         // Should generate an auto ID starting with "MOCK"
         assert!(peer.peer_id().starts_with("MOCK"));
@@ -203,7 +201,7 @@ mod tests {
         let elapsed = start.elapsed();
 
         assert!(result.is_ok());
-        
+
         // Should take at least latency (50ms) + transfer time (100ms for 100KB at 1MB/s)
         // Total expected: ~150ms, allowing for some variance
         assert!(elapsed >= Duration::from_millis(140));
@@ -248,7 +246,10 @@ mod tests {
         let protocol_error = PeerError::ProtocolError {
             message: "Invalid handshake".to_string(),
         };
-        assert_eq!(protocol_error.to_string(), "Peer protocol error: Invalid handshake");
+        assert_eq!(
+            protocol_error.to_string(),
+            "Peer protocol error: Invalid handshake"
+        );
     }
 
     #[tokio::test]
@@ -277,7 +278,7 @@ mod tests {
 
         // Slow peer should take significantly longer
         assert!(slow_time > fast_time);
-        
+
         // Fast peer should be roughly 10x faster (allowing for variance)
         let ratio = slow_time.as_nanos() as f64 / fast_time.as_nanos() as f64;
         assert!(ratio > 5.0 && ratio < 15.0);

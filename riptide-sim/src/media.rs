@@ -127,6 +127,13 @@ impl Default for StreamingBuffer {
 }
 
 impl MediaStreamingSimulation {
+    /// Helper to schedule events with error logging instead of panicking.
+    fn schedule_event(&mut self, delay: Duration, event: EventType, priority: EventPriority) {
+        if let Err(e) = self.simulation.schedule_delayed(delay, event, priority) {
+            // Log error in simulation context instead of panicking
+            eprintln!("Warning: Failed to schedule simulation event: {e}");
+        }
+    }
     /// Creates media streaming simulation from real movie folder.
     ///
     /// Analyzes folder contents and sets up simulation based on actual
@@ -150,7 +157,8 @@ impl MediaStreamingSimulation {
             simulated_download_speed: 5_242_880,
             use_mock_data: true,
         };
-        let simulation = DeterministicSimulation::new(config).unwrap();
+        let simulation = DeterministicSimulation::new(config)
+            .map_err(|e| format!("Failed to create simulation: {e}"))?;
         let piece_to_file_map = Self::build_piece_mapping(&movie_folder, piece_size);
 
         Ok(Self {
@@ -426,23 +434,24 @@ impl MediaStreamingSimulation {
 
             for (delay_ms, piece_index) in startup_pieces.iter().enumerate() {
                 let delay = Duration::from_millis(delay_ms as u64);
-                self.simulation
-                    .schedule_delayed(
-                        delay,
-                        EventType::PieceRequest {
-                            peer_id: format!("STREAM_PEER_{}", delay_ms % 10),
-                            piece_index: *piece_index,
-                        },
-                        EventPriority::Normal,
-                    )
-                    .unwrap();
+                self.schedule_event(
+                    delay,
+                    EventType::PieceRequest {
+                        peer_id: format!("STREAM_PEER_{}", delay_ms % 10),
+                        piece_index: *piece_index,
+                    },
+                    EventPriority::Normal,
+                );
             }
         }
     }
 
     /// Schedules subtitle file loading.
     fn schedule_subtitle_loading(&mut self) {
-        for &subtitle_index in &self.movie_folder.subtitle_files {
+        // Clone subtitle file indices to avoid borrow conflict
+        let subtitle_indices = self.movie_folder.subtitle_files.clone();
+
+        for subtitle_index in subtitle_indices {
             let file = &self.movie_folder.files[subtitle_index];
 
             // High priority subtitles load early
@@ -454,16 +463,14 @@ impl MediaStreamingSimulation {
 
             let subtitle_pieces = self.calculate_pieces_for_file(subtitle_index);
             for piece_index in subtitle_pieces {
-                self.simulation
-                    .schedule_delayed(
-                        delay,
-                        EventType::PieceRequest {
-                            peer_id: format!("SUBTITLE_PEER_{}", subtitle_index % 5),
-                            piece_index,
-                        },
-                        EventPriority::Low,
-                    )
-                    .unwrap();
+                self.schedule_event(
+                    delay,
+                    EventType::PieceRequest {
+                        peer_id: format!("SUBTITLE_PEER_{}", subtitle_index % 5),
+                        piece_index,
+                    },
+                    EventPriority::Low,
+                );
             }
         }
     }
@@ -474,16 +481,14 @@ impl MediaStreamingSimulation {
         for i in 1..60 {
             // 5 minute simulation
             let delay = Duration::from_secs(i * 5);
-            self.simulation
-                .schedule_delayed(
-                    delay,
-                    EventType::NetworkChange {
-                        latency_ms: 50,
-                        packet_loss_rate: 0.01,
-                    }, // Reuse for buffer check
-                    EventPriority::Low,
-                )
-                .unwrap();
+            self.schedule_event(
+                delay,
+                EventType::NetworkChange {
+                    latency_ms: 50,
+                    packet_loss_rate: 0.01,
+                },
+                EventPriority::Low,
+            );
         }
     }
 
@@ -530,9 +535,15 @@ impl MediaStreamingSimulation {
     }
 
     /// Runs streaming simulation with media awareness.
-    pub fn run_streaming_simulation(&mut self, duration: Duration) -> StreamingResult {
+    ///
+    /// # Errors
+    /// - `SimulationError` - If simulation fails to run
+    pub fn run_streaming_simulation(
+        &mut self,
+        duration: Duration,
+    ) -> Result<StreamingResult, crate::SimulationError> {
         let start_time = self.simulation.clock().now();
-        let report = self.simulation.run_for(duration).unwrap();
+        let report = self.simulation.run_for(duration)?;
         let end_time = self.simulation.clock().now();
 
         // Analyze streaming performance
@@ -556,7 +567,7 @@ impl MediaStreamingSimulation {
         let subtitle_pieces = self.count_subtitle_pieces_from_report(&report);
         let buffering_events = self.count_buffering_events_from_report(&report);
 
-        StreamingResult {
+        Ok(StreamingResult {
             duration: end_time.duration_since(start_time),
             total_events: report.event_count as usize,
             piece_requests,
@@ -570,7 +581,7 @@ impl MediaStreamingSimulation {
                 0.0
             },
             subtitle_sync_issues: self.detect_subtitle_sync_issues_from_report(&report),
-        }
+        })
     }
 
     /// Counts video-related piece completions from report.
@@ -817,7 +828,9 @@ mod tests {
             .unwrap();
 
         simulation.start_streaming_simulation();
-        let result = simulation.run_streaming_simulation(Duration::from_secs(30));
+        let result = simulation
+            .run_streaming_simulation(Duration::from_secs(30))
+            .expect("Streaming simulation should complete successfully");
 
         assert!(result.total_events > 0);
         assert!(result.piece_requests > 0);

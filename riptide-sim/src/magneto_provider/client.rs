@@ -67,8 +67,9 @@ pub fn create_streaming_test_client(seed: u64) -> MockMagnetoClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use magneto::SearchRequest;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_mock_provider_search() {

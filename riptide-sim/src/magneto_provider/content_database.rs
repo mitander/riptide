@@ -1,6 +1,6 @@
 //! Default content database for mock torrent discovery.
 
-use super::{MockTorrentEntry};
+use super::MockTorrentEntry;
 
 /// Creates default content database with realistic torrent entries.
 pub fn create_default_content_database() -> Vec<(String, Vec<MockTorrentEntry>)> {
@@ -103,10 +103,19 @@ pub fn create_default_content_database() -> Vec<(String, Vec<MockTorrentEntry>)>
     ];
 
     // Add individual category mappings
-    entries.push(("big buck bunny".to_string(), vec![open_source_movies[0].clone()]));
+    entries.push((
+        "big buck bunny".to_string(),
+        vec![open_source_movies[0].clone()],
+    ));
     entries.push(("sintel".to_string(), vec![open_source_movies[1].clone()]));
-    entries.push(("tears of steel".to_string(), vec![open_source_movies[2].clone()]));
-    entries.push(("elephants dream".to_string(), vec![open_source_movies[3].clone()]));
+    entries.push((
+        "tears of steel".to_string(),
+        vec![open_source_movies[2].clone()],
+    ));
+    entries.push((
+        "elephants dream".to_string(),
+        vec![open_source_movies[3].clone()],
+    ));
     entries.push(("open source movies".to_string(), open_source_movies));
     entries.push(("creative commons".to_string(), creative_commons));
     entries.push(("linux".to_string(), linux_distros.clone()));
@@ -114,14 +123,17 @@ pub fn create_default_content_database() -> Vec<(String, Vec<MockTorrentEntry>)>
     entries.push(("debian".to_string(), vec![linux_distros[1].clone()]));
     entries.push(("games".to_string(), games_software.clone()));
     entries.push(("software".to_string(), games_software.clone()));
-    entries.push(("blender".to_string(), vec![MockTorrentEntry {
-        name: "Blender 4.0 Complete Suite + Assets".to_string(),
-        size_bytes: 12_000_000_000,
-        seeders: 234,
-        leechers: 78,
-        magnet_template: "magnet:?xt=urn:btih:BLENDER_4_HASH".to_string(),
-        categories: vec!["software".to_string(), "creative".to_string()],
-    }]));
+    entries.push((
+        "blender".to_string(),
+        vec![MockTorrentEntry {
+            name: "Blender 4.0 Complete Suite + Assets".to_string(),
+            size_bytes: 12_000_000_000,
+            seeders: 234,
+            leechers: 78,
+            magnet_template: "magnet:?xt=urn:btih:BLENDER_4_HASH".to_string(),
+            categories: vec!["software".to_string(), "creative".to_string()],
+        }],
+    ));
 
     entries
 }
