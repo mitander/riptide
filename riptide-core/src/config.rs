@@ -176,16 +176,16 @@ impl RiptideConfig {
         let mut config = Self::default();
 
         // Network configuration overrides
-        if let Ok(timeout) = std::env::var("RIPTIDE_TRACKER_TIMEOUT") {
-            if let Ok(seconds) = timeout.parse::<u64>() {
-                config.network.tracker_timeout = Duration::from_secs(seconds);
-            }
+        if let Ok(timeout) = std::env::var("RIPTIDE_TRACKER_TIMEOUT")
+            && let Ok(seconds) = timeout.parse::<u64>()
+        {
+            config.network.tracker_timeout = Duration::from_secs(seconds);
         }
 
-        if let Ok(max_peers) = std::env::var("RIPTIDE_MAX_PEERS") {
-            if let Ok(count) = max_peers.parse::<usize>() {
-                config.network.max_peer_connections = count;
-            }
+        if let Ok(max_peers) = std::env::var("RIPTIDE_MAX_PEERS")
+            && let Ok(count) = max_peers.parse::<usize>()
+        {
+            config.network.max_peer_connections = count;
         }
 
         // Simulation configuration overrides
@@ -193,10 +193,10 @@ impl RiptideConfig {
             config.simulation.enabled = enabled.parse().unwrap_or(false);
         }
 
-        if let Ok(seed) = std::env::var("RIPTIDE_SIMULATION_SEED") {
-            if let Ok(seed_value) = seed.parse::<u64>() {
-                config.simulation.deterministic_seed = Some(seed_value);
-            }
+        if let Ok(seed) = std::env::var("RIPTIDE_SIMULATION_SEED")
+            && let Ok(seed_value) = seed.parse::<u64>()
+        {
+            config.simulation.deterministic_seed = Some(seed_value);
         }
 
         if let Ok(mock_data) = std::env::var("RIPTIDE_USE_MOCK_DATA") {

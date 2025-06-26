@@ -51,8 +51,8 @@ pub fn severe_network_degradation_scenario() -> Result<SimulationReport, Simulat
         sim.schedule_delayed(
             delay,
             EventType::NetworkChange {
-                latency_ms: (50 + i * 50) as u32,              // Increasing latency
-                packet_loss_rate: (0.01 + degradation) as f64, // Up to 9% packet loss
+                latency_ms: (50 + i * 50) as u32,     // Increasing latency
+                packet_loss_rate: 0.01 + degradation, // Up to 9% packet loss
             },
             EventPriority::Critical,
         )?;
@@ -62,7 +62,7 @@ pub fn severe_network_degradation_scenario() -> Result<SimulationReport, Simulat
     for i in 0..10 {
         // Add bandwidth throttling to specific peers
         let delay = Duration::from_secs(5 + i * 10);
-        let degraded_speed = 100_000 - (i as u64 * 10_000); // Degrading speed
+        let degraded_speed = 100_000 - (i * 10_000); // Degrading speed
         sim.schedule_delayed(
             delay,
             EventType::BandwidthThrottle {
@@ -173,7 +173,7 @@ pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, Simulatio
             sim.schedule_delayed(
                 wave_time + Duration::from_millis(i as u64 * 100),
                 EventType::PieceFailed {
-                    peer_id: format!("MALICIOUS_PEER_{}", i),
+                    peer_id: format!("MALICIOUS_PEER_{i}"),
                     piece_index: PieceIndex::new(piece_index),
                     reason: "Hash verification failed".to_string(),
                 },
@@ -238,7 +238,7 @@ pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationErro
             sim.schedule_delayed(
                 peer_delay,
                 EventType::PeerConnect {
-                    peer_id: format!("T{}_PEER_{:02}", torrent_id, peer_id),
+                    peer_id: format!("T{torrent_id}_PEER_{peer_id:02}"),
                 },
                 EventPriority::Normal,
             )?;
@@ -308,7 +308,7 @@ pub fn total_peer_failure_scenario() -> Result<SimulationReport, SimulationError
         sim.schedule_delayed(
             failure_time,
             EventType::PieceFailed {
-                peer_id: format!("PEER_{:04}", i),
+                peer_id: format!("PEER_{i:04}"),
                 piece_index: PieceIndex::new(10 + i as u32),
                 reason: "Connection timeout".to_string(),
             },
@@ -319,7 +319,7 @@ pub fn total_peer_failure_scenario() -> Result<SimulationReport, SimulationError
         sim.schedule_delayed(
             failure_time + Duration::from_secs(1),
             EventType::PeerDisconnect {
-                peer_id: format!("PEER_{:04}", i),
+                peer_id: format!("PEER_{i:04}"),
             },
             EventPriority::Critical,
         )?;
@@ -473,7 +473,7 @@ mod tests {
                 // Expected - severe degradation can cause invariant violations
                 assert!(count >= 10);
             }
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         }
     }
 
@@ -500,7 +500,7 @@ mod tests {
                 assert!(current > limit);
                 assert_eq!(limit, 25);
             }
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         }
     }
 
@@ -529,7 +529,7 @@ mod tests {
                 // Or invariant violations if caught by invariants
                 assert!(!report.metrics.invariant_violations.is_empty());
             }
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         }
     }
 
@@ -558,7 +558,7 @@ mod tests {
             Err(SimulationError::TooManyInvariantViolations { .. }) => {
                 // Also acceptable - total failure can cause many violations
             }
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         }
     }
 }

@@ -4,3 +4,6 @@ set -e
 
 echo '+cargo fmt --check'
 cargo fmt --check
+
+echo '+cargo clippy --lib --tests --all-features -- -D warnings'
+cargo clippy --lib --tests --all-features -- -D warnings

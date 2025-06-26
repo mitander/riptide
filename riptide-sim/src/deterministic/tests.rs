@@ -113,7 +113,7 @@ fn test_resource_limit_enforcement() {
         sim.schedule_delayed(
             Duration::from_millis(i * 100),
             EventType::PeerConnect {
-                peer_id: format!("PEER_{}", i),
+                peer_id: format!("PEER_{i}"),
             },
             EventPriority::Normal,
         )
@@ -134,7 +134,7 @@ fn test_resource_limit_enforcement() {
             assert_eq!(limit, 2);
         }
         Ok(_) => panic!("Expected ResourceLimitExceeded error"),
-        Err(e) => panic!("Unexpected error: {:?}", e),
+        Err(e) => panic!("Unexpected error: {e:?}"),
     }
 }
 
@@ -293,7 +293,7 @@ fn test_event_queue_overflow_protection() {
     for i in 0..200_000 {
         let result = sim.schedule_event(
             EventType::Custom {
-                name: format!("Event_{}", i),
+                name: format!("Event_{i}"),
                 data: "test".to_string(),
             },
             EventPriority::Low,
@@ -403,7 +403,7 @@ fn test_event_history_bounded() {
         sim.schedule_delayed(
             Duration::from_millis(i),
             EventType::Custom {
-                name: format!("Event_{}", i),
+                name: format!("Event_{i}"),
                 data: "test".to_string(),
             },
             EventPriority::Normal,

@@ -182,13 +182,13 @@ impl PeerManager {
     ) {
         let mut connections = self.connections.write().await;
 
-        if let Some(peers) = connections.get_mut(&info_hash) {
-            if let Some(peer) = peers.iter_mut().find(|p| p.address == address) {
-                peer.stats.bytes_downloaded += bytes_downloaded;
-                peer.last_activity = Instant::now();
+        if let Some(peers) = connections.get_mut(&info_hash)
+            && let Some(peer) = peers.iter_mut().find(|p| p.address == address)
+        {
+            peer.stats.bytes_downloaded += bytes_downloaded;
+            peer.last_activity = Instant::now();
 
-                peer.stats.update_download_rate(bytes_downloaded);
-            }
+            peer.stats.update_download_rate(bytes_downloaded);
         }
     }
 

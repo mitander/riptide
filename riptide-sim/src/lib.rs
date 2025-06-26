@@ -183,10 +183,7 @@ impl Invariant for NoDuplicateDownloadsInvariant {
             if !seen_pieces.insert(*piece_index) {
                 return Err(InvariantViolation {
                     invariant: "NoDuplicateDownloads".to_string(),
-                    description: format!(
-                        "Piece {} is being downloaded multiple times",
-                        piece_index
-                    ),
+                    description: format!("Piece {piece_index} is being downloaded multiple times"),
                     timestamp: Instant::now(),
                 });
             }

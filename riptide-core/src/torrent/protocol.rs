@@ -463,24 +463,24 @@ impl PeerProtocol for BitTorrentPeerProtocol {
 
         // Send handshake
         let handshake_data = Self::serialize_handshake(&handshake);
-        if let Some(ref mut stream) = self.stream {
-            if stream.write_all(&handshake_data).await.is_err() {
-                self.state = PeerState::Disconnected;
-                return Err(TorrentError::PeerConnectionError {
-                    reason: "Failed to send handshake".to_string(),
-                });
-            }
+        if let Some(ref mut stream) = self.stream
+            && stream.write_all(&handshake_data).await.is_err()
+        {
+            self.state = PeerState::Disconnected;
+            return Err(TorrentError::PeerConnectionError {
+                reason: "Failed to send handshake".to_string(),
+            });
         }
 
         // Read peer handshake response
         let mut handshake_buffer = vec![0u8; 68]; // 1 + 19 + 8 + 20 + 20
-        if let Some(ref mut stream) = self.stream {
-            if stream.read_exact(&mut handshake_buffer).await.is_err() {
-                self.state = PeerState::Disconnected;
-                return Err(TorrentError::PeerConnectionError {
-                    reason: "Failed to read handshake response".to_string(),
-                });
-            }
+        if let Some(ref mut stream) = self.stream
+            && stream.read_exact(&mut handshake_buffer).await.is_err()
+        {
+            self.state = PeerState::Disconnected;
+            return Err(TorrentError::PeerConnectionError {
+                reason: "Failed to read handshake response".to_string(),
+            });
         }
 
         // Validate peer handshake
@@ -504,13 +504,13 @@ impl PeerProtocol for BitTorrentPeerProtocol {
         }
 
         let message_data = Self::serialize_message(&message);
-        if let Some(ref mut stream) = self.stream {
-            if stream.write_all(&message_data).await.is_err() {
-                self.state = PeerState::Disconnected;
-                return Err(TorrentError::PeerConnectionError {
-                    reason: "Failed to send message".to_string(),
-                });
-            }
+        if let Some(ref mut stream) = self.stream
+            && stream.write_all(&message_data).await.is_err()
+        {
+            self.state = PeerState::Disconnected;
+            return Err(TorrentError::PeerConnectionError {
+                reason: "Failed to send message".to_string(),
+            });
         }
 
         Ok(())
@@ -525,13 +525,13 @@ impl PeerProtocol for BitTorrentPeerProtocol {
 
         // Read message length (first 4 bytes)
         let mut length_buf = [0u8; 4];
-        if let Some(ref mut stream) = self.stream {
-            if stream.read_exact(&mut length_buf).await.is_err() {
-                self.state = PeerState::Disconnected;
-                return Err(TorrentError::PeerConnectionError {
-                    reason: "Failed to read message length".to_string(),
-                });
-            }
+        if let Some(ref mut stream) = self.stream
+            && stream.read_exact(&mut length_buf).await.is_err()
+        {
+            self.state = PeerState::Disconnected;
+            return Err(TorrentError::PeerConnectionError {
+                reason: "Failed to read message length".to_string(),
+            });
         }
 
         let length = u32::from_be_bytes(length_buf);
@@ -543,13 +543,13 @@ impl PeerProtocol for BitTorrentPeerProtocol {
 
         // Read message payload
         let mut message_buf = vec![0u8; length as usize];
-        if let Some(ref mut stream) = self.stream {
-            if stream.read_exact(&mut message_buf).await.is_err() {
-                self.state = PeerState::Disconnected;
-                return Err(TorrentError::PeerConnectionError {
-                    reason: "Failed to read message payload".to_string(),
-                });
-            }
+        if let Some(ref mut stream) = self.stream
+            && stream.read_exact(&mut message_buf).await.is_err()
+        {
+            self.state = PeerState::Disconnected;
+            return Err(TorrentError::PeerConnectionError {
+                reason: "Failed to read message payload".to_string(),
+            });
         }
 
         // Reconstruct full message for parsing (length + payload)

@@ -399,10 +399,10 @@ impl BencodeTorrentParser {
             for tier in announce_list {
                 if let bencode_rs::Value::List(tier_urls) = tier {
                     for url_value in tier_urls {
-                        if let bencode_rs::Value::Bytes(url_bytes) = url_value {
-                            if let Ok(url) = String::from_utf8(url_bytes.to_vec()) {
-                                announce_urls.push(url);
-                            }
+                        if let bencode_rs::Value::Bytes(url_bytes) = url_value
+                            && let Ok(url) = String::from_utf8(url_bytes.to_vec())
+                        {
+                            announce_urls.push(url);
                         }
                     }
                 }

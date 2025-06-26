@@ -50,7 +50,7 @@ impl IntoResponse for WebUIError {
             }
         };
 
-        let body = format!("Error: {}", error_message);
+        let body = format!("Error: {error_message}");
         (status, body).into_response()
     }
 }

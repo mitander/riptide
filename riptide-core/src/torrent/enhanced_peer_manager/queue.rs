@@ -93,13 +93,12 @@ impl PriorityRequestQueue {
         ] {
             let mut i = 0;
             while i < queue.len() {
-                if let Some(request) = queue.get(i) {
-                    if let Some(deadline) = request.deadline {
-                        if now > deadline {
-                            expired.push(queue.remove(i).unwrap());
-                            continue;
-                        }
-                    }
+                if let Some(request) = queue.get(i)
+                    && let Some(deadline) = request.deadline
+                    && now > deadline
+                {
+                    expired.push(queue.remove(i).unwrap());
+                    continue;
                 }
                 i += 1;
             }

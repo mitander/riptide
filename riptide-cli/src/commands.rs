@@ -198,6 +198,7 @@ pub async fn list_torrents() -> Result<()> {
 ///
 /// # Errors
 /// - Currently returns Ok but will add simulation errors in future implementation
+///
 /// Run simulation environment with runtime configuration
 ///
 /// # Errors
@@ -215,7 +216,7 @@ pub async fn run_simulation(peers: usize, torrent: PathBuf) -> Result<()> {
     config.simulation.max_simulated_peers = peers;
     config.simulation.deterministic_seed = Some(42);
 
-    println!("Created simulation environment with {} peers", peers);
+    println!("Created simulation environment with {peers} peers");
 
     // Full BitTorrent simulation implementation pending
     println!("Simulation running... (press Ctrl+C to stop)");

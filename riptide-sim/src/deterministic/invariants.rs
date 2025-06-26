@@ -85,7 +85,7 @@ impl Invariant for ResourceLimitInvariant {
         if let Some((resource, current, limit)) = state.resource_usage.check_limits(&self.limits) {
             return Err(InvariantViolation {
                 invariant: self.name().to_string(),
-                description: format!("{} usage {} exceeds limit {}", resource, current, limit),
+                description: format!("{resource} usage {current} exceeds limit {limit}"),
                 timestamp: Instant::now(),
             });
         }
@@ -125,7 +125,7 @@ impl Invariant for BandwidthInvariant {
             if *rate > limit {
                 return Err(InvariantViolation {
                     invariant: self.name().to_string(),
-                    description: format!("{} rate {} exceeds limit {}", direction, rate, limit),
+                    description: format!("{direction} rate {rate} exceeds limit {limit}"),
                     timestamp: Instant::now(),
                 });
             }
