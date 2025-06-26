@@ -76,14 +76,15 @@ impl SimulationScenarios {
             simulated_download_speed: 10_485_760, // 10 MB/s
             use_mock_data: true,
         };
-        let mut sim = DeterministicSimulation::new(config).unwrap();
+        let mut sim = DeterministicSimulation::new(config)
+            .expect("Failed to create ideal streaming simulation");
         let scenario = StreamingScenario::default();
 
         // Add fast, reliable peers
         for i in 0..scenario.peer_count {
             let peer_id = format!("IDEAL{i:03}");
             sim.add_deterministic_peer(peer_id, PeerBehavior::Fast)
-                .unwrap();
+                .expect("Failed to add ideal streaming peer");
         }
 
         // Create sequential piece requests for streaming
@@ -107,13 +108,14 @@ impl SimulationScenarios {
             simulated_download_speed: 524_288, // 500 KB/s
             use_mock_data: true,
         };
-        let mut sim = DeterministicSimulation::new(config).unwrap();
+        let mut sim =
+            DeterministicSimulation::new(config).expect("Failed to create slow network simulation");
 
         // Add slow peers with high latency
         for i in 0..10 {
             let peer_id = format!("SLOW{i:03}");
             sim.add_deterministic_peer(peer_id, PeerBehavior::Slow)
-                .unwrap();
+                .expect("Failed to add slow network peer");
         }
 
         // Schedule network degradation events
@@ -156,7 +158,8 @@ impl SimulationScenarios {
             simulated_download_speed: 2_097_152, // 2 MB/s
             use_mock_data: true,
         };
-        let mut sim = DeterministicSimulation::new(config).unwrap();
+        let mut sim =
+            DeterministicSimulation::new(config).expect("Failed to create peer churn simulation");
 
         // Add initial peer set
         for i in 0..20 {
@@ -174,7 +177,7 @@ impl SimulationScenarios {
                     },
                     EventPriority::High,
                 )
-                .unwrap();
+                .expect("Failed to schedule peer disconnect for churn scenario");
             }
         }
 
@@ -198,13 +201,14 @@ impl SimulationScenarios {
             simulated_download_speed: 3_145_728, // 3 MB/s
             use_mock_data: true,
         };
-        let mut sim = DeterministicSimulation::new(config).unwrap();
+        let mut sim = DeterministicSimulation::new(config)
+            .expect("Failed to create piece failures simulation");
 
         // Add unreliable peers
         for i in 0..12 {
             let peer_id = format!("UNRELIABLE{i:02}");
             sim.add_deterministic_peer(peer_id, PeerBehavior::Unreliable)
-                .unwrap();
+                .expect("Failed to add unreliable peer for piece failures scenario");
         }
 
         // Schedule specific piece failures for testing
@@ -243,7 +247,8 @@ impl SimulationScenarios {
             simulated_download_speed: 5_242_880, // 5 MB/s average
             use_mock_data: true,
         };
-        let mut sim = DeterministicSimulation::new(config).unwrap();
+        let mut sim =
+            DeterministicSimulation::new(config).expect("Failed to create mixed peers simulation");
 
         // Fast seeders (3)
         for i in 0..3 {

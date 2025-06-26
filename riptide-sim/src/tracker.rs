@@ -156,7 +156,7 @@ impl MockTracker {
             // Add some variation to peer counts over time
             let time_factor = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or(Duration::from_secs(0))
                 .as_secs()
                 % 100;
 
