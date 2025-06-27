@@ -30,6 +30,9 @@ impl HandshakeCodec {
     }
 
     /// Deserializes handshake message following BEP 3
+    ///
+    /// # Errors
+    /// - `TorrentError::ProtocolError` - Invalid handshake format or length
     pub fn deserialize_handshake(data: &[u8]) -> Result<PeerHandshake, TorrentError> {
         if data.len() < 49 {
             return Err(TorrentError::ProtocolError {

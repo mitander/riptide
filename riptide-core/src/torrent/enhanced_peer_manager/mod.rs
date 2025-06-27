@@ -129,6 +129,9 @@ impl EnhancedPeerManager {
     }
 
     /// Start background tasks for peer management
+    ///
+    /// # Errors
+    /// - `TorrentError::ProtocolError` - Background task initialization failed
     pub async fn start_background_tasks(&self) -> Result<(), TorrentError> {
         // Background cleanup, connection monitoring, etc.
         Ok(())

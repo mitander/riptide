@@ -16,6 +16,9 @@ pub struct BencodeParser;
 
 impl BencodeParser {
     /// Parse bencode data and extract torrent metadata
+    ///
+    /// # Errors
+    /// - `TorrentError::InvalidTorrentFile` - Bencode parsing or metadata extraction failed
     pub fn parse_bencode_data(torrent_bytes: &[u8]) -> Result<TorrentMetadata, TorrentError> {
         let parsed = bencode_rs::Value::parse(torrent_bytes).map_err(|e| {
             TorrentError::InvalidTorrentFile {
@@ -144,6 +147,9 @@ impl BencodeParser {
     }
 
     /// Find the end position of a bencode dictionary
+    ///
+    /// # Errors
+    /// - `TorrentError::InvalidTorrentFile` - Invalid bencode dictionary format
     pub fn find_bencode_dictionary_end(data: &[u8]) -> Result<usize, TorrentError> {
         if data.is_empty() || data[0] != b'd' {
             return Err(TorrentError::InvalidTorrentFile {

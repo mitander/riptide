@@ -11,82 +11,85 @@ pub struct MessageCodec;
 impl MessageCodec {
     /// Serializes peer message following BEP 3
     pub fn serialize_message(message: &PeerMessage) -> Vec<u8> {
-        let mut buf = Vec::new();
+        let mut buffer = Vec::new();
 
         match message {
             PeerMessage::KeepAlive => {
-                buf.put_u32(0); // Length = 0
+                buffer.put_u32(0); // Length = 0
             }
             PeerMessage::Choke => {
-                buf.put_u32(1); // Length = 1
-                buf.put_u8(0); // Message ID
+                buffer.put_u32(1); // Length = 1
+                buffer.put_u8(0); // Message ID
             }
             PeerMessage::Unchoke => {
-                buf.put_u32(1);
-                buf.put_u8(1);
+                buffer.put_u32(1);
+                buffer.put_u8(1);
             }
             PeerMessage::Interested => {
-                buf.put_u32(1);
-                buf.put_u8(2);
+                buffer.put_u32(1);
+                buffer.put_u8(2);
             }
             PeerMessage::NotInterested => {
-                buf.put_u32(1);
-                buf.put_u8(3);
+                buffer.put_u32(1);
+                buffer.put_u8(3);
             }
             PeerMessage::Have { piece_index } => {
-                buf.put_u32(5); // Length = 1 + 4
-                buf.put_u8(4); // Message ID
-                buf.put_u32(piece_index.as_u32());
+                buffer.put_u32(5); // Length = 1 + 4
+                buffer.put_u8(4); // Message ID
+                buffer.put_u32(piece_index.as_u32());
             }
             PeerMessage::Bitfield { bitfield } => {
-                buf.put_u32(1 + bitfield.len() as u32);
-                buf.put_u8(5);
-                buf.extend_from_slice(bitfield);
+                buffer.put_u32(1 + bitfield.len() as u32);
+                buffer.put_u8(5);
+                buffer.extend_from_slice(bitfield);
             }
             PeerMessage::Request {
                 piece_index,
                 offset,
                 length,
             } => {
-                buf.put_u32(13); // Length = 1 + 4 + 4 + 4
-                buf.put_u8(6);
-                buf.put_u32(piece_index.as_u32());
-                buf.put_u32(*offset);
-                buf.put_u32(*length);
+                buffer.put_u32(13); // Length = 1 + 4 + 4 + 4
+                buffer.put_u8(6);
+                buffer.put_u32(piece_index.as_u32());
+                buffer.put_u32(*offset);
+                buffer.put_u32(*length);
             }
             PeerMessage::Piece {
                 piece_index,
                 offset,
                 data,
             } => {
-                buf.put_u32(9 + data.len() as u32); // Length = 1 + 4 + 4 + data.len()
-                buf.put_u8(7);
-                buf.put_u32(piece_index.as_u32());
-                buf.put_u32(*offset);
-                buf.extend_from_slice(data);
+                buffer.put_u32(9 + data.len() as u32); // Length = 1 + 4 + 4 + data.len()
+                buffer.put_u8(7);
+                buffer.put_u32(piece_index.as_u32());
+                buffer.put_u32(*offset);
+                buffer.extend_from_slice(data);
             }
             PeerMessage::Cancel {
                 piece_index,
                 offset,
                 length,
             } => {
-                buf.put_u32(13);
-                buf.put_u8(8);
-                buf.put_u32(piece_index.as_u32());
-                buf.put_u32(*offset);
-                buf.put_u32(*length);
+                buffer.put_u32(13);
+                buffer.put_u8(8);
+                buffer.put_u32(piece_index.as_u32());
+                buffer.put_u32(*offset);
+                buffer.put_u32(*length);
             }
             PeerMessage::Port { port } => {
-                buf.put_u32(3); // Length = 1 + 2
-                buf.put_u8(9);
-                buf.put_u16(*port);
+                buffer.put_u32(3); // Length = 1 + 2
+                buffer.put_u8(9);
+                buffer.put_u16(*port);
             }
         }
 
-        buf
+        buffer
     }
 
     /// Deserializes peer message following BEP 3
+    ///
+    /// # Errors
+    /// - `TorrentError::ProtocolError` - Invalid message format or unsupported message type
     pub fn deserialize_message(data: &[u8]) -> Result<PeerMessage, TorrentError> {
         if data.len() < 4 {
             return Err(TorrentError::ProtocolError {
@@ -94,8 +97,8 @@ impl MessageCodec {
             });
         }
 
-        let mut buf = data;
-        let length = buf.get_u32();
+        let mut buffer = data;
+        let length = buffer.get_u32();
 
         if length == 0 {
             return Ok(PeerMessage::KeepAlive);
@@ -107,7 +110,7 @@ impl MessageCodec {
             });
         }
 
-        let message_id = buf.get_u8();
+        let message_id = buffer.get_u8();
 
         match message_id {
             0 => Ok(PeerMessage::Choke),
@@ -120,12 +123,12 @@ impl MessageCodec {
                         message: "Invalid Have message length".to_string(),
                     });
                 }
-                let piece_index = PieceIndex::new(buf.get_u32());
+                let piece_index = PieceIndex::new(buffer.get_u32());
                 Ok(PeerMessage::Have { piece_index })
             }
             5 => {
                 let bitfield_len = length - 1;
-                let bitfield = Bytes::copy_from_slice(&buf[..bitfield_len as usize]);
+                let bitfield = Bytes::copy_from_slice(&buffer[..bitfield_len as usize]);
                 Ok(PeerMessage::Bitfield { bitfield })
             }
             6 => {
@@ -134,9 +137,9 @@ impl MessageCodec {
                         message: "Invalid Request message length".to_string(),
                     });
                 }
-                let piece_index = PieceIndex::new(buf.get_u32());
-                let offset = buf.get_u32();
-                let length = buf.get_u32();
+                let piece_index = PieceIndex::new(buffer.get_u32());
+                let offset = buffer.get_u32();
+                let length = buffer.get_u32();
                 Ok(PeerMessage::Request {
                     piece_index,
                     offset,
@@ -149,10 +152,10 @@ impl MessageCodec {
                         message: "Invalid Piece message length".to_string(),
                     });
                 }
-                let piece_index = PieceIndex::new(buf.get_u32());
-                let offset = buf.get_u32();
+                let piece_index = PieceIndex::new(buffer.get_u32());
+                let offset = buffer.get_u32();
                 let data_len = length - 9;
-                let data = Bytes::copy_from_slice(&buf[..data_len as usize]);
+                let data = Bytes::copy_from_slice(&buffer[..data_len as usize]);
                 Ok(PeerMessage::Piece {
                     piece_index,
                     offset,
@@ -165,9 +168,9 @@ impl MessageCodec {
                         message: "Invalid Cancel message length".to_string(),
                     });
                 }
-                let piece_index = PieceIndex::new(buf.get_u32());
-                let offset = buf.get_u32();
-                let length = buf.get_u32();
+                let piece_index = PieceIndex::new(buffer.get_u32());
+                let offset = buffer.get_u32();
+                let length = buffer.get_u32();
                 Ok(PeerMessage::Cancel {
                     piece_index,
                     offset,
@@ -180,7 +183,7 @@ impl MessageCodec {
                         message: "Invalid Port message length".to_string(),
                     });
                 }
-                let port = buf.get_u16();
+                let port = buffer.get_u16();
                 Ok(PeerMessage::Port { port })
             }
             _ => Err(TorrentError::ProtocolError {

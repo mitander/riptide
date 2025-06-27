@@ -69,6 +69,10 @@ impl HttpTrackerClient {
     }
 
     /// Build scrape URL from announce URL
+    ///
+    /// # Errors
+    /// - `TorrentError::TrackerConnectionFailed` - No scrape URL available
+    /// - `TorrentError::UrlParsing` - Invalid URL format
     pub(super) fn build_scrape_url(&self, request: &ScrapeRequest) -> Result<String, TorrentError> {
         let scrape_url =
             self.scrape_url

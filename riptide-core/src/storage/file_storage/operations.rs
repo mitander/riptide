@@ -1,35 +1,13 @@
-//! File-based storage implementation
+//! Storage trait implementation for FileStorage
 
 use std::path::PathBuf;
 
 use async_trait::async_trait;
 use tokio::fs;
 
-use super::{Storage, StorageError};
+use super::types::FileStorage;
+use crate::storage::{Storage, StorageError};
 use crate::torrent::{InfoHash, PieceIndex};
-
-/// File system-based storage implementation.
-///
-/// Stores torrent pieces as individual files in a directory structure
-/// organized by torrent info hash. Handles piece verification and
-/// torrent completion detection.
-pub struct FileStorage {
-    download_dir: PathBuf,
-    library_dir: PathBuf,
-}
-
-impl FileStorage {
-    /// Creates new file storage with download and library directories.
-    ///
-    /// Download directory stores incomplete pieces during downloading.
-    /// Library directory stores completed torrents after verification.
-    pub fn new(download_dir: PathBuf, library_dir: PathBuf) -> Self {
-        Self {
-            download_dir,
-            library_dir,
-        }
-    }
-}
 
 #[async_trait]
 impl Storage for FileStorage {
@@ -98,14 +76,8 @@ mod tests {
     use tokio::test;
 
     use super::*;
+    use crate::storage::file_storage::types::create_test_info_hash;
     use crate::storage::test_fixtures::create_temp_storage_dirs;
-
-    fn create_test_info_hash() -> InfoHash {
-        InfoHash::new([
-            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
-            0xcd, 0xef, 0x01, 0x23, 0x45, 0x67,
-        ])
-    }
 
     #[test]
     async fn test_store_piece_success() {
