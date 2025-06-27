@@ -53,7 +53,7 @@ impl TemplateEngine {
             let template_path = template_dir.join(filename);
             let content = fs::read_to_string(&template_path).map_err(|e| {
                 crate::WebUIError::TemplateError {
-                    reason: format!("Failed to load template {}: {}", filename, e),
+                    reason: format!("Failed to load template {filename}: {e}"),
                 }
             })?;
             templates.insert(name.to_string(), content);
@@ -63,7 +63,7 @@ impl TemplateEngine {
         let base_template_path = template_dir.join("base.html");
         let base_content = fs::read_to_string(&base_template_path).map_err(|e| {
             crate::WebUIError::TemplateError {
-                reason: format!("Failed to load base template: {}", e),
+                reason: format!("Failed to load base template: {e}"),
             }
         })?;
 

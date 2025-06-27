@@ -2,22 +2,15 @@
 //!
 //! Provides search capabilities across multiple media sources.
 
-mod service;
+pub mod errors;
+pub mod providers;
+pub mod service;
+pub mod types;
 
 // Re-export main types
-pub use service::{MediaSearchResult, MediaSearchService, TorrentResult};
+pub use errors::MediaSearchError;
+pub use service::MediaSearchService;
+pub use types::{MediaSearchResult, MediaType, TorrentResult, VideoQuality};
 
-/// Search-specific errors.
-#[derive(Debug, thiserror::Error)]
-pub enum SearchError {
-    #[error("Search provider failed: {reason}")]
-    ProviderFailed { reason: String },
-
-    #[error("Network error: {0}")]
-    Network(#[from] reqwest::Error),
-
-    #[error("Parsing error: {reason}")]
-    ParsingError { reason: String },
-}
-
-pub type Result<T> = std::result::Result<T, SearchError>;
+// Type alias for convenience
+pub type Result<T> = std::result::Result<T, MediaSearchError>;
