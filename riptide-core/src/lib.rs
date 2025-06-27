@@ -51,7 +51,7 @@ impl RiptideError {
                     format!("Could not connect to tracker: {url}")
                 }
                 TorrentError::TorrentNotFound { info_hash } => {
-                    format!("Torrent {} not found", info_hash)
+                    format!("Torrent {info_hash} not found")
                 }
                 TorrentError::NoPeersAvailable => "No peers available for download".to_string(),
                 _ => "Download error occurred".to_string(),

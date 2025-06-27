@@ -319,9 +319,9 @@ mod tests {
             }
             Err(StorageError::Io(io_error)) => {
                 // Some platforms might fail with AlreadyExists or other error
-                println!("Expected error for destination exists: {}", io_error);
+                println!("Expected error for destination exists: {io_error}");
             }
-            Err(e) => panic!("Unexpected error type: {}", e),
+            Err(e) => panic!("Unexpected error type: {e}"),
         }
     }
 
@@ -453,9 +453,9 @@ mod tests {
             }
             Err(StorageError::Io(io_error)) => {
                 // Acceptable error for disk space exhaustion
-                println!("Disk space test failed as expected: {}", io_error);
+                println!("Disk space test failed as expected: {io_error}");
             }
-            Err(e) => panic!("Unexpected error type: {}", e),
+            Err(e) => panic!("Unexpected error type: {e}"),
         }
     }
 
@@ -638,7 +638,7 @@ mod tests {
 
         // Store the same piece multiple times with different data
         for i in 0..5 {
-            let data = format!("overwrite test data {}", i);
+            let data = format!("overwrite test data {i}");
             let result = storage
                 .store_piece(info_hash, piece_index, data.as_bytes())
                 .await;
