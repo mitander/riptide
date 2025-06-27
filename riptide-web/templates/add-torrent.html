@@ -1,7 +1,7 @@
 <div class="add-torrent">
     <h1>Add New Torrent</h1>
 
-    <form class="add-torrent-form" onsubmit="addTorrent(event)">
+    <form class="add-torrent-form">
         <div class="form-group">
             <label for="magnet-link">Magnet Link:</label>
             <input type="url" id="magnet-link" name="magnet" required
@@ -23,35 +23,5 @@
 
     <div id="add-result" class="result-message" style="display: none;"></div>
 
-    <script>
-        async function addTorrent(event) {
-            event.preventDefault();
-
-            const magnetLink = document.getElementById('magnet-link').value;
-            const resultDiv = document.getElementById('add-result');
-
-            try {
-                const response = await fetch(`/api/torrents/add?magnet=${encodeURIComponent(magnetLink)}`);
-                const data = await response.json();
-
-                if (data.result.success) {
-                    resultDiv.className = 'result-message success';
-                    resultDiv.textContent = data.result.message;
-                    if (data.result.stream_url) {
-                        resultDiv.innerHTML += `<br><a href="${data.result.stream_url}" class="btn btn-primary">Stream Now</a>`;
-                    }
-                    document.getElementById('magnet-link').value = '';
-                } else {
-                    resultDiv.className = 'result-message error';
-                    resultDiv.textContent = data.result.message;
-                }
-
-                resultDiv.style.display = 'block';
-            } catch (error) {
-                resultDiv.className = 'result-message error';
-                resultDiv.textContent = 'Failed to add torrent: ' + error.message;
-                resultDiv.style.display = 'block';
-            }
-        }
-    </script>
+    <!-- Form submission handled by TypeScript -->
 </div>

@@ -21,21 +21,7 @@
     <div class="recent-activity">
         <h2>Recent Activity</h2>
         <div class="activity-list">
-            <script>
-                const activities = {{recent_activity}};
-                activities.forEach(activity => {
-                    const div = document.createElement('div');
-                    div.className = 'activity-item';
-                    div.innerHTML = `
-                        <div class="activity-icon ${activity.activity_type}"></div>
-                        <div class="activity-content">
-                            <p class="activity-description">${activity.description}</p>
-                            <p class="activity-time">${new Date(activity.timestamp).toLocaleString()}</p>
-                        </div>
-                    `;
-                    document.querySelector('.activity-list').appendChild(div);
-                });
-            </script>
+            <!-- Activity items will be loaded by TypeScript -->
         </div>
     </div>
 </div>

@@ -30,9 +30,11 @@ impl TemplateEngine {
     ///
     /// # Errors
     /// - `WebUIError::TemplateError` - Template file cannot be read or directory does not exist
-    pub fn from_directory<P: AsRef<std::path::Path>>(template_dir: P) -> Result<Self, crate::WebUIError> {
+    pub fn from_directory<P: AsRef<std::path::Path>>(
+        template_dir: P,
+    ) -> Result<Self, crate::WebUIError> {
         use std::fs;
-        
+
         let template_dir = template_dir.as_ref().to_path_buf();
         let mut templates = HashMap::new();
 
@@ -49,19 +51,21 @@ impl TemplateEngine {
         // Load templates from files
         for (name, filename) in template_files {
             let template_path = template_dir.join(filename);
-            let content = fs::read_to_string(&template_path)
-                .map_err(|e| crate::WebUIError::TemplateError {
+            let content = fs::read_to_string(&template_path).map_err(|e| {
+                crate::WebUIError::TemplateError {
                     reason: format!("Failed to load template {}: {}", filename, e),
-                })?;
+                }
+            })?;
             templates.insert(name.to_string(), content);
         }
 
         // Load base template
         let base_template_path = template_dir.join("base.html");
-        let base_content = fs::read_to_string(&base_template_path)
-            .map_err(|e| crate::WebUIError::TemplateError {
+        let base_content = fs::read_to_string(&base_template_path).map_err(|e| {
+            crate::WebUIError::TemplateError {
                 reason: format!("Failed to load base template: {}", e),
-            })?;
+            }
+        })?;
 
         Ok(Self {
             templates,
@@ -74,7 +78,11 @@ impl TemplateEngine {
     ///
     /// # Errors
     /// - `WebUIError::TemplateError` - Template not found or rendering failed
-    pub fn render(&self, template_name: &str, context: &serde_json::Value) -> Result<HtmlResponse, WebUIError> {
+    pub fn render(
+        &self,
+        template_name: &str,
+        context: &serde_json::Value,
+    ) -> Result<HtmlResponse, WebUIError> {
         let template =
             self.templates
                 .get(template_name)
@@ -97,19 +105,31 @@ impl Default for TemplateEngine {
 
 impl TemplateEngine {
     /// Creates a minimal template engine for testing.
-    /// 
+    ///
     /// Uses empty templates - suitable for unit tests that don't need actual HTML.
     pub fn new_minimal() -> Self {
         let mut templates = HashMap::new();
-        
+
         // Add minimal templates for testing
-        let template_names = ["home", "library", "torrents", "add_torrent", "search", "settings"];
+        let template_names = [
+            "home",
+            "library",
+            "torrents",
+            "add_torrent",
+            "search",
+            "settings",
+        ];
         for name in template_names {
-            templates.insert(name.to_string(), format!("<div class=\"{name}\">Test {name} template</div>"));
+            templates.insert(
+                name.to_string(),
+                format!("<div class=\"{name}\">Test {name} template</div>"),
+            );
         }
-        
-        let base_template = "<html><head><title>{{title}}</title></head><body>{{content}}</body></html>".to_string();
-        
+
+        let base_template =
+            "<html><head><title>{{title}}</title></head><body>{{content}}</body></html>"
+                .to_string();
+
         Self {
             templates,
             base_template,

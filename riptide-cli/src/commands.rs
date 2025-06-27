@@ -365,8 +365,7 @@ pub async fn start_server(host: String, port: u16, demo: bool) -> Result<()> {
     };
     let handlers =
         WebHandlers::new_with_media_search(torrent_engine, streaming_service, media_search_service);
-    let template_engine = TemplateEngine::new()
-        .map_err(|e| RiptideError::from_web_ui_error(e))?;
+    let template_engine = TemplateEngine::new().map_err(|e| RiptideError::from_web_ui_error(e))?;
 
     // Configure web server
     let mut web_config = WebServerConfig::from_riptide_config(&config);

@@ -54,7 +54,11 @@ fn get_nested_value<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 }
 
 /// Wraps content in base template layout.
-pub fn wrap_in_base(base_template: &str, content: &str, context: &Value) -> Result<String, WebUIError> {
+pub fn wrap_in_base(
+    base_template: &str,
+    content: &str,
+    context: &Value,
+) -> Result<String, WebUIError> {
     let title = context
         .get("title")
         .and_then(|t| t.as_str())
@@ -112,6 +116,9 @@ mod tests {
         let context = json!({"title": "Test Page"});
 
         let result = wrap_in_base(base, content, &context).unwrap();
-        assert_eq!(result, "<html><title>Test Page</title><body><p>Test content</p></body></html>");
+        assert_eq!(
+            result,
+            "<html><title>Test Page</title><body><p>Test content</p></body></html>"
+        );
     }
 }
