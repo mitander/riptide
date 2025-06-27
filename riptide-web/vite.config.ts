@@ -9,6 +9,10 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app: resolve(__dirname, 'src/main.ts'),
+        torrents: resolve(__dirname, 'src/torrents.ts'),
+        library: resolve(__dirname, 'src/library.ts'),
+        search: resolve(__dirname, 'src/search.ts'),
+        settings: resolve(__dirname, 'src/settings.ts'),
       },
       output: {
         entryFileNames: 'js/[name].js',

@@ -6,7 +6,7 @@
 import { initializeDashboard } from './components/dashboard';
 import { initializeTorrentManager } from './components/torrents';
 import { api } from './api/client';
-import { debounce } from './utils/formatting';
+import { debounce } from './display/formatting';
 
 /**
  * Application state and global functionality

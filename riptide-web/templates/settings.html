@@ -1,7 +1,7 @@
 <div class="settings">
     <h1>Server Settings</h1>
 
-    <form class="settings-form" onsubmit="saveSettings(event)">
+    <form class="settings-form">
         <div class="settings-section">
             <h2>Network Settings</h2>
 
@@ -72,30 +72,11 @@
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Settings</button>
-            <button type="button" class="btn btn-secondary" onclick="resetSettings()">Reset</button>
+            <button type="button" class="btn btn-secondary" id="reset-settings">Reset</button>
         </div>
     </form>
 
     <div id="settings-result" class="result-message" style="display: none;"></div>
 
-    <script>
-        function saveSettings(event) {
-            event.preventDefault();
-
-            const resultDiv = document.getElementById('settings-result');
-            resultDiv.className = 'result-message success';
-            resultDiv.textContent = 'Settings saved successfully!';
-            resultDiv.style.display = 'block';
-
-            setTimeout(() => {
-                resultDiv.style.display = 'none';
-            }, 3000);
-        }
-
-        function resetSettings() {
-            if (confirm('Reset all settings to defaults?')) {
-                location.reload();
-            }
-        }
-    </script>
+    <script src="/static/js/settings.js"></script>
 </div>

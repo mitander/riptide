@@ -12,56 +12,12 @@
     </div>
 
     <div class="media-grid" id="media-grid">
-        <script>
-            const libraryItems = {{library_items}};
-            const mediaGrid = document.getElementById('media-grid');
-
-            function renderLibraryItems(items) {
-                mediaGrid.innerHTML = '';
-                items.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'media-card';
-                    div.innerHTML = `
-                        <div class="media-poster">
-                            ${item.thumbnail_url ?
-                                `<img src="${item.thumbnail_url}" alt="${item.title}">` :
-                                '<div class="placeholder-poster"></div>'
-                            }
-                        </div>
-                        <div class="media-info">
-                            <h3 class="media-title">${item.title}</h3>
-                            <p class="media-type">${item.media_type}</p>
-                            <p class="media-size">${(item.size / 1073741824).toFixed(1)} GB</p>
-                            ${item.duration ? `<p class="media-duration">${Math.floor(item.duration / 60)}m</p>` : ''}
-                            <div class="media-actions">
-                                <a href="${item.stream_url}" class="btn btn-primary">Stream</a>
-                                <button class="btn btn-secondary" onclick="showMediaDetails('${item.id}')">Details</button>
-                            </div>
-                        </div>
-                    `;
-                    mediaGrid.appendChild(div);
-                });
-            }
-
-            renderLibraryItems(libraryItems);
-
-            // Search functionality
-            document.getElementById('search').addEventListener('input', (e) => {
-                const query = e.target.value.toLowerCase();
-                const filtered = libraryItems.filter(item =>
-                    item.title.toLowerCase().includes(query)
-                );
-                renderLibraryItems(filtered);
-            });
-
-            // Type filter
-            document.getElementById('type-filter').addEventListener('change', (e) => {
-                const type = e.target.value;
-                const filtered = type ?
-                    libraryItems.filter(item => item.media_type === type) :
-                    libraryItems;
-                renderLibraryItems(filtered);
-            });
-        </script>
+        <!-- Media items will be loaded by TypeScript -->
     </div>
+
+    <script>
+        // Inject library items data for TypeScript to use
+        window.libraryItems = {{library_items}};
+    </script>
+    <script src="/static/js/library.js"></script>
 </div>

@@ -1,6 +1,6 @@
 import { api } from '../api/client';
 import type { TorrentProgress } from '../../types/api';
-import { formatBytes } from '../utils/formatting';
+import { formatBytes } from '../display/formatting';
 
 /**
  * Torrent management component

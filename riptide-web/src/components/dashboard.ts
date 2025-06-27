@@ -1,6 +1,6 @@
 import { api } from '../api/client';
 import type { ActivityItem, ServerStats } from '../../types/api';
-import { formatTimestamp } from '../utils/formatting';
+import { formatTimestamp } from '../display/formatting';
 
 /**
  * Dashboard component logic for home page
