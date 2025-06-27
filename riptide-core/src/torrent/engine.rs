@@ -96,12 +96,12 @@ impl TorrentEngine {
     /// Start downloading a torrent with peer discovery
     ///
     /// # Errors
-    /// - `TorrentError::NoPeersAvailable` - No torrent session found
+    /// - `TorrentError::TorrentNotFound` - No torrent session found for this info hash
     pub async fn start_download(&mut self, info_hash: InfoHash) -> Result<(), TorrentError> {
         let session = self
             .active_torrents
             .get_mut(&info_hash)
-            .ok_or(TorrentError::NoPeersAvailable)?;
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
 
         // For magnet links, we need to discover peers first to get metadata
         if session.piece_count == 0 {
@@ -122,11 +122,11 @@ impl TorrentEngine {
     /// Get torrent session information
     ///
     /// # Errors
-    /// - `TorrentError::NoPeersAvailable` - No torrent session found
+    /// - `TorrentError::TorrentNotFound` - No torrent session found for this info hash
     pub fn get_session(&self, info_hash: InfoHash) -> Result<&TorrentSession, TorrentError> {
         self.active_torrents
             .get(&info_hash)
-            .ok_or(TorrentError::NoPeersAvailable)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })
     }
 
     /// Add discovered peer to torrent

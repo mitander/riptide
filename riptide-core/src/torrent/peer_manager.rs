@@ -141,6 +141,7 @@ impl PeerManager {
     /// Request piece from best available peer
     ///
     /// # Errors
+    /// - `TorrentError::TorrentNotFound` - No torrent found in peer connections
     /// - `TorrentError::NoPeersAvailable` - No connected peers for torrent
     /// - `TorrentError::BandwidthLimitExceeded` - Download rate limit reached
     pub async fn request_piece(
@@ -156,7 +157,7 @@ impl PeerManager {
         let connections = self.connections.read().await;
         let torrent_peers = connections
             .get(&info_hash)
-            .ok_or(TorrentError::NoPeersAvailable)?;
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
 
         let best_peer = torrent_peers
             .iter()

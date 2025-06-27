@@ -115,6 +115,9 @@ pub enum TorrentError {
     #[error("No peers available for torrent")]
     NoPeersAvailable,
 
+    #[error("Torrent {info_hash} not found")]
+    TorrentNotFound { info_hash: InfoHash },
+
     #[error("Bandwidth limit exceeded")]
     BandwidthLimitExceeded,
 
