@@ -1,0 +1,41 @@
+<div class="dashboard">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Active Torrents</h3>
+            <p class="stat-value">{{stats.total_torrents}}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Active Streams</h3>
+            <p class="stat-value">{{stats.active_streams}}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Download Speed</h3>
+            <p class="stat-value">{{stats.download_speed}} KB/s</p>
+        </div>
+        <div class="stat-card">
+            <h3>Upload Speed</h3>
+            <p class="stat-value">{{stats.upload_speed}} KB/s</p>
+        </div>
+    </div>
+
+    <div class="recent-activity">
+        <h2>Recent Activity</h2>
+        <div class="activity-list">
+            <script>
+                const activities = {{recent_activity}};
+                activities.forEach(activity => {
+                    const div = document.createElement('div');
+                    div.className = 'activity-item';
+                    div.innerHTML = `
+                        <div class="activity-icon ${activity.activity_type}"></div>
+                        <div class="activity-content">
+                            <p class="activity-description">${activity.description}</p>
+                            <p class="activity-time">${new Date(activity.timestamp).toLocaleString()}</p>
+                        </div>
+                    `;
+                    document.querySelector('.activity-list').appendChild(div);
+                });
+            </script>
+        </div>
+    </div>
+</div>

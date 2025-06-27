@@ -332,7 +332,7 @@ mod tests {
                 RiptideConfig::default(),
             ))),
         );
-        let template_engine = TemplateEngine::new();
+        let template_engine = TemplateEngine::default(); // Use default for tests
 
         let server = WebServer::new(config, handlers, template_engine);
 

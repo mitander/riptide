@@ -1,9 +1,11 @@
 //! Template rendering engine for the Riptide web UI
 //!
 //! Provides HTML template rendering with JSON context injection for the web UI.
-//! Uses a simple template system optimized for streaming media server interfaces.
+//! Uses actual HTML template files located in riptide-web/templates/ directory.
+//! This approach enables proper syntax highlighting, linting, and hot-reloading.
 
-pub mod engine;
+mod rendering;
+mod types;
 
 // Re-export public API
-pub use engine::TemplateEngine;
+pub use types::TemplateEngine;

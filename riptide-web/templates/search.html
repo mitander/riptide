@@ -1,0 +1,164 @@
+<div class="search">
+    <h1>Search Media</h1>
+
+    <div class="search-form">
+        <form class="search-input-form" onsubmit="performSearch(event)">
+            <div class="form-group">
+                <input type="text" id="search-query" name="query" required
+                       placeholder="Search for movies, TV shows..." class="form-input search-input">
+                <div class="search-filters">
+                    <label>
+                        <input type="radio" name="category" value="all" checked> All
+                    </label>
+                    <label>
+                        <input type="radio" name="category" value="movie"> Movies
+                    </label>
+                    <label>
+                        <input type="radio" name="category" value="tv"> TV Shows
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary search-btn">Search</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="search-loading" class="loading" style="display: none;">
+        <p>Searching...</p>
+    </div>
+
+    <div id="search-results" class="search-results" style="display: none;">
+        <h2>Search Results</h2>
+        <div id="results-grid" class="results-grid"></div>
+    </div>
+
+    <script>
+        async function performSearch(event) {
+            event.preventDefault();
+
+            const query = document.getElementById('search-query').value.trim();
+            const category = document.querySelector('input[name="category"]:checked').value;
+
+            if (!query) return;
+
+            const loadingDiv = document.getElementById('search-loading');
+            const resultsDiv = document.getElementById('search-results');
+            const resultsGrid = document.getElementById('results-grid');
+
+            // Show loading
+            loadingDiv.style.display = 'block';
+            resultsDiv.style.display = 'none';
+
+            try {
+                let url = '/api/search';
+                if (category === 'movie') {
+                    url = '/api/search/movies';
+                } else if (category === 'tv') {
+                    url = '/api/search/tv';
+                }
+
+                const response = await fetch(`${url}?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                // Hide loading
+                loadingDiv.style.display = 'none';
+
+                if (data.results && data.results.length > 0) {
+                    renderSearchResults(data.results);
+                    resultsDiv.style.display = 'block';
+                } else {
+                    resultsGrid.innerHTML = '<p class="no-results">No results found.</p>';
+                    resultsDiv.style.display = 'block';
+                }
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                resultsGrid.innerHTML = `<p class="error">Search failed: ${error.message}</p>`;
+                resultsDiv.style.display = 'block';
+            }
+        }
+
+        function renderSearchResults(results) {
+            const grid = document.getElementById('results-grid');
+            grid.innerHTML = '';
+
+            results.forEach(result => {
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'search-result-card';
+
+                const posterImg = result.poster_url ?
+                    `<img src="${result.poster_url}" alt="${result.title}" class="result-poster">` :
+                    '<div class="result-poster-placeholder"></div>';
+
+                const year = result.year ? ` (${result.year})` : '';
+                const rating = result.rating ? `<span class="rating">★ ${result.rating}</span>` : '';
+                const genre = result.genre ? `<span class="genre">${result.genre}</span>` : '';
+
+                resultDiv.innerHTML = `
+                    <div class="result-poster-container">
+                        ${posterImg}
+                    </div>
+                    <div class="result-info">
+                        <h3 class="result-title">${result.title}${year}</h3>
+                        <div class="result-meta">
+                            ${rating}
+                            ${genre}
+                            <span class="media-type">${result.media_type}</span>
+                        </div>
+                        <p class="result-plot">${result.plot || 'No description available.'}</p>
+                        <div class="result-torrents">
+                            <h4>Available Downloads (${result.torrents.length})</h4>
+                            <div class="torrent-list">
+                                ${result.torrents.slice(0, 3).map(torrent => `
+                                    <div class="torrent-item">
+                                        <div class="torrent-info">
+                                            <span class="torrent-quality">${torrent.quality}</span>
+                                            <span class="torrent-size">${formatBytes(torrent.size)}</span>
+                                            <span class="torrent-seeds">🌱 ${torrent.seeders}</span>
+                                        </div>
+                                        <button class="btn btn-sm btn-primary" onclick="downloadTorrent('${torrent.magnet_link}')">
+                                            Download
+                                        </button>
+                                    </div>
+                                `).join('')}
+                                ${result.torrents.length > 3 ? `<p class="more-torrents">... and ${result.torrents.length - 3} more</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                grid.appendChild(resultDiv);
+            });
+        }
+
+        function formatBytes(bytes) {
+            if (bytes >= 1073741824) {
+                return (bytes / 1073741824).toFixed(1) + ' GB';
+            } else if (bytes >= 1048576) {
+                return (bytes / 1048576).toFixed(1) + ' MB';
+            }
+            return (bytes / 1024).toFixed(0) + ' KB';
+        }
+
+        async function downloadTorrent(magnetLink) {
+            try {
+                const response = await fetch(`/api/torrents/add?magnet=${encodeURIComponent(magnetLink)}`);
+                const data = await response.json();
+
+                if (data.result.success) {
+                    alert('Torrent added successfully! ' + data.result.message);
+                    if (data.result.stream_url) {
+                        if (confirm('Would you like to start streaming now?')) {
+                            window.open(data.result.stream_url, '_blank');
+                        }
+                    }
+                } else {
+                    alert('Failed to add torrent: ' + data.result.message);
+                }
+            } catch (error) {
+                alert('Error adding torrent: ' + error.message);
+            }
+        }
+
+        // Auto-focus search input
+        document.getElementById('search-query').focus();
+    </script>
+</div>

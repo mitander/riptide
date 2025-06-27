@@ -1,0 +1,61 @@
+<div class="torrents">
+    <h1>Torrent Management</h1>
+
+    <div class="torrents-toolbar">
+        <a href="/add-torrent" class="btn btn-primary">Add Torrent</a>
+        <button class="btn btn-secondary" onclick="refreshTorrents()">Refresh</button>
+    </div>
+
+    <div class="torrents-table">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Down Speed</th>
+                    <th>Up Speed</th>
+                    <th>Size</th>
+                    <th>Ratio</th>
+                    <th>Peers</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="torrents-tbody">
+                <script>
+                    const torrents = {{torrents}};
+                    const tbody = document.getElementById('torrents-tbody');
+
+                    function renderTorrents() {
+                        tbody.innerHTML = '';
+                        torrents.forEach(torrent => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td class="torrent-name">${torrent.name}</td>
+                                <td><span class="status ${torrent.status.toLowerCase()}">${torrent.status}</span></td>
+                                <td>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: ${torrent.progress}%"></div>
+                                        <span class="progress-text">${torrent.progress.toFixed(1)}%</span>
+                                    </div>
+                                </td>
+                                <td>${(torrent.download_speed / 1024).toFixed(0)} KB/s</td>
+                                <td>${(torrent.upload_speed / 1024).toFixed(0)} KB/s</td>
+                                <td>${(torrent.size / 1073741824).toFixed(1)} GB</td>
+                                <td>${torrent.ratio.toFixed(2)}</td>
+                                <td>${torrent.peers}/${torrent.seeds}</td>
+                                <td class="torrent-actions">
+                                    <button class="btn btn-sm" onclick="pauseTorrent('${torrent.info_hash}')">Pause</button>
+                                    <button class="btn btn-sm btn-danger" onclick="removeTorrent('${torrent.info_hash}')">Remove</button>
+                                </td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    }
+
+                    renderTorrents();
+                </script>
+            </tbody>
+        </table>
+    </div>
+</div>
