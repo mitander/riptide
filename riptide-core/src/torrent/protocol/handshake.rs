@@ -69,3 +69,146 @@ impl HandshakeCodec {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_handshake() -> PeerHandshake {
+        let info_hash = InfoHash::new([0x12; 20]);
+        let peer_id = PeerId::new([0x34; 20]);
+        PeerHandshake::new(info_hash, peer_id)
+    }
+
+    #[test]
+    fn test_handshake_serialization_roundtrip() {
+        let original = create_test_handshake();
+
+        let serialized = HandshakeCodec::serialize_handshake(&original);
+        let deserialized = HandshakeCodec::deserialize_handshake(&serialized).unwrap();
+
+        assert_eq!(original.protocol, deserialized.protocol);
+        assert_eq!(original.reserved, deserialized.reserved);
+        assert_eq!(original.info_hash, deserialized.info_hash);
+        assert_eq!(original.peer_id, deserialized.peer_id);
+    }
+
+    #[test]
+    fn test_handshake_serialization_format() {
+        let handshake = create_test_handshake();
+        let serialized = HandshakeCodec::serialize_handshake(&handshake);
+
+        // Check protocol length (19 for "BitTorrent protocol")
+        assert_eq!(serialized[0], 19);
+
+        // Check protocol string
+        assert_eq!(&serialized[1..20], b"BitTorrent protocol");
+
+        // Check reserved bytes (should be zeros)
+        assert_eq!(&serialized[20..28], &[0u8; 8]);
+
+        // Check info hash
+        assert_eq!(&serialized[28..48], &[0x12; 20]);
+
+        // Check peer ID
+        assert_eq!(&serialized[48..68], &[0x34; 20]);
+
+        // Total length should be 68 bytes
+        assert_eq!(serialized.len(), 68);
+    }
+
+    #[test]
+    fn test_handshake_deserialization_too_short() {
+        let short_data = vec![0u8; 48]; // One byte short
+        let result = HandshakeCodec::deserialize_handshake(&short_data);
+
+        assert!(result.is_err());
+        if let Err(TorrentError::ProtocolError { message }) = result {
+            assert!(message.contains("too short"));
+        } else {
+            panic!("Expected ProtocolError with 'too short' message");
+        }
+    }
+
+    #[test]
+    fn test_handshake_deserialization_invalid_length() {
+        // Create data with protocol length that exceeds actual data
+        let mut data = vec![0u8; 100];
+        data[0] = 200; // Invalid protocol length
+
+        let result = HandshakeCodec::deserialize_handshake(&data);
+
+        assert!(result.is_err());
+        if let Err(TorrentError::ProtocolError { message }) = result {
+            assert!(message.contains("Invalid handshake length"));
+        } else {
+            panic!("Expected ProtocolError with 'Invalid handshake length' message");
+        }
+    }
+
+    #[test]
+    fn test_handshake_with_custom_protocol() {
+        let info_hash = InfoHash::new([0xAB; 20]);
+        let peer_id = PeerId::new([0xCD; 20]);
+        let handshake = PeerHandshake {
+            protocol: "CustomProtocol".to_string(),
+            reserved: [0xFF; 8],
+            info_hash,
+            peer_id,
+        };
+
+        let serialized = HandshakeCodec::serialize_handshake(&handshake);
+        let deserialized = HandshakeCodec::deserialize_handshake(&serialized).unwrap();
+
+        assert_eq!(handshake.protocol, deserialized.protocol);
+        assert_eq!(handshake.reserved, deserialized.reserved);
+        assert_eq!(handshake.info_hash, deserialized.info_hash);
+        assert_eq!(handshake.peer_id, deserialized.peer_id);
+    }
+
+    #[test]
+    fn test_handshake_with_reserved_bytes() {
+        let info_hash = InfoHash::new([0x01; 20]);
+        let peer_id = PeerId::new([0x02; 20]);
+        let reserved_bytes = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+
+        let handshake = PeerHandshake {
+            protocol: "BitTorrent protocol".to_string(),
+            reserved: reserved_bytes,
+            info_hash,
+            peer_id,
+        };
+
+        let serialized = HandshakeCodec::serialize_handshake(&handshake);
+        let deserialized = HandshakeCodec::deserialize_handshake(&serialized).unwrap();
+
+        assert_eq!(deserialized.reserved, reserved_bytes);
+    }
+
+    #[test]
+    fn test_handshake_minimal_valid_size() {
+        // Create minimal valid handshake (1-char protocol)
+        let mut data = vec![0u8; 50]; // 1 + 1 + 8 + 20 + 20 = 50
+        data[0] = 1; // Protocol length of 1
+        data[1] = b'X'; // Single character protocol
+
+        let result = HandshakeCodec::deserialize_handshake(&data);
+        assert!(result.is_ok());
+
+        let handshake = result.unwrap();
+        assert_eq!(handshake.protocol, "X");
+    }
+
+    #[test]
+    fn test_handshake_empty_protocol() {
+        // Test with empty protocol string
+        let mut data = vec![0u8; 49]; // 1 + 0 + 8 + 20 + 20 = 49
+        data[0] = 0; // Protocol length of 0
+
+        let result = HandshakeCodec::deserialize_handshake(&data);
+        assert!(result.is_ok());
+
+        let handshake = result.unwrap();
+        assert_eq!(handshake.protocol, "");
+    }
+}
