@@ -1,7 +1,7 @@
 //! Tests for file storage operations
 
 #[cfg(test)]
-mod tests {
+mod file_storage_tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
