@@ -24,9 +24,9 @@ impl Clone for MediaSearchService {
 }
 
 impl MediaSearchService {
-    /// Creates new media search service with real Magneto provider.
+    /// Creates new media search service with demo provider.
     ///
-    /// TODO: Currently returns demo data until real Magneto API is implemented.
+    /// Currently uses demo data for development. Real Magneto integration planned.
     pub fn new() -> Self {
         Self {
             provider: Box::new(DemoProvider::new()),

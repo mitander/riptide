@@ -11,18 +11,7 @@ use crate::types::{MediaSearchResult, MediaType, TorrentResult, VideoQuality};
 /// Returns realistic demo data for UI development without external API calls.
 /// Includes multiple quality options, realistic file sizes, and seeder counts.
 #[derive(Debug)]
-pub struct DemoProvider {
-    #[allow(dead_code)] // For future demo data configuration
-    demo_config: DemoConfig,
-}
-
-#[derive(Debug)]
-struct DemoConfig {
-    #[allow(dead_code)] // For future demo configuration options
-    include_4k: bool,
-    #[allow(dead_code)] // For future demo configuration options
-    realistic_seeders: bool,
-}
+pub struct DemoProvider;
 
 impl Default for DemoProvider {
     fn default() -> Self {
@@ -32,12 +21,7 @@ impl Default for DemoProvider {
 
 impl DemoProvider {
     pub fn new() -> Self {
-        Self {
-            demo_config: DemoConfig {
-                include_4k: true,
-                realistic_seeders: true,
-            },
-        }
+        Self
     }
 }
 
