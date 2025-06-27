@@ -93,6 +93,10 @@ pub(super) mod hex_serde {
 
     use crate::torrent::InfoHash;
 
+    /// Serialize InfoHash as hex string for JSON output.
+    ///
+    /// # Errors
+    /// - Returns serializer error if hex encoding fails
     pub fn serialize<S>(info_hash: &InfoHash, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -106,6 +110,13 @@ pub(super) mod serde_instant {
 
     use serde::{Serialize, Serializer};
 
+    /// Serialize Instant as milliseconds since UNIX epoch.
+    ///
+    /// Converts Instant to SystemTime for serialization. Note: May not be accurate
+    /// across system suspends or clock adjustments.
+    ///
+    /// # Errors
+    /// - Returns serializer error if timestamp conversion fails
     pub fn serialize<S>(instant: &Instant, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

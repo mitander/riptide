@@ -5,6 +5,9 @@ use serde_json::Value;
 use crate::WebUIError;
 
 /// Interpolates template variables with context values.
+///
+/// # Errors
+/// - `WebUIError::TemplateRenderError` - Template syntax error or invalid context
 pub fn interpolate_template(template: &str, context: &Value) -> Result<String, WebUIError> {
     let mut result = template.to_string();
 
@@ -54,6 +57,9 @@ fn get_nested_value<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 }
 
 /// Wraps content in base template layout.
+///
+/// # Errors
+/// - `WebUIError::TemplateRenderError` - Base template processing error
 pub fn wrap_in_base(
     base_template: &str,
     content: &str,

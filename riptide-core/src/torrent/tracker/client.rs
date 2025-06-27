@@ -109,6 +109,9 @@ impl HttpTrackerClient {
     }
 
     /// Parse compact peer list from tracker response
+    ///
+    /// # Errors
+    /// - `TorrentError::ProtocolError` - Invalid compact peer data length (not multiple of 6 bytes)
     pub(crate) fn parse_compact_peers(peer_bytes: &[u8]) -> PeerList {
         if peer_bytes.len() % 6 != 0 {
             return Err(TorrentError::ProtocolError {

@@ -115,6 +115,9 @@ impl WebServer {
     }
 
     /// Stop the web server gracefully.
+    ///
+    /// # Errors
+    /// - Currently never fails, but returns Result for future error handling
     pub async fn stop(&mut self) -> Result<(), WebUIError> {
         if let Some(sender) = self.shutdown_sender.take() {
             let _ = sender.send(());

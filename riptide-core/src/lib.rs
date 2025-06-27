@@ -78,6 +78,9 @@ pub type Result<T> = std::result::Result<T, RiptideError>;
 
 /// Convert WebUIError to RiptideError
 impl RiptideError {
+    /// Convert a web UI error to RiptideError.
+    ///
+    /// Wraps any display-able error from the web UI layer into a RiptideError::WebUI variant.
     pub fn from_web_ui_error(error: impl std::fmt::Display) -> Self {
         RiptideError::WebUI {
             reason: error.to_string(),

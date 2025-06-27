@@ -21,6 +21,9 @@ impl StaticFileHandler {
     }
 
     /// Serve a static file
+    ///
+    /// # Errors
+    /// - `StatusCode::NOT_FOUND` - File not found or invalid path
     pub fn serve(&self, _path: &str) -> Result<Response, StatusCode> {
         // Simple placeholder implementation
         // In production, this would read and serve actual files
