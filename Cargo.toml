@@ -70,6 +70,7 @@ tokio-test = "0.4"
 proptest = "1.0"
 criterion = { version = "0.6", features = ["html_reports"] }
 
+
 # Internal workspace dependencies
 riptide-core = { path = "riptide-core" }
 riptide-web = { path = "riptide-web" }

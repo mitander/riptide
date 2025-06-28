@@ -1,1 +1,0 @@
-function t(r){return r>=1073741824?(r/1073741824).toFixed(1)+" GB":r>=1048576?(r/1048576).toFixed(1)+" MB":(r/1024).toFixed(0)+" KB"}function e(r){return t(r)+"/s"}function o(r){return(r*100).toFixed(1)+"%"}export{e as a,t as b,o as f};

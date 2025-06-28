@@ -87,7 +87,7 @@ impl HttpTrackerClient {
             .collect();
 
         let query = query_parts.join("&");
-        Ok(format!("{}?{}", scrape_url, query))
+        Ok(format!("{scrape_url}?{query}"))
     }
 
     /// URL encode bytes for tracker communication per RFC 3986.

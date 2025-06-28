@@ -1,17 +1,12 @@
 //! CLI command implementations
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use clap::Subcommand;
 use riptide_core::config::RiptideConfig;
-use riptide_core::streaming::DirectStreamingService;
 use riptide_core::torrent::{InfoHash, TorrentEngine, TorrentError};
 use riptide_core::{Result, RiptideError};
-use riptide_search::MediaSearchService;
-use riptide_web::{TemplateEngine, WebHandlers, WebServer, WebServerConfig};
 use tokio::fs;
-use tokio::sync::RwLock;
 
 /// Available CLI commands
 #[derive(Subcommand)]
@@ -53,6 +48,12 @@ pub enum Commands {
         #[arg(long)]
         demo: bool,
     },
+    /// Start the simplified Yew-based web server
+    YewServer {
+        /// Use demo data for development
+        #[arg(long)]
+        demo: bool,
+    },
     /// Run simulation environment
     Simulation {
         /// Number of simulated peers
@@ -74,7 +75,12 @@ pub async fn handle_command(command: Commands) -> Result<()> {
         Commands::Stop { torrent } => stop_torrent(torrent).await,
         Commands::Status { torrent } => show_status(torrent).await,
         Commands::List => list_torrents().await,
-        Commands::Server { host, port, demo } => start_server(host, port, demo).await,
+        Commands::Server {
+            host: _host,
+            port: _port,
+            demo: _demo,
+        } => start_simple_server().await,
+        Commands::YewServer { demo } => start_yew_server(demo).await,
         Commands::Simulation { peers, torrent } => run_simulation(peers, torrent).await,
     }
 }
@@ -333,86 +339,29 @@ async fn show_all_torrents_status(engine: &TorrentEngine) -> Result<()> {
     Ok(())
 }
 
-/// Start the web server for dashboard and API access
+/// Start the simplified web server
 ///
 /// # Errors
-/// - `RiptideError::Io` - Failed to bind to the specified address
-/// - `RiptideError::Torrent` - Failed to initialize torrent engine
-pub async fn start_server(host: String, port: u16, demo: bool) -> Result<()> {
-    print_server_startup_info(&host, port, demo);
+/// - Server binding failures or configuration errors
+pub async fn start_simple_server() -> Result<()> {
+    println!("Starting API server...");
+    println!("{:-<50}", "");
 
     let config = RiptideConfig::default();
-    let (handlers, template_engine) = initialize_web_services(config.clone(), demo)?;
-    let web_server = configure_web_server(&host, port, config, handlers, template_engine)?;
 
-    print_server_urls(&host, port);
-
-    // Start the server (this will block)
-    web_server
-        .start()
+    riptide_web::run_server(config)
         .await
-        .map_err(RiptideError::from_web_ui_error)?;
+        .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
     Ok(())
 }
 
-fn print_server_startup_info(host: &str, port: u16, demo: bool) {
-    println!("Starting Riptide web server...");
-    println!("Host: {host}");
-    println!("Port: {port}");
-    println!("URL: http://{host}:{port}");
-    if demo {
-        println!("Mode: Demo (using sample data)");
-    } else {
-        println!("Mode: Production");
-    }
-    println!("{:-<50}", "");
-}
-
-fn initialize_web_services(
-    config: RiptideConfig,
-    demo: bool,
-) -> Result<(WebHandlers, TemplateEngine)> {
-    // Initialize core services
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
-
-    // Create web components
-    let media_search_service = if demo {
-        MediaSearchService::new_demo()
-    } else {
-        MediaSearchService::new()
-    };
-    let handlers =
-        WebHandlers::new_with_media_search(torrent_engine, streaming_service, media_search_service);
-    let template_engine = TemplateEngine::new().map_err(RiptideError::from_web_ui_error)?;
-
-    Ok((handlers, template_engine))
-}
-
-fn configure_web_server(
-    host: &str,
-    port: u16,
-    config: RiptideConfig,
-    handlers: WebHandlers,
-    template_engine: TemplateEngine,
-) -> Result<WebServer> {
-    let mut web_config = WebServerConfig::from_riptide_config(&config);
-    web_config.bind_address = format!("{host}:{port}")
-        .parse()
-        .map_err(|e| RiptideError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
-
-    Ok(WebServer::new(web_config, handlers, template_engine))
-}
-
-fn print_server_urls(host: &str, port: u16) {
-    println!("Web server starting...");
-    println!("Dashboard: http://{host}:{port}/");
-    println!("Torrents: http://{host}:{port}/torrents");
-    println!("Library: http://{host}:{port}/library");
-    println!("API: http://{host}:{port}/api/*");
-    println!();
-    println!("Press Ctrl+C to stop the server");
+/// Start the web server
+///
+/// # Errors
+/// - Server binding failures or configuration errors
+pub async fn start_yew_server(_demo: bool) -> Result<()> {
+    start_simple_server().await
 }
 
 #[cfg(test)]
