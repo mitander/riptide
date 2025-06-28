@@ -22,6 +22,7 @@ pub struct MagnetoProvider {
 #[derive(Debug, Deserialize)]
 struct MagnetoResponse {
     results: Vec<MagnetoTorrent>,
+    #[allow(dead_code)]
     total: u32,
 }
 
@@ -34,8 +35,10 @@ struct MagnetoTorrent {
     seeders: u32,
     leechers: u32,
     indexer: String,
+    #[allow(dead_code)]
     category: String,
     #[serde(rename = "publishDate")]
+    #[allow(dead_code)]
     publish_date: String,
 }
 
@@ -175,7 +178,7 @@ impl TorrentSearchProvider for MagnetoProvider {
             .send()
             .await
             .map_err(|e| MediaSearchError::NetworkError {
-                reason: format!("Magneto request failed: {}", e),
+                reason: format!("Magneto request failed: {e}"),
             })?;
 
         if !response.status().is_success() {
@@ -191,7 +194,7 @@ impl TorrentSearchProvider for MagnetoProvider {
                 .await
                 .map_err(|e| MediaSearchError::SearchFailed {
                     query: query.to_string(),
-                    reason: format!("Magneto JSON parsing failed: {}", e),
+                    reason: format!("Magneto JSON parsing failed: {e}"),
                 })?;
 
         Ok(Self::group_torrents(magneto_response.results))

@@ -83,14 +83,14 @@ impl ImdbMetadataService {
     /// - `MediaSearchError::MetadataFetchFailed` - Failed to fetch or parse metadata
     pub async fn fetch_by_imdb_id(&self, imdb_id: &str) -> Result<MediaMetadata, MediaSearchError> {
         let url = if let Some(ref api_key) = self.api_key {
-            format!("http://www.omdbapi.com/?i={}&apikey={}", imdb_id, api_key)
+            format!("http://www.omdbapi.com/?i={imdb_id}&apikey={api_key}")
         } else {
-            format!("http://www.omdbapi.com/?i={}", imdb_id)
+            format!("http://www.omdbapi.com/?i={imdb_id}")
         };
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             MediaSearchError::MetadataFetchFailed {
-                reason: format!("HTTP request failed: {}", e),
+                reason: format!("HTTP request failed: {e}"),
             }
         })?;
 
@@ -99,7 +99,7 @@ impl ImdbMetadataService {
                 .json()
                 .await
                 .map_err(|e| MediaSearchError::MetadataFetchFailed {
-                    reason: format!("JSON parsing failed: {}", e),
+                    reason: format!("JSON parsing failed: {e}"),
                 })?;
 
         if omdb_data.response == Some("False".to_string()) {
@@ -133,12 +133,12 @@ impl ImdbMetadataService {
         };
 
         if let Some(year) = year {
-            url.push_str(&format!("&y={}", year));
+            url.push_str(&format!("&y={year}"));
         }
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             MediaSearchError::MetadataFetchFailed {
-                reason: format!("HTTP request failed: {}", e),
+                reason: format!("HTTP request failed: {e}"),
             }
         })?;
 
@@ -147,7 +147,7 @@ impl ImdbMetadataService {
                 .json()
                 .await
                 .map_err(|e| MediaSearchError::MetadataFetchFailed {
-                    reason: format!("JSON parsing failed: {}", e),
+                    reason: format!("JSON parsing failed: {e}"),
                 })?;
 
         if omdb_data.response == Some("False".to_string()) {

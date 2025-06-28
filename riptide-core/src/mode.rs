@@ -50,8 +50,7 @@ impl std::str::FromStr for RuntimeMode {
             "production" | "prod" => Ok(Self::Production),
             "demo" | "dev" | "development" => Ok(Self::Demo),
             _ => Err(format!(
-                "Invalid runtime mode: '{}'. Valid options are: production, demo",
-                s
+                "Invalid runtime mode: '{s}'. Valid options are: production, demo"
             )),
         }
     }

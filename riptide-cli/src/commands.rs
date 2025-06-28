@@ -332,6 +332,7 @@ async fn show_all_torrents_status(engine: &TorrentEngine) -> Result<()> {
 ///
 /// # Errors
 /// - Server binding failures or configuration errors
+#[allow(dead_code)]
 pub async fn start_simple_server() -> Result<()> {
     println!("Starting Riptide media server...");
     println!("{:-<50}", "");
@@ -344,11 +345,6 @@ pub async fn start_simple_server() -> Result<()> {
 
     Ok(())
 }
-
-/// Start the web server
-///
-/// # Errors
-/// - Server binding failures or configuration errors
 
 /// Start the web server
 ///
@@ -370,12 +366,9 @@ pub async fn start_server(_host: String, _port: u16, mode: RuntimeMode) -> Resul
         }
     );
 
-    riptide_web::run_server(config, mode).await.map_err(|e| {
-        RiptideError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        ))
-    })?;
+    riptide_web::run_server(config, mode)
+        .await
+        .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
     Ok(())
 }
