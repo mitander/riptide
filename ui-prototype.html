@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results - UI Prototype</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: #0a0a0a; 
+            color: #ffffff; 
+            line-height: 1.6; 
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .search-result {
+            display: flex;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            gap: 20px;
+        }
+
+        .poster {
+            width: 200px;
+            height: 300px;
+            object-fit: cover;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        .poster-placeholder {
+            width: 200px;
+            height: 300px;
+            background: #333;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            flex-shrink: 0;
+        }
+
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .title {
+            color: #4a9eff;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .plot {
+            color: #ccc;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .metadata {
+            color: #aaa;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .metadata span {
+            margin-right: 20px;
+        }
+
+        .torrents {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 12px;
+        }
+
+        .torrent-card {
+            background: #2a2a2a;
+            border: 1px solid #404040;
+            border-radius: 6px;
+            padding: 16px;
+        }
+
+        .torrent-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .quality {
+            color: #4a9eff;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .download-btn {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .download-btn:hover {
+            background: #3a8edf;
+        }
+
+        .torrent-info {
+            color: #aaa;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="margin-bottom: 30px; text-align: center;">Search Results UI Prototype</h1>
+        
+        <!-- Sample search result -->
+        <div class="search-result">
+            <img src="https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_SX300.jpg" 
+                 alt="Interstellar" class="poster">
+            
+            <div class="content">
+                <h2 class="title">Interstellar (2014)</h2>
+                
+                <p class="plot">
+                    A team of explorers travel through a wormhole in space in an attempt to ensure humanity's survival.
+                </p>
+                
+                <div class="metadata">
+                    <span><strong>Genre:</strong> Adventure, Drama, Sci-Fi</span>
+                    <span><strong>IMDb:</strong> 8.6/10</span>
+                    <span><strong>Type:</strong> Movie</span>
+                </div>
+                
+                <div class="torrents">
+                    <div class="torrent-card">
+                        <div class="torrent-header">
+                            <span class="quality">1080p BluRay</span>
+                            <button class="download-btn">Download</button>
+                        </div>
+                        <div class="torrent-info">1.4 GB • 150 seeds • 25 peers</div>
+                    </div>
+                    
+                    <div class="torrent-card">
+                        <div class="torrent-header">
+                            <span class="quality">720p BluRay</span>
+                            <button class="download-btn">Download</button>
+                        </div>
+                        <div class="torrent-info">762.9 MB • 95 seeds • 15 peers</div>
+                    </div>
+                    
+                    <div class="torrent-card">
+                        <div class="torrent-header">
+                            <span class="quality">4K BluRay</span>
+                            <button class="download-btn">Download</button>
+                        </div>
+                        <div class="torrent-info">4.2 GB • 45 seeds • 8 peers</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Example with no poster -->
+        <div class="search-result">
+            <div class="poster-placeholder">No Image</div>
+            
+            <div class="content">
+                <h2 class="title">Unknown Movie (2023)</h2>
+                
+                <p class="plot">
+                    A thrilling story with compelling characters and stunning visuals.
+                </p>
+                
+                <div class="metadata">
+                    <span><strong>Genre:</strong> Action, Drama</span>
+                    <span><strong>IMDb:</strong> 7.5/10</span>
+                    <span><strong>Type:</strong> Movie</span>
+                </div>
+                
+                <div class="torrents">
+                    <div class="torrent-card">
+                        <div class="torrent-header">
+                            <span class="quality">1080p BluRay</span>
+                            <button class="download-btn">Download</button>
+                        </div>
+                        <div class="torrent-info">1.4 GB • 150 seeds • 25 peers</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

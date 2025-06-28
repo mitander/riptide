@@ -278,7 +278,7 @@ async fn search_page(State(_state): State<AppState>) -> Html<String> {
             <button onclick="performSearch()">Search</button>
         </div>
         
-        <div id="search-results" class="grid"></div>
+        <div id="search-results"></div>
         
         <script>
             let searchTimeout;
@@ -317,33 +317,29 @@ async fn search_page(State(_state): State<AppState>) -> Html<String> {
                 results.forEach(media => {
                     if (media.torrents && media.torrents.length > 0) {
                         const posterImg = media.poster_url ? 
-                            `<img src="${media.poster_url}" alt="${media.title}" style="width: 120px; height: 180px; object-fit: cover; border-radius: 4px; margin-right: 15px;">` :
-                            `<div style="width: 120px; height: 180px; background: #333; border-radius: 4px; margin-right: 15px; display: flex; align-items: center; justify-content: center; color: #666;">No Image</div>`;
+                            `<img src="${media.poster_url}" alt="${media.title}" style="width: 200px; height: 300px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">` :
+                            `<div style="width: 200px; height: 300px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #666; flex-shrink: 0;">No Image</div>`;
                         
                         mediaHtml += `
-                            <div class="media-result" style="display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                            <div class="media-result" style="display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; gap: 20px;">
                                 ${posterImg}
-                                <div style="flex: 1;">
-                                    <h3 style="color: #4a9eff; margin-bottom: 10px;">${media.title} ${media.year ? '(' + media.year + ')' : ''}</h3>
-                                    ${media.plot ? `<p style="color: #ccc; margin-bottom: 10px; line-height: 1.4;">${media.plot}</p>` : ''}
-                                    <p style="color: #aaa; margin-bottom: 15px;">
-                                        ${media.genre ? `Genre: ${media.genre} | ` : ''}
-                                        ${media.rating ? `IMDb: ${media.rating.toFixed(1)}/10 | ` : ''}
-                                        Type: ${media.media_type || 'Unknown'}
-                                    </p>
-                                    <div class="torrents-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px;">
+                                <div style="flex: 1; display: flex; flex-direction: column;">
+                                    <h2 style="color: #4a9eff; font-size: 24px; font-weight: 600; margin-bottom: 12px;">${media.title} ${media.year ? '(' + media.year + ')' : ''}</h2>
+                                    ${media.plot ? `<p style="color: #ccc; margin-bottom: 16px; line-height: 1.5;">${media.plot}</p>` : ''}
+                                    <div style="color: #aaa; margin-bottom: 20px; font-size: 14px;">
+                                        ${media.genre ? `<span style="margin-right: 20px;"><strong>Genre:</strong> ${media.genre}</span>` : ''}
+                                        ${media.rating ? `<span style="margin-right: 20px;"><strong>IMDb:</strong> ${media.rating.toFixed(1)}/10</span>` : ''}
+                                        <span><strong>Type:</strong> ${media.media_type || 'Unknown'}</span>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
                                         ${media.torrents.map(torrent => `
-                                            <div style="background: #2a2a2a; padding: 15px; border-radius: 6px;">
-                                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-                                                    <div>
-                                                        <strong style="color: #4a9eff;">${getQualityDisplay(torrent.quality)}</strong>
-                                                        <p style="color: #aaa; font-size: 14px; margin: 5px 0;">
-                                                            ${formatSize(torrent.size)} | 
-                                                            ${torrent.seeders || 0} seeds | 
-                                                            ${torrent.leechers || 0} peers
-                                                        </p>
-                                                    </div>
-                                                    <button class="btn btn-small" onclick="addTorrent('${torrent.magnet_link}')">Download</button>
+                                            <div style="background: #2a2a2a; border: 1px solid #404040; border-radius: 6px; padding: 16px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                                    <span style="color: #4a9eff; font-weight: 600; font-size: 16px;">${getQualityDisplay(torrent.quality)}</span>
+                                                    <button class="btn btn-small" onclick="addTorrent('${torrent.magnet_link}')" style="background: #4a9eff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Download</button>
+                                                </div>
+                                                <div style="color: #aaa; font-size: 13px;">
+                                                    ${formatSize(torrent.size)} • ${torrent.seeders || 0} seeds • ${torrent.leechers || 0} peers
                                                 </div>
                                             </div>
                                         `).join('')}
