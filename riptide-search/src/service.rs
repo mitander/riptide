@@ -108,16 +108,32 @@ impl MediaSearchService {
 
         // Enhance each result with IMDb metadata
         for result in &mut results {
+            // Skip if we already have poster and plot from provider
+            if result.poster_url.is_some() && result.plot.is_some() {
+                continue;
+            }
+
             if let Ok(metadata) = self
                 .metadata_service
                 .search_by_title(&result.title, result.year)
                 .await
             {
-                result.imdb_id = metadata.imdb_id;
-                result.poster_url = metadata.poster_url;
-                result.plot = metadata.plot;
-                result.genre = metadata.genre;
-                result.rating = metadata.rating;
+                // Only update fields that are empty
+                if result.imdb_id.is_none() {
+                    result.imdb_id = metadata.imdb_id;
+                }
+                if result.poster_url.is_none() {
+                    result.poster_url = metadata.poster_url;
+                }
+                if result.plot.is_none() {
+                    result.plot = metadata.plot;
+                }
+                if result.genre.is_none() {
+                    result.genre = metadata.genre;
+                }
+                if result.rating.is_none() {
+                    result.rating = metadata.rating;
+                }
             }
             // Continue even if metadata fetch fails - we still have torrent data
         }

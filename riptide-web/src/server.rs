@@ -336,7 +336,7 @@ async fn search_page(State(_state): State<AppState>) -> Html<String> {
                                             <div style="background: #2a2a2a; padding: 15px; border-radius: 6px;">
                                                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
                                                     <div>
-                                                        <strong style="color: #4a9eff;">${torrent.quality || 'Unknown Quality'}</strong>
+                                                        <strong style="color: #4a9eff;">${getQualityDisplay(torrent.quality)}</strong>
                                                         <p style="color: #aaa; font-size: 14px; margin: 5px 0;">
                                                             ${formatSize(torrent.size)} | 
                                                             ${torrent.seeders || 0} seeds | 
@@ -372,6 +372,31 @@ async fn search_page(State(_state): State<AppState>) -> Html<String> {
                     return (bytes / mb).toFixed(1) + ' MB';
                 } else {
                     return (bytes / 1024).toFixed(1) + ' KB';
+                }
+            }
+            
+            function getQualityDisplay(quality) {
+                if (!quality) return 'Unknown Quality';
+                
+                // Handle Rust enum serialization
+                if (typeof quality === 'object' && quality !== null) {
+                    // Handle variants like {"BluRay1080p": null} or just "BluRay1080p"
+                    const keys = Object.keys(quality);
+                    if (keys.length > 0) {
+                        quality = keys[0];
+                    }
+                }
+                
+                // Convert enum names to display names
+                switch (quality) {
+                    case 'BluRay1080p': return '1080p BluRay';
+                    case 'BluRay720p': return '720p BluRay';
+                    case 'BluRay4K': return '4K BluRay';
+                    case 'WebDl1080p': return '1080p WEB-DL';
+                    case 'WebDl720p': return '720p WEB-DL';
+                    case 'Hdtv1080p': return '1080p HDTV';
+                    case 'Hdtv720p': return '720p HDTV';
+                    default: return quality.toString();
                 }
             }
             

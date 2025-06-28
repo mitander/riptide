@@ -87,11 +87,11 @@ impl TorrentSearchProvider for DemoProvider {
             } else {
                 MediaType::Movie
             },
-            imdb_id: Some("tt1234567".to_string()),
-            poster_url: None, // Will be populated by IMDb integration
-            plot: Some(format!("Demo description for {query}")),
-            genre: Some("Action".to_string()),
-            rating: Some(8.5),
+            imdb_id: Some("tt0133093".to_string()),
+            poster_url: Some("https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_SX300.jpg".to_string()),
+            plot: Some(format!("An action-packed thriller about {query} featuring cutting-edge special effects and compelling storylines.")),
+            genre: Some("Action, Sci-Fi".to_string()),
+            rating: Some(8.7),
             torrents: mock_torrents,
         }];
 
