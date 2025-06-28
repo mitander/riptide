@@ -338,3 +338,239 @@ impl BencodeParser {
         Ok(announce_urls)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_bencode_dictionary_end_simple() {
+        // Simple dictionary: d3:keyi42ee
+        let data = b"d3:keyi42ee";
+        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
+        assert_eq!(end, data.len());
+    }
+
+    #[test]
+    fn test_find_bencode_dictionary_end_nested() {
+        // Nested dictionary: d3:keyd4:namei42eee
+        let data = b"d3:keyd4:namei42eee";
+        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
+        assert_eq!(end, data.len());
+    }
+
+    #[test]
+    fn test_find_bencode_dictionary_end_with_strings() {
+        // Dictionary with strings: d4:name4:test5:valuei123ee
+        let data = b"d4:name4:test5:valuei123ee";
+        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
+        assert_eq!(end, data.len());
+    }
+
+    #[test]
+    fn test_find_bencode_dictionary_end_with_list() {
+        // Dictionary with list: d4:listl4:testi42eee
+        let data = b"d4:listl4:testi42eee";
+        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
+        assert_eq!(end, data.len());
+    }
+
+    #[test]
+    fn test_find_bencode_dictionary_end_invalid_start() {
+        let data = b"l4:teste"; // List, not dictionary
+        let result = BencodeParser::find_bencode_dictionary_end(data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_find_bencode_dictionary_end_incomplete() {
+        let data = b"d3:key"; // Incomplete dictionary
+        let result = BencodeParser::find_bencode_dictionary_end(data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_find_bencode_dictionary_end_invalid_string() {
+        let data = b"d3:key999:"; // Invalid string length
+        let result = BencodeParser::find_bencode_dictionary_end(data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_bytes() {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"value"));
+
+        let result = BencodeParser::extract_bytes(&dict, b"test").unwrap();
+        assert_eq!(result, b"value");
+    }
+
+    #[test]
+    fn test_extract_bytes_missing() {
+        let dict = std::collections::HashMap::new();
+        let result = BencodeParser::extract_bytes(&dict, b"missing");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_integer() {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(b"test".as_slice(), bencode_rs::Value::Integer(42));
+
+        let result = BencodeParser::extract_integer(&dict, b"test").unwrap();
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn test_extract_integer_missing() {
+        let dict = std::collections::HashMap::new();
+        let result = BencodeParser::extract_integer(&dict, b"missing");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_bytes_as_string() {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"hello"));
+
+        let result = BencodeParser::extract_bytes_as_string(&dict, b"test").unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_extract_bytes_as_string_invalid_utf8() {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(&[0xFF, 0xFE]));
+
+        let result = BencodeParser::extract_bytes_as_string(&dict, b"test");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_bencode_data_empty() {
+        let result = BencodeParser::parse_bencode_data(b"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_bencode_data_not_dictionary() {
+        let data = b"l4:teste"; // List instead of dictionary
+        let result = BencodeParser::parse_bencode_data(data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_bencode_data_missing_info() {
+        let data = b"d8:announce9:test.com:ee"; // Dictionary without info
+        let result = BencodeParser::parse_bencode_data(data);
+        assert!(result.is_err());
+    }
+
+    fn create_minimal_torrent_data() -> Vec<u8> {
+        // Create a minimal valid torrent structure
+        // d8:announce9:test.com:4:infod4:name9:test.file12:piece lengthi32768e6:pieces20:xxxxxxxxxxxxxxxxxxxx6:lengthi1048576eee
+        let torrent = "d8:announce9:test.com:4:infod4:name9:test.file12:piece lengthi32768e6:pieces20:\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x016:lengthi1048576eee";
+        torrent.as_bytes().to_vec()
+    }
+
+    #[test]
+    fn test_parse_bencode_data_minimal_valid() {
+        let data = create_minimal_torrent_data();
+        let result = BencodeParser::parse_bencode_data(&data);
+
+        assert!(result.is_ok());
+        let metadata = result.unwrap();
+        assert_eq!(metadata.name, "test.file");
+        assert_eq!(metadata.piece_length, 32768);
+        assert_eq!(metadata.total_length, 1048576);
+        assert_eq!(metadata.piece_hashes.len(), 1);
+        assert_eq!(metadata.files.len(), 1);
+        assert_eq!(metadata.announce_urls, vec!["test.com:"]);
+    }
+
+    #[test]
+    fn test_parse_bencode_data_invalid_pieces_length() {
+        // Create torrent with invalid pieces length (not multiple of 20)
+        let torrent = "d8:announce9:test.com:4:infod4:name9:test.file12:piece lengthi32768e6:pieces19:\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x016:lengthi1048576eee";
+        let result = BencodeParser::parse_bencode_data(torrent.as_bytes());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_bencode_data_multifile_simple() {
+        // Test the multifile parsing logic without complex bencode construction
+        // This test focuses on the extract_files_info function
+        let file1_dict = {
+            let mut dict = std::collections::HashMap::new();
+            dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(524288));
+            dict.insert(
+                b"path".as_slice(),
+                bencode_rs::Value::List(vec![bencode_rs::Value::Bytes(b"file1.txt")]),
+            );
+            bencode_rs::Value::Dictionary(dict)
+        };
+
+        let file2_dict = {
+            let mut dict = std::collections::HashMap::new();
+            dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(1048576));
+            dict.insert(
+                b"path".as_slice(),
+                bencode_rs::Value::List(vec![bencode_rs::Value::Bytes(b"file2.dat")]),
+            );
+            bencode_rs::Value::Dictionary(dict)
+        };
+
+        let files_list = vec![file1_dict, file2_dict];
+        let result = BencodeParser::extract_files_info(&files_list);
+
+        assert!(result.is_ok());
+        let (files, total_length) = result.unwrap();
+        assert_eq!(total_length, 524288 + 1048576);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].path, vec!["file1.txt"]);
+        assert_eq!(files[0].length, 524288);
+        assert_eq!(files[1].path, vec!["file2.dat"]);
+        assert_eq!(files[1].length, 1048576);
+    }
+
+    #[test]
+    fn test_extract_files_info_invalid_file_entry() {
+        let invalid_file = bencode_rs::Value::Integer(42); // Invalid type
+        let files_list = vec![invalid_file];
+
+        let result = BencodeParser::extract_files_info(&files_list);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_announce_urls_no_announce() {
+        let dict = std::collections::HashMap::new();
+        let result = BencodeParser::extract_announce_urls(&dict);
+        assert!(result.is_err());
+    }
+
+    fn create_torrent_with_announce_list() -> Vec<u8> {
+        // Create torrent with announce-list
+        let torrent = "d8:announce9:test.com:13:announce-listll9:test.com:el11:backup.com:ee4:infod4:name9:test.file12:piece lengthi32768e6:pieces20:\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x016:lengthi1048576eee";
+        torrent.as_bytes().to_vec()
+    }
+
+    #[test]
+    fn test_parse_bencode_data_with_announce_list() {
+        let data = create_torrent_with_announce_list();
+        let result = BencodeParser::parse_bencode_data(&data);
+
+        assert!(result.is_ok());
+        let metadata = result.unwrap();
+        assert_eq!(metadata.announce_urls.len(), 3);
+        assert!(metadata.announce_urls.contains(&"test.com:".to_string()));
+        assert!(metadata.announce_urls.contains(&"backup.com:".to_string()));
+    }
+
+    #[test]
+    fn test_calculate_info_hash_missing_info() {
+        let data = b"d8:announce9:test.com:e"; // No info dictionary
+        let result = BencodeParser::parse_bencode_data(data);
+        assert!(result.is_err());
+    }
+}
