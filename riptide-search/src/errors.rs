@@ -19,4 +19,7 @@ pub enum MediaSearchError {
 
     #[error("Invalid media type: {media_type}")]
     InvalidMediaType { media_type: String },
+
+    #[error("Metadata fetch failed: {reason}")]
+    MetadataFetchFailed { reason: String },
 }

@@ -4,6 +4,7 @@
 //! and future IMDb integration for metadata and artwork.
 
 use crate::errors::MediaSearchError;
+use crate::metadata::ImdbMetadataService;
 #[cfg(test)]
 use crate::providers::MockProvider;
 use crate::providers::{DemoProvider, TorrentSearchProvider};
@@ -13,6 +14,7 @@ use crate::types::{MediaSearchResult, TorrentResult};
 #[derive(Debug)]
 pub struct MediaSearchService {
     provider: Box<dyn TorrentSearchProvider>,
+    metadata_service: ImdbMetadataService,
 }
 
 impl Clone for MediaSearchService {
@@ -30,6 +32,7 @@ impl MediaSearchService {
     pub fn new() -> Self {
         Self {
             provider: Box::new(DemoProvider::new()),
+            metadata_service: ImdbMetadataService::new(),
         }
     }
 
@@ -40,6 +43,7 @@ impl MediaSearchService {
     pub fn new_demo() -> Self {
         Self {
             provider: Box::new(DemoProvider::new()),
+            metadata_service: ImdbMetadataService::new(),
         }
     }
 
@@ -48,6 +52,7 @@ impl MediaSearchService {
     pub fn new_with_mock() -> Self {
         Self {
             provider: Box::new(MockProvider::new()),
+            metadata_service: ImdbMetadataService::new(),
         }
     }
 
@@ -85,6 +90,39 @@ impl MediaSearchService {
         query: &str,
     ) -> Result<Vec<MediaSearchResult>, MediaSearchError> {
         self.provider.search_torrents(query, "all").await
+    }
+
+    /// Search with enhanced IMDb metadata integration.
+    ///
+    /// Performs torrent search and enriches results with IMDb data including
+    /// posters, ratings, plot summaries, and detailed metadata.
+    ///
+    /// # Errors
+    /// - `MediaSearchError::SearchFailed` - Failed to query provider
+    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    pub async fn search_with_metadata(
+        &self,
+        query: &str,
+    ) -> Result<Vec<MediaSearchResult>, MediaSearchError> {
+        let mut results = self.search_all(query).await?;
+
+        // Enhance each result with IMDb metadata
+        for result in &mut results {
+            if let Ok(metadata) = self
+                .metadata_service
+                .search_by_title(&result.title, result.year)
+                .await
+            {
+                result.imdb_id = metadata.imdb_id;
+                result.poster_url = metadata.poster_url;
+                result.plot = metadata.plot;
+                result.genre = metadata.genre;
+                result.rating = metadata.rating;
+            }
+            // Continue even if metadata fetch fails - we still have torrent data
+        }
+
+        Ok(results)
     }
 
     /// Get detailed torrent results for media.

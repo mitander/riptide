@@ -312,29 +312,52 @@ async fn search_page(State(_state): State<AppState>) -> Html<String> {
                     return;
                 }
                 
-                // Flatten results: each media result can have multiple torrents
-                let torrentsHtml = '';
+                // Group torrents by media and show poster
+                let mediaHtml = '';
                 results.forEach(media => {
                     if (media.torrents && media.torrents.length > 0) {
-                        media.torrents.forEach(torrent => {
-                            torrentsHtml += `
-                                <div class="grid-item">
-                                    <h4>${media.title} (${media.year || 'Unknown'})</h4>
-                                    <p>Quality: ${torrent.quality || 'Unknown'}</p>
-                                    <p>Size: ${formatSize(torrent.size) || 'Unknown'}</p>
-                                    <p>Seeders: ${torrent.seeders || 0} | Leechers: ${torrent.leechers || 0}</p>
-                                    <p>Rating: ${media.rating ? media.rating.toFixed(1) + '/10' : 'Unknown'}</p>
-                                    <button class="btn btn-small" onclick="addTorrent('${torrent.magnet_link}')">Download</button>
+                        const posterImg = media.poster_url ? 
+                            `<img src="${media.poster_url}" alt="${media.title}" style="width: 120px; height: 180px; object-fit: cover; border-radius: 4px; margin-right: 15px;">` :
+                            `<div style="width: 120px; height: 180px; background: #333; border-radius: 4px; margin-right: 15px; display: flex; align-items: center; justify-content: center; color: #666;">No Image</div>`;
+                        
+                        mediaHtml += `
+                            <div class="media-result" style="display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                                ${posterImg}
+                                <div style="flex: 1;">
+                                    <h3 style="color: #4a9eff; margin-bottom: 10px;">${media.title} ${media.year ? '(' + media.year + ')' : ''}</h3>
+                                    ${media.plot ? `<p style="color: #ccc; margin-bottom: 10px; line-height: 1.4;">${media.plot}</p>` : ''}
+                                    <p style="color: #aaa; margin-bottom: 15px;">
+                                        ${media.genre ? `Genre: ${media.genre} | ` : ''}
+                                        ${media.rating ? `IMDb: ${media.rating.toFixed(1)}/10 | ` : ''}
+                                        Type: ${media.media_type || 'Unknown'}
+                                    </p>
+                                    <div class="torrents-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px;">
+                                        ${media.torrents.map(torrent => `
+                                            <div style="background: #2a2a2a; padding: 15px; border-radius: 6px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                                                    <div>
+                                                        <strong style="color: #4a9eff;">${torrent.quality || 'Unknown Quality'}</strong>
+                                                        <p style="color: #aaa; font-size: 14px; margin: 5px 0;">
+                                                            ${formatSize(torrent.size)} | 
+                                                            ${torrent.seeders || 0} seeds | 
+                                                            ${torrent.leechers || 0} peers
+                                                        </p>
+                                                    </div>
+                                                    <button class="btn btn-small" onclick="addTorrent('${torrent.magnet_link}')">Download</button>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
                                 </div>
-                            `;
-                        });
+                            </div>
+                        `;
                     }
                 });
                 
-                if (!torrentsHtml) {
+                if (!mediaHtml) {
                     resultsDiv.innerHTML = '<div class="loading">No torrents found</div>';
                 } else {
-                    resultsDiv.innerHTML = torrentsHtml;
+                    resultsDiv.innerHTML = mediaHtml;
                 }
             }
             
@@ -622,7 +645,7 @@ async fn api_search(
         return Json(json!([]));
     }
 
-    match state.search_service.search_all(query).await {
+    match state.search_service.search_with_metadata(query).await {
         Ok(results) => Json(json!(results)),
         Err(_) => Json(json!([
             {"title": format!("Movie: {}", query), "type": "movie"},
