@@ -33,6 +33,90 @@ impl BitTorrentPeerProtocol {
     }
 }
 
+#[cfg(test)]
+mod protocol_connection_tests {
+    use std::net::SocketAddr;
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::torrent::{InfoHash, PeerId};
+
+    fn create_test_handshake() -> PeerHandshake {
+        let info_hash = InfoHash::new([0x12; 20]);
+        let peer_id = PeerId::new([0x34; 20]);
+        PeerHandshake::new(info_hash, peer_id)
+    }
+
+    #[test]
+    fn test_protocol_creation() {
+        let protocol = BitTorrentPeerProtocol::new();
+        assert_eq!(protocol.peer_state(), PeerState::Disconnected);
+        assert_eq!(protocol.peer_address(), None);
+    }
+
+    #[test]
+    fn test_protocol_default() {
+        let protocol = BitTorrentPeerProtocol::default();
+        assert_eq!(protocol.peer_state(), PeerState::Disconnected);
+        assert_eq!(protocol.peer_address(), None);
+    }
+
+    #[test]
+    fn test_handshake_creation() {
+        let handshake = create_test_handshake();
+        assert_eq!(handshake.info_hash, InfoHash::new([0x12; 20]));
+        assert_eq!(handshake.peer_id, PeerId::new([0x34; 20]));
+        assert_eq!(handshake.protocol, "BitTorrent protocol");
+    }
+
+    #[tokio::test]
+    async fn test_connect_to_nonexistent_peer() {
+        let mut protocol = BitTorrentPeerProtocol::new();
+        let peer_addr = SocketAddr::from_str("127.0.0.1:0").unwrap(); // Port 0 should fail
+        let handshake = create_test_handshake();
+
+        let result = protocol.connect(peer_addr, handshake).await;
+        assert!(result.is_err());
+        assert_eq!(protocol.peer_state(), PeerState::Disconnected);
+    }
+
+    #[tokio::test]
+    async fn test_send_message_when_not_connected() {
+        let mut protocol = BitTorrentPeerProtocol::new();
+        let message = PeerMessage::Choke;
+
+        let result = protocol.send_message(message).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TorrentError::PeerConnectionError { reason } if reason.contains("Not connected")
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_receive_message_when_not_connected() {
+        let mut protocol = BitTorrentPeerProtocol::new();
+
+        let result = protocol.receive_message().await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TorrentError::PeerConnectionError { reason } if reason.contains("Not connected")
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_disconnect() {
+        let mut protocol = BitTorrentPeerProtocol::new();
+
+        // Should succeed even when not connected
+        let result = protocol.disconnect().await;
+        assert!(result.is_ok());
+        assert_eq!(protocol.peer_state(), PeerState::Disconnected);
+        assert_eq!(protocol.peer_address(), None);
+    }
+}
+
 #[async_trait]
 impl PeerProtocol for BitTorrentPeerProtocol {
     async fn connect(

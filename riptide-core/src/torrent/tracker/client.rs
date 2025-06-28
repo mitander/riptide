@@ -2,8 +2,6 @@
 
 use std::net::SocketAddr;
 
-use url::Url;
-
 use super::types::{
     AnnounceEvent, AnnounceRequest, AnnounceResponse, PeerList, ScrapeRequest, ScrapeResponse,
     ScrapeStats,
@@ -49,23 +47,23 @@ impl HttpTrackerClient {
         &self,
         request: &AnnounceRequest,
     ) -> Result<String, TorrentError> {
-        let mut url = Url::parse(&self.announce_url)?;
+        // For BitTorrent trackers, we need to manually encode to avoid double-encoding
+        let info_hash_encoded = Self::url_encode_bytes(request.info_hash.as_bytes());
+        let peer_id_encoded = Self::url_encode_bytes(&request.peer_id);
+        let event_str = Self::event_to_string(request.event);
 
-        // Add required parameters
-        url.query_pairs_mut()
-            .append_pair(
-                "info_hash",
-                &Self::url_encode_bytes(request.info_hash.as_bytes()),
-            )
-            .append_pair("peer_id", &Self::url_encode_bytes(&request.peer_id))
-            .append_pair("port", &request.port.to_string())
-            .append_pair("uploaded", &request.uploaded.to_string())
-            .append_pair("downloaded", &request.downloaded.to_string())
-            .append_pair("left", &request.left.to_string())
-            .append_pair("compact", "1")
-            .append_pair("event", Self::event_to_string(request.event));
+        let query = format!(
+            "info_hash={}&peer_id={}&port={}&uploaded={}&downloaded={}&left={}&compact=1&event={}",
+            info_hash_encoded,
+            peer_id_encoded,
+            request.port,
+            request.uploaded,
+            request.downloaded,
+            request.left,
+            event_str
+        );
 
-        Ok(url.to_string())
+        Ok(format!("{}?{}", self.announce_url, query))
     }
 
     /// Build scrape URL from announce URL
@@ -81,17 +79,15 @@ impl HttpTrackerClient {
                     url: "No scrape URL available".to_string(),
                 })?;
 
-        let mut url = Url::parse(scrape_url)?;
+        // Manually build query to avoid double-encoding
+        let query_parts: Vec<String> = request
+            .info_hashes
+            .iter()
+            .map(|info_hash| format!("info_hash={}", Self::url_encode_bytes(info_hash.as_bytes())))
+            .collect();
 
-        // Add info_hash parameters
-        {
-            let mut query_pairs = url.query_pairs_mut();
-            for info_hash in &request.info_hashes {
-                query_pairs.append_pair("info_hash", &Self::url_encode_bytes(info_hash.as_bytes()));
-            }
-        }
-
-        Ok(url.to_string())
+        let query = query_parts.join("&");
+        Ok(format!("{}?{}", scrape_url, query))
     }
 
     /// URL encode bytes for tracker communication per RFC 3986.
@@ -281,5 +277,191 @@ impl HttpTrackerClient {
                 url: "Invalid scrape response format".to_string(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tracker_client_tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::config::NetworkConfig;
+    use crate::torrent::tracker::AnnounceEvent;
+    use crate::torrent::{InfoHash, PeerId};
+
+    fn create_test_network_config() -> NetworkConfig {
+        NetworkConfig {
+            tracker_timeout: Duration::from_secs(5),
+            min_announce_interval: Duration::from_secs(60),
+            default_announce_interval: Duration::from_secs(300),
+            user_agent: "Riptide/test",
+            max_peer_connections: 25,
+            download_limit: None,
+            upload_limit: None,
+            peer_timeout: Duration::from_secs(60),
+        }
+    }
+
+    #[test]
+    fn test_http_tracker_client_new() {
+        let config = create_test_network_config();
+
+        // Test with standard announce URL
+        let client =
+            HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
+        assert_eq!(client.announce_url, "http://tracker.example.com/announce");
+        assert_eq!(
+            client.scrape_url,
+            Some("http://tracker.example.com/scrape".to_string())
+        );
+
+        // Test with announce URL that doesn't end in /announce
+        let client =
+            HttpTrackerClient::new("http://tracker.example.com/tracker".to_string(), &config);
+        assert_eq!(client.announce_url, "http://tracker.example.com/tracker");
+        assert_eq!(client.scrape_url, None);
+    }
+
+    #[test]
+    fn test_build_announce_url() {
+        let config = create_test_network_config();
+        let client =
+            HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
+
+        let info_hash = InfoHash::new([0x11; 20]);
+        let peer_id = PeerId::new([0x22; 20]);
+        let request = AnnounceRequest {
+            info_hash,
+            peer_id: *peer_id.as_bytes(),
+            port: 6881,
+            uploaded: 1000,
+            downloaded: 500,
+            left: 2000,
+            event: AnnounceEvent::Started,
+        };
+
+        let url = client.build_announce_url(&request).unwrap();
+        assert!(
+            url.contains("info_hash=%11%11%11%11%11%11%11%11%11%11%11%11%11%11%11%11%11%11%11%11")
+        );
+        assert!(
+            url.contains("peer_id=%22%22%22%22%22%22%22%22%22%22%22%22%22%22%22%22%22%22%22%22")
+        );
+        assert!(url.contains("port=6881"));
+        assert!(url.contains("uploaded=1000"));
+        assert!(url.contains("downloaded=500"));
+        assert!(url.contains("left=2000"));
+        assert!(url.contains("compact=1"));
+        assert!(url.contains("event=started"));
+    }
+
+    #[test]
+    fn test_build_scrape_url() {
+        let config = create_test_network_config();
+        let client =
+            HttpTrackerClient::new("http://tracker.example.com/announce".to_string(), &config);
+
+        let info_hash1 = InfoHash::new([0xAA; 20]);
+        let info_hash2 = InfoHash::new([0xBB; 20]);
+        let request = ScrapeRequest {
+            info_hashes: vec![info_hash1, info_hash2],
+        };
+
+        let url = client.build_scrape_url(&request).unwrap();
+        assert!(url.contains("http://tracker.example.com/scrape"));
+        assert!(
+            url.contains("info_hash=%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA%AA")
+        );
+        assert!(
+            url.contains("info_hash=%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB%BB")
+        );
+    }
+
+    #[test]
+    fn test_parse_compact_peers_success() {
+        // 127.0.0.1:6881, 192.168.1.100:50000
+        let peer_bytes = vec![
+            127, 0, 0, 1, 26, 225, // 127.0.0.1:6881 (26*256+225=6881)
+            192, 168, 1, 100, 195, 80, // 192.168.1.100:50000
+        ];
+
+        let peers = HttpTrackerClient::parse_compact_peers(&peer_bytes).unwrap();
+        assert_eq!(peers.len(), 2);
+        assert_eq!(peers[0].to_string(), "127.0.0.1:6881");
+        assert_eq!(peers[1].to_string(), "192.168.1.100:50000");
+    }
+
+    #[test]
+    fn test_parse_compact_peers_invalid_length() {
+        let peer_bytes = vec![127, 0, 0, 1, 26]; // 5 bytes, not multiple of 6
+        let result = HttpTrackerClient::parse_compact_peers(&peer_bytes);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TorrentError::ProtocolError { message } if message.contains("Invalid compact peer data length")
+        ));
+    }
+
+    #[test]
+    fn test_parse_announce_response_success() {
+        let bencode_data =
+            b"d8:intervali1800e8:completei10e10:incompletei5e5:peers6:\x7f\x00\x00\x01\x1a\x09e";
+        let config = create_test_network_config();
+        let client = HttpTrackerClient::new("http://example.com/announce".to_string(), &config);
+
+        let response = client.parse_announce_response(bencode_data).unwrap();
+        assert_eq!(response.interval, 1800);
+        assert_eq!(response.complete, 10);
+        assert_eq!(response.incomplete, 5);
+        assert_eq!(response.peers.len(), 1);
+        assert_eq!(response.peers[0].to_string(), "127.0.0.1:6665");
+    }
+
+    #[test]
+    fn test_parse_announce_response_failure_reason() {
+        let bencode_data = b"d14:failure reason16:Something went wronge";
+        let config = create_test_network_config();
+        let client = HttpTrackerClient::new("http://example.com/announce".to_string(), &config);
+
+        let result = client.parse_announce_response(bencode_data);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TorrentError::TrackerConnectionFailed { url } if url.contains("Failed to parse tracker response")
+        ));
+    }
+
+    #[test]
+    fn test_parse_scrape_response_success() {
+        let info_hash = InfoHash::new([0x11; 20]);
+        // Create proper bencode data with binary info hash
+        let mut bencode_data = Vec::new();
+        bencode_data.extend_from_slice(b"d5:filesd20:");
+        bencode_data.extend_from_slice(info_hash.as_bytes());
+        bencode_data.extend_from_slice(b"d8:completei10e10:downloadedi20e10:incompletei5eeee");
+
+        let config = create_test_network_config();
+        let client = HttpTrackerClient::new("http://example.com/announce".to_string(), &config);
+
+        let response = client.parse_scrape_response(&bencode_data).unwrap();
+        assert_eq!(response.files.len(), 1);
+        let stats = response.files.get(&info_hash).unwrap();
+        assert_eq!(stats.complete, 10);
+        assert_eq!(stats.downloaded, 20);
+        assert_eq!(stats.incomplete, 5);
+    }
+
+    #[test]
+    fn test_parse_scrape_response_failure_reason() {
+        let bencode_data = b"d14:failure reason17:Scrape failed heree";
+        let config = create_test_network_config();
+        let client = HttpTrackerClient::new("http://example.com/announce".to_string(), &config);
+
+        let result = client.parse_scrape_response(bencode_data);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TorrentError::TrackerConnectionFailed { url } if url.contains("Failed to parse scrape response")
+        ));
     }
 }

@@ -12,7 +12,7 @@ use crate::types::{MediaSearchResult, MediaType, TorrentResult, VideoQuality};
 
 /// Mock provider for testing.
 #[cfg(test)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MockProvider;
 
 #[cfg(test)]
