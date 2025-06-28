@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::Json;
+use axum::response::{Html, Json};
 use axum::routing::get;
 use riptide_core::config::RiptideConfig;
 use riptide_core::torrent::TorrentEngine;
@@ -44,6 +44,7 @@ pub async fn run_server(config: RiptideConfig) -> Result<(), Box<dyn std::error:
     };
 
     let app = Router::new()
+        .route("/", get(root_handler))
         .route("/api/stats", get(api_stats))
         .route("/api/torrents", get(api_torrents))
         .route("/api/torrents/add", get(api_add_torrent))
@@ -57,6 +58,82 @@ pub async fn run_server(config: RiptideConfig) -> Result<(), Box<dyn std::error:
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn root_handler() -> Html<&'static str> {
+    Html(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Riptide API Server</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #4a9eff; margin-bottom: 30px; }
+        .endpoint { background: #2a2a2a; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .endpoint code { color: #4a9eff; background: #1a1a1a; padding: 2px 6px; border-radius: 3px; }
+        .stats { background: #2a4a2a; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        a { color: #4a9eff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Riptide API Server</h1>
+        <p>JSON API for torrent management and media streaming.</p>
+        
+        <div class="stats" id="stats">
+            <strong>Server Status:</strong> Loading...
+        </div>
+        
+        <h2>Available Endpoints</h2>
+        <div class="endpoint">
+            <strong><code>GET /api/stats</code></strong><br>
+            Server statistics and download progress
+        </div>
+        <div class="endpoint">
+            <strong><code>GET /api/torrents</code></strong><br>
+            List active torrents
+        </div>
+        <div class="endpoint">
+            <strong><code>GET /api/torrents/add?magnet=&lt;link&gt;</code></strong><br>
+            Add torrent via magnet link
+        </div>
+        <div class="endpoint">
+            <strong><code>GET /api/library</code></strong><br>
+            Browse media library
+        </div>
+        <div class="endpoint">
+            <strong><code>GET /api/search?q=&lt;query&gt;</code></strong><br>
+            Search for media content
+        </div>
+        <div class="endpoint">
+            <strong><code>GET /api/settings</code></strong><br>
+            Server configuration
+        </div>
+        
+        <p><a href="/api/stats">Test API</a> | <a href="https://github.com/yourusername/riptide">Documentation</a></p>
+    </div>
+    
+    <script>
+        fetch('/api/stats')
+            .then(r => r.json())
+            .then(stats => {
+                document.getElementById('stats').innerHTML = 
+                    `<strong>Server Status:</strong> Online | ` +
+                    `Torrents: ${stats.total_torrents} | ` +
+                    `Downloads: ${stats.active_downloads} | ` +
+                    `Speed: ${stats.download_speed.toFixed(1)} MB/s down, ${stats.upload_speed.toFixed(1)} MB/s up`;
+            })
+            .catch(() => {
+                document.getElementById('stats').innerHTML = 
+                    '<strong>Server Status:</strong> API Error';
+            });
+    </script>
+</body>
+</html>"#,
+    )
 }
 
 async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
