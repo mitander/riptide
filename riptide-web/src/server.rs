@@ -34,9 +34,12 @@ pub struct AddTorrentQuery {
     magnet: String,
 }
 
-pub async fn run_server(config: RiptideConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_server(
+    config: RiptideConfig,
+    mode: riptide_core::RuntimeMode,
+) -> Result<(), Box<dyn std::error::Error>> {
     let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config)));
-    let search_service = MediaSearchService::new();
+    let search_service = MediaSearchService::from_runtime_mode(mode);
 
     let state = AppState {
         torrent_engine,

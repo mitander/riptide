@@ -67,6 +67,16 @@ impl ImdbMetadataService {
         }
     }
 
+    /// Create IMDb metadata service with explicit API key.
+    ///
+    /// Allows configuration-driven API key instead of environment variable.
+    pub fn with_api_key(api_key: Option<String>) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            api_key,
+        }
+    }
+
     /// Fetch metadata by IMDb ID.
     ///
     /// # Errors

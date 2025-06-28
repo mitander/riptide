@@ -1780,6 +1780,7 @@ dependencies = [
  "magneto",
  "regex",
  "reqwest",
+ "riptide-core",
  "serde",
  "serde_json",
  "thiserror",

@@ -5,12 +5,14 @@
 //! services, and configuration management.
 
 pub mod config;
+pub mod mode;
 pub mod storage;
 pub mod streaming;
 pub mod torrent;
 
 // Re-export main types for convenient access
 pub use config::RiptideConfig;
+pub use mode::RuntimeMode;
 pub use storage::{FileStorage, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
 pub use torrent::{TorrentEngine, TorrentError};

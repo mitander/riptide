@@ -6,9 +6,11 @@ use crate::errors::MediaSearchError;
 use crate::types::MediaSearchResult;
 
 pub mod demo;
+pub mod magneto;
 pub mod mock;
 
 pub use demo::DemoProvider;
+pub use magneto::MagnetoProvider;
 #[cfg(test)]
 pub use mock::MockProvider;
 

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use riptide_core::config::RiptideConfig;
 use riptide_core::torrent::{InfoHash, TorrentEngine, TorrentError};
-use riptide_core::{Result, RiptideError};
+use riptide_core::{Result, RiptideError, RuntimeMode};
 use tokio::fs;
 
 /// Available CLI commands
@@ -44,15 +44,9 @@ pub enum Commands {
         /// Port to bind to
         #[arg(short, long, default_value = "3000")]
         port: u16,
-        /// Use demo data for development
-        #[arg(long)]
-        demo: bool,
-    },
-    /// Start the simplified Yew-based web server
-    YewServer {
-        /// Use demo data for development
-        #[arg(long)]
-        demo: bool,
+        /// Runtime mode
+        #[arg(long, default_value = "demo")]
+        mode: RuntimeMode,
     },
     /// Run simulation environment
     Simulation {
@@ -75,12 +69,7 @@ pub async fn handle_command(command: Commands) -> Result<()> {
         Commands::Stop { torrent } => stop_torrent(torrent).await,
         Commands::Status { torrent } => show_status(torrent).await,
         Commands::List => list_torrents().await,
-        Commands::Server {
-            host: _host,
-            port: _port,
-            demo: _demo,
-        } => start_simple_server().await,
-        Commands::YewServer { demo } => start_yew_server(demo).await,
+        Commands::Server { host, port, mode } => start_server(host, port, mode).await,
         Commands::Simulation { peers, torrent } => run_simulation(peers, torrent).await,
     }
 }
@@ -349,7 +338,7 @@ pub async fn start_simple_server() -> Result<()> {
 
     let config = RiptideConfig::default();
 
-    riptide_web::run_server(config)
+    riptide_web::run_server(config, RuntimeMode::Demo) // Default to demo mode
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -360,8 +349,35 @@ pub async fn start_simple_server() -> Result<()> {
 ///
 /// # Errors
 /// - Server binding failures or configuration errors
-pub async fn start_yew_server(_demo: bool) -> Result<()> {
-    start_simple_server().await
+
+/// Start the web server
+///
+/// # Errors
+/// - `RiptideError::Io` - Failed to start server
+pub async fn start_server(_host: String, _port: u16, mode: RuntimeMode) -> Result<()> {
+    println!("Starting Riptide media server...");
+    println!("{:-<50}", "");
+
+    let config = RiptideConfig::default();
+
+    println!(
+        "Running in {} mode - using {} data sources",
+        mode,
+        if mode.is_demo() {
+            "offline test"
+        } else {
+            "real API"
+        }
+    );
+
+    riptide_web::run_server(config, mode).await.map_err(|e| {
+        RiptideError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use crate::errors::MediaSearchError;
 use crate::metadata::ImdbMetadataService;
 #[cfg(test)]
 use crate::providers::MockProvider;
-use crate::providers::{DemoProvider, TorrentSearchProvider};
+use crate::providers::{DemoProvider, MagnetoProvider, TorrentSearchProvider};
 use crate::types::{MediaSearchResult, TorrentResult};
 
 /// Media search service providing torrent discovery and metadata.
@@ -26,24 +26,49 @@ impl Clone for MediaSearchService {
 }
 
 impl MediaSearchService {
-    /// Creates new media search service with demo provider.
+    /// Creates new media search service with production providers.
     ///
-    /// Currently uses demo data for development. Real Magneto integration planned.
+    /// Uses real Magneto for torrent search and OMDb for metadata.
+    /// Requires internet connection and external service availability.
     pub fn new() -> Self {
+        Self {
+            provider: Box::new(MagnetoProvider::new()),
+            metadata_service: ImdbMetadataService::new(),
+        }
+    }
+
+    /// Creates new media search service with demo data for offline development.
+    ///
+    /// Uses rich demo data for UI development and testing without external API calls.
+    /// Demo data includes multiple quality options and realistic metadata.
+    /// Same interface as production but works completely offline.
+    pub fn new_demo() -> Self {
         Self {
             provider: Box::new(DemoProvider::new()),
             metadata_service: ImdbMetadataService::new(),
         }
     }
 
-    /// Creates new media search service with demo data for development.
+    /// Creates new media search service based on runtime mode.
     ///
-    /// Uses rich demo data for UI development and testing without external API calls.
-    /// Demo data includes multiple quality options and realistic metadata.
-    pub fn new_demo() -> Self {
-        Self {
-            provider: Box::new(DemoProvider::new()),
-            metadata_service: ImdbMetadataService::new(),
+    /// Uses runtime mode to choose between demo and production providers.
+    /// Allows consistent interface between development and production modes.
+    pub fn from_runtime_mode(mode: riptide_core::RuntimeMode) -> Self {
+        if mode.is_demo() {
+            Self::new_demo()
+        } else {
+            let magneto_url = std::env::var("MAGNETO_URL")
+                .unwrap_or_else(|_| "http://localhost:8080".to_string());
+            let magneto_api_key = std::env::var("MAGNETO_API_KEY").ok();
+            let omdb_api_key = std::env::var("OMDB_API_KEY").ok();
+
+            let provider = Box::new(MagnetoProvider::with_config(magneto_url, magneto_api_key));
+            let metadata_service = ImdbMetadataService::with_api_key(omdb_api_key);
+
+            Self {
+                provider,
+                metadata_service,
+            }
         }
     }
 
