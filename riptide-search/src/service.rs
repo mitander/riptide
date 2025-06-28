@@ -15,13 +15,16 @@ use crate::types::{MediaSearchResult, TorrentResult};
 pub struct MediaSearchService {
     provider: Box<dyn TorrentSearchProvider>,
     metadata_service: ImdbMetadataService,
+    is_demo: bool,
 }
 
 impl Clone for MediaSearchService {
     fn clone(&self) -> Self {
-        // For now, always create a new provider
-        // In future, could implement Clone for the trait or use Arc
-        Self::new()
+        if self.is_demo {
+            Self::new_demo()
+        } else {
+            Self::new()
+        }
     }
 }
 
@@ -34,6 +37,7 @@ impl MediaSearchService {
         Self {
             provider: Box::new(MagnetoProvider::new()),
             metadata_service: ImdbMetadataService::new(),
+            is_demo: false,
         }
     }
 
@@ -46,6 +50,7 @@ impl MediaSearchService {
         Self {
             provider: Box::new(DemoProvider::new()),
             metadata_service: ImdbMetadataService::new(),
+            is_demo: true,
         }
     }
 
@@ -68,6 +73,7 @@ impl MediaSearchService {
             Self {
                 provider,
                 metadata_service,
+                is_demo: false,
             }
         }
     }
@@ -78,6 +84,7 @@ impl MediaSearchService {
         Self {
             provider: Box::new(MockProvider::new()),
             metadata_service: ImdbMetadataService::new(),
+            is_demo: true,
         }
     }
 

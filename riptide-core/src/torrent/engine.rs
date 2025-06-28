@@ -142,6 +142,11 @@ impl TorrentEngine {
         self.peer_manager.add_peer(info_hash, address).await
     }
 
+    /// All active torrent sessions
+    pub fn active_sessions(&self) -> Vec<&TorrentSession> {
+        self.active_torrents.values().collect()
+    }
+
     /// Get download statistics for all active torrents
     pub async fn get_download_stats(&self) -> EngineStats {
         let peer_stats = self.peer_manager.get_stats().await;

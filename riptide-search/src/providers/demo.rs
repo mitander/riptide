@@ -38,7 +38,7 @@ impl TorrentSearchProvider for DemoProvider {
             TorrentResult {
                 name: format!("{}.2024.1080p.BluRay.x264-DEMO", query.replace(' ', ".")),
                 magnet_link: format!(
-                    "magnet:?xt=urn:btih:demo123&dn={}",
+                    "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678&dn={}",
                     urlencoding::encode(query)
                 ),
                 size: 1_500_000_000,
@@ -51,7 +51,7 @@ impl TorrentSearchProvider for DemoProvider {
             TorrentResult {
                 name: format!("{}.2024.720p.WEB-DL.x264-DEMO", query.replace(' ', ".")),
                 magnet_link: format!(
-                    "magnet:?xt=urn:btih:demo456&dn={}",
+                    "magnet:?xt=urn:btih:abcdef1234567890abcdef1234567890abcdef12&dn={}",
                     urlencoding::encode(query)
                 ),
                 size: 800_000_000,
@@ -67,7 +67,7 @@ impl TorrentSearchProvider for DemoProvider {
                     query.replace(' ', ".")
                 ),
                 magnet_link: format!(
-                    "magnet:?xt=urn:btih:demo789&dn={}",
+                    "magnet:?xt=urn:btih:fedcba0987654321fedcba0987654321fedcba09&dn={}",
                     urlencoding::encode(query)
                 ),
                 size: 4_500_000_000,

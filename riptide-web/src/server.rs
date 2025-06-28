@@ -607,10 +607,22 @@ async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 
 async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
     let engine = state.torrent_engine.read().await;
-    let stats = engine.get_download_stats().await;
+    let sessions = engine.active_sessions();
 
-    // For now, show demo data if no real torrents exist
-    let demo_torrents = if stats.active_torrents == 0 {
+    let torrents: Vec<serde_json::Value> = sessions.iter().map(|session| {
+        json!({
+            "name": format!("Torrent {}", &session.info_hash.to_string()[..8]),
+            "progress": (session.progress * 100.0) as u32,
+            "speed": 0, // TODO: Track download speed
+            "size": "Unknown", // TODO: Get from metadata
+            "status": if session.progress >= 1.0 { "completed" } else { "downloading" },
+            "info_hash": session.info_hash.to_string(),
+            "pieces": format!("{}/{}", session.completed_pieces.iter().filter(|&&x| x).count(), session.piece_count)
+        })
+    }).collect();
+
+    // Fallback to demo data if no real torrents
+    let display_torrents = if torrents.is_empty() {
         vec![
             json!({
                 "name": "Demo.Movie.2024.1080p.BluRay.x264",
@@ -628,12 +640,12 @@ async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> 
             }),
         ]
     } else {
-        vec![] // TODO: Return real torrent data from engine
+        torrents
     };
 
     Json(json!({
-        "torrents": demo_torrents,
-        "total": if demo_torrents.is_empty() { stats.active_torrents } else { demo_torrents.len() }
+        "torrents": display_torrents,
+        "total": display_torrents.len()
     }))
 }
 
@@ -647,11 +659,20 @@ async fn api_add_torrent(
 
     let mut engine = state.torrent_engine.write().await;
     match engine.add_magnet(&params.magnet).await {
-        Ok(info_hash) => Ok(Json(json!({
-            "success": true,
-            "message": "Torrent added",
-            "info_hash": info_hash.to_string()
-        }))),
+        Ok(info_hash) => {
+            // Start downloading immediately after adding
+            match engine.start_download(info_hash).await {
+                Ok(()) => Ok(Json(json!({
+                    "success": true,
+                    "message": "Torrent added and download started",
+                    "info_hash": info_hash.to_string()
+                }))),
+                Err(e) => Ok(Json(json!({
+                    "success": false,
+                    "message": format!("Added but failed to start download: {}", e)
+                }))),
+            }
+        }
         Err(e) => Ok(Json(json!({
             "success": false,
             "message": format!("Failed: {}", e)
@@ -671,10 +692,13 @@ async fn api_search(
 
     match state.search_service.search_with_metadata(query).await {
         Ok(results) => Json(json!(results)),
-        Err(_) => Json(json!([
-            {"title": format!("Movie: {}", query), "type": "movie"},
-            {"title": format!("Show: {}", query), "type": "tv"}
-        ])),
+        Err(e) => {
+            eprintln!("Search error: {e:?}");
+            Json(json!([
+                {"title": format!("Movie: {}", query), "type": "movie"},
+                {"title": format!("Show: {}", query), "type": "tv"}
+            ]))
+        }
     }
 }
 
