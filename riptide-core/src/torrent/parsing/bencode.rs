@@ -65,7 +65,7 @@ impl BencodeParser {
         let piece_length = Self::extract_integer(info_dict_map, b"piece length")? as u32;
 
         let pieces_bytes = Self::extract_bytes(info_dict_map, b"pieces")?;
-        if pieces_bytes.len() % 20 != 0 {
+        if !pieces_bytes.len().is_multiple_of(20) {
             return Err(TorrentError::InvalidTorrentFile {
                 reason: "Invalid pieces length".to_string(),
             });
