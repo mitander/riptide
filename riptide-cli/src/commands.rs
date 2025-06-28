@@ -344,7 +344,7 @@ async fn show_all_torrents_status(engine: &TorrentEngine) -> Result<()> {
 /// # Errors
 /// - Server binding failures or configuration errors
 pub async fn start_simple_server() -> Result<()> {
-    println!("Starting API server...");
+    println!("Starting Riptide media server...");
     println!("{:-<50}", "");
 
     let config = RiptideConfig::default();
