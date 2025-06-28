@@ -44,6 +44,7 @@ mime_guess = { workspace = true }
 rand_chacha = { workspace = true, optional = true }
 
 [dev-dependencies]
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
 proptest = { workspace = true }
