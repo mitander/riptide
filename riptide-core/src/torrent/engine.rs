@@ -1,6 +1,7 @@
 //! Core torrent download engine
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use super::{BencodeTorrentParser, InfoHash, PeerManager, TorrentError, TorrentParser};
 use crate::config::RiptideConfig;
@@ -33,6 +34,10 @@ pub struct TorrentSession {
     pub completed_pieces: Vec<bool>,
     /// Download progress (0.0 to 1.0)
     pub progress: f32,
+    /// When download started (for simulation)
+    pub started_at: Instant,
+    /// Whether download is actively running
+    pub is_downloading: bool,
 }
 
 impl TorrentEngine {
@@ -63,6 +68,8 @@ impl TorrentEngine {
             piece_size: self.config.torrent.default_piece_size,
             completed_pieces: Vec::new(),
             progress: 0.0,
+            started_at: Instant::now(),
+            is_downloading: false,
         };
 
         self.active_torrents.insert(info_hash, session);
@@ -87,6 +94,8 @@ impl TorrentEngine {
             piece_size: metadata.piece_length,
             completed_pieces: vec![false; metadata.piece_hashes.len()],
             progress: 0.0,
+            started_at: Instant::now(),
+            is_downloading: false,
         };
 
         self.active_torrents.insert(info_hash, session);
@@ -116,7 +125,44 @@ impl TorrentEngine {
             session.completed_pieces = vec![false; session.piece_count as usize];
         }
 
+        // Start downloading simulation
+        session.is_downloading = true;
+        session.started_at = Instant::now();
+
         Ok(())
+    }
+
+    /// Simulate downloading progress for demo purposes.
+    ///
+    /// In production, this would be replaced by real BitTorrent protocol implementation.
+    /// Downloads pieces sequentially at ~2 pieces per second for streaming optimization.
+    pub fn simulate_download_progress(&mut self) {
+        for session in self.active_torrents.values_mut() {
+            if !session.is_downloading || session.progress >= 1.0 {
+                continue;
+            }
+
+            let elapsed = session.started_at.elapsed();
+            // Download ~2 pieces per second for streaming
+            let pieces_to_complete = (elapsed.as_secs_f32() * 2.0) as usize;
+            let target_pieces = pieces_to_complete.min(session.piece_count as usize);
+
+            // Complete pieces sequentially (better for streaming)
+            for i in 0..target_pieces {
+                if i < session.completed_pieces.len() {
+                    session.completed_pieces[i] = true;
+                }
+            }
+
+            // Update progress
+            let completed_count = session.completed_pieces.iter().filter(|&&x| x).count();
+            session.progress = completed_count as f32 / session.piece_count as f32;
+
+            // Stop downloading when complete
+            if session.progress >= 1.0 {
+                session.is_downloading = false;
+            }
+        }
     }
 
     /// Get torrent session information
@@ -193,6 +239,8 @@ impl TorrentSession {
             piece_size,
             completed_pieces: vec![false; piece_count as usize],
             progress: 0.0,
+            started_at: Instant::now(),
+            is_downloading: false,
         }
     }
 

@@ -3,9 +3,10 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Query, State};
-use axum::http::StatusCode;
-use axum::response::{Html, Json};
+use axum::body::Body;
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{Html, Json, Response};
 use axum::routing::get;
 use riptide_core::config::RiptideConfig;
 use riptide_core::torrent::TorrentEngine;
@@ -51,6 +52,8 @@ pub async fn run_server(
         .route("/torrents", get(torrents_page))
         .route("/library", get(library_page))
         .route("/search", get(search_page))
+        .route("/player/{info_hash}", get(video_player_page))
+        .route("/stream/{info_hash}", get(stream_torrent))
         .route("/api/stats", get(api_stats))
         .route("/api/torrents", get(api_torrents))
         .route("/api/torrents/add", get(api_add_torrent))
@@ -477,6 +480,7 @@ async fn torrents_page(State(_state): State<AppState>) -> Html<String> {
                                     <td>${torrent.speed || '0'} KB/s</td>
                                     <td>${torrent.size || 'Unknown'}</td>
                                     <td>
+                                        <button class="btn btn-small" onclick="streamTorrent('${torrent.info_hash || ''}')" ${torrent.progress < 5 ? 'disabled' : ''}>Stream</button>
                                         <button class="btn btn-small">Pause</button>
                                         <button class="btn btn-small">Remove</button>
                                     </td>
@@ -517,6 +521,16 @@ async fn torrents_page(State(_state): State<AppState>) -> Html<String> {
             
             // Auto-refresh every 10 seconds
             setInterval(loadTorrents, 10000);
+            
+            function streamTorrent(infoHash) {
+                if (!infoHash) {
+                    alert('Cannot stream: no torrent info hash');
+                    return;
+                }
+                
+                // Open video player page in new window
+                window.open(`/player/${infoHash}`, '_blank');
+            }
         </script>
     "#;
 
@@ -593,7 +607,94 @@ async fn library_page(State(_state): State<AppState>) -> Html<String> {
     Html(base_template("Library", "library", content))
 }
 
+async fn video_player_page(
+    State(state): State<AppState>,
+    Path(info_hash_str): Path<String>,
+) -> Result<Html<String>, StatusCode> {
+    // Validate info hash format
+    if info_hash_str.len() != 40 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Get torrent info for display
+    let torrent_name = format!("Torrent {}", &info_hash_str[..8]);
+
+    let content = format!(
+        r#"
+        <div class="page-header">
+            <h1>Video Player</h1>
+            <p>Streaming: {torrent_name}</p>
+        </div>
+        
+        <div class="card">
+            <video id="video-player" controls style="width: 100%; max-width: 800px; height: auto;">
+                <source src="/stream/{info_hash}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            
+            <div style="margin-top: 20px;">
+                <p><strong>Torrent:</strong> {torrent_name}</p>
+                <p><strong>Info Hash:</strong> {info_hash}</p>
+                <p id="progress-info">Loading progress...</p>
+            </div>
+        </div>
+        
+        <script>
+            const videoPlayer = document.getElementById('video-player');
+            const progressInfo = document.getElementById('progress-info');
+            
+            // Update progress info periodically
+            async function updateProgress() {{
+                try {{
+                    const response = await fetch('/api/torrents');
+                    const data = await response.json();
+                    const torrent = data.torrents.find(t => t.info_hash === '{info_hash}');
+                    
+                    if (torrent) {{
+                        progressInfo.textContent = `Download Progress: ${{torrent.progress}}% (${{torrent.pieces}})`;
+                        
+                        // Enable/disable player based on progress
+                        if (torrent.progress < 5) {{
+                            videoPlayer.style.opacity = '0.5';
+                            progressInfo.textContent += ' - Waiting for more data...';
+                        }} else {{
+                            videoPlayer.style.opacity = '1';
+                        }}
+                    }}
+                }} catch (error) {{
+                    console.error('Failed to update progress:', error);
+                }}
+            }}
+            
+            // Update every 2 seconds
+            updateProgress();
+            setInterval(updateProgress, 2000);
+            
+            // Video event handlers
+            videoPlayer.addEventListener('loadstart', () => {{
+                console.log('Video loading started');
+            }});
+            
+            videoPlayer.addEventListener('error', (e) => {{
+                console.error('Video error:', e);
+                progressInfo.textContent += ' - Video playback error';
+            }});
+        </script>
+    "#,
+        torrent_name = torrent_name,
+        info_hash = info_hash_str
+    );
+
+    Ok(Html(base_template("Video Player", "player", &content)))
+}
+
 async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
+    // Update progress simulation before reading stats
+    {
+        let mut engine = state.torrent_engine.write().await;
+        engine.simulate_download_progress();
+    }
+
     let engine = state.torrent_engine.read().await;
     let stats = engine.get_download_stats().await;
 
@@ -606,6 +707,12 @@ async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 }
 
 async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Update progress simulation before reading
+    {
+        let mut engine = state.torrent_engine.write().await;
+        engine.simulate_download_progress();
+    }
+
     let engine = state.torrent_engine.read().await;
     let sessions = engine.active_sessions();
 
@@ -752,4 +859,142 @@ async fn api_settings(State(_state): State<AppState>) -> Json<serde_json::Value>
         "max_connections": 50,
         "dht_enabled": true
     }))
+}
+
+async fn stream_torrent(
+    State(state): State<AppState>,
+    Path(info_hash_str): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    // Update download progress first
+    {
+        let mut engine = state.torrent_engine.write().await;
+        engine.simulate_download_progress();
+    }
+
+    // Parse info hash
+    let info_hash = match parse_info_hash(&info_hash_str) {
+        Ok(hash) => hash,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Get torrent session
+    let engine = state.torrent_engine.read().await;
+    let session = match engine.get_session(info_hash) {
+        Ok(session) => session,
+        Err(_) => return Err(StatusCode::NOT_FOUND),
+    };
+
+    // For demo, create fake video data based on completed pieces
+    let total_size = session.piece_count as u64 * session.piece_size as u64;
+    let completed_pieces = session.completed_pieces.iter().filter(|&&x| x).count() as u64;
+    let available_size = completed_pieces * session.piece_size as u64;
+
+    // Handle range requests for video streaming
+    let range_header = headers.get("range");
+    let (start, end, content_length) = if let Some(range) = range_header {
+        parse_range_header(range.to_str().unwrap_or(""), available_size)
+    } else {
+        (0, available_size.saturating_sub(1), available_size)
+    };
+
+    // Ensure we don't serve data beyond what's downloaded
+    let safe_end = end.min(available_size.saturating_sub(1));
+    let safe_length = safe_end.saturating_sub(start) + 1;
+
+    if start > available_size {
+        return Err(StatusCode::RANGE_NOT_SATISFIABLE);
+    }
+
+    // Create fake video data (in production, read from actual file)
+    let fake_data = create_fake_video_segment(start, safe_length);
+
+    let mut response = Response::builder()
+        .header("Content-Type", "video/mp4")
+        .header("Accept-Ranges", "bytes")
+        .header("Content-Length", safe_length.to_string())
+        .header("Cache-Control", "no-cache");
+
+    // Add range response headers if this is a range request
+    if range_header.is_some() {
+        response = response.status(StatusCode::PARTIAL_CONTENT).header(
+            "Content-Range",
+            format!("bytes {start}-{safe_end}/{total_size}"),
+        );
+    } else {
+        response = response.status(StatusCode::OK);
+    }
+
+    response
+        .body(Body::from(fake_data))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// Parse HTTP Range header for video streaming
+fn parse_range_header(range: &str, total_size: u64) -> (u64, u64, u64) {
+    if !range.starts_with("bytes=") {
+        return (0, total_size.saturating_sub(1), total_size);
+    }
+
+    let range_spec = &range[6..]; // Remove "bytes="
+    if let Some((start_str, end_str)) = range_spec.split_once('-') {
+        let start = start_str.parse::<u64>().unwrap_or(0);
+        let end = if end_str.is_empty() {
+            total_size.saturating_sub(1)
+        } else {
+            end_str
+                .parse::<u64>()
+                .unwrap_or(total_size.saturating_sub(1))
+        };
+        let content_length = end.saturating_sub(start) + 1;
+        (start, end, content_length)
+    } else {
+        (0, total_size.saturating_sub(1), total_size)
+    }
+}
+
+/// Create fake video data for demo streaming
+fn create_fake_video_segment(start: u64, length: u64) -> Vec<u8> {
+    // Create fake MP4-like data with proper headers for demo
+    let mut data = Vec::new();
+
+    // Simple pattern that browsers might recognize as video
+    for i in 0..length {
+        let byte = ((start + i) % 256) as u8;
+        data.push(byte);
+    }
+
+    data
+}
+
+/// Parse hex string into InfoHash
+fn parse_info_hash(hex_str: &str) -> Result<riptide_core::torrent::InfoHash, String> {
+    if hex_str.len() != 40 {
+        return Err("Invalid hash length".to_string());
+    }
+
+    let hash_bytes = decode_hex(hex_str)?;
+    if hash_bytes.len() != 20 {
+        return Err("Invalid hash bytes".to_string());
+    }
+
+    let mut hash_array = [0u8; 20];
+    hash_array.copy_from_slice(&hash_bytes);
+    Ok(riptide_core::torrent::InfoHash::new(hash_array))
+}
+
+/// Simple hex decoder
+fn decode_hex(hex_str: &str) -> Result<Vec<u8>, String> {
+    if hex_str.len() % 2 != 0 {
+        return Err("Invalid hex string length".to_string());
+    }
+
+    let mut bytes = Vec::new();
+    for chunk in hex_str.as_bytes().chunks(2) {
+        let hex_byte = std::str::from_utf8(chunk).map_err(|_| "Invalid UTF-8")?;
+        let byte = u8::from_str_radix(hex_byte, 16).map_err(|_| "Invalid hex digit")?;
+        bytes.push(byte);
+    }
+
+    Ok(bytes)
 }
