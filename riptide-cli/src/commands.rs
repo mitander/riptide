@@ -47,6 +47,9 @@ pub enum Commands {
         /// Runtime mode
         #[arg(long, default_value = "demo")]
         mode: RuntimeMode,
+        /// Directory containing movie files for simulation (demo mode only)
+        #[arg(long)]
+        movies_dir: Option<PathBuf>,
     },
     /// Run simulation environment
     Simulation {
@@ -69,7 +72,12 @@ pub async fn handle_command(command: Commands) -> Result<()> {
         Commands::Stop { torrent } => stop_torrent(torrent).await,
         Commands::Status { torrent } => show_status(torrent).await,
         Commands::List => list_torrents().await,
-        Commands::Server { host, port, mode } => start_server(host, port, mode).await,
+        Commands::Server {
+            host,
+            port,
+            mode,
+            movies_dir,
+        } => start_server(host, port, mode, movies_dir).await,
         Commands::Simulation { peers, torrent } => run_simulation(peers, torrent).await,
     }
 }
@@ -339,7 +347,7 @@ pub async fn start_simple_server() -> Result<()> {
 
     let config = RiptideConfig::default();
 
-    riptide_web::run_server(config, RuntimeMode::Demo) // Default to demo mode
+    riptide_web::run_server(config, RuntimeMode::Demo, None) // Default to demo mode
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -350,7 +358,12 @@ pub async fn start_simple_server() -> Result<()> {
 ///
 /// # Errors
 /// - `RiptideError::Io` - Failed to start server
-pub async fn start_server(_host: String, _port: u16, mode: RuntimeMode) -> Result<()> {
+pub async fn start_server(
+    _host: String,
+    _port: u16,
+    mode: RuntimeMode,
+    movies_dir: Option<PathBuf>,
+) -> Result<()> {
     println!("Starting Riptide media server...");
     println!("{:-<50}", "");
 
@@ -366,7 +379,7 @@ pub async fn start_server(_host: String, _port: u16, mode: RuntimeMode) -> Resul
         }
     );
 
-    riptide_web::run_server(config, mode)
+    riptide_web::run_server(config, mode, movies_dir)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 

@@ -5,6 +5,7 @@
 //! services, and configuration management.
 
 pub mod config;
+pub mod local_movies;
 pub mod mode;
 pub mod storage;
 pub mod streaming;
@@ -12,6 +13,7 @@ pub mod torrent;
 
 // Re-export main types for convenient access
 pub use config::RiptideConfig;
+pub use local_movies::{LocalMovie, LocalMovieManager};
 pub use mode::RuntimeMode;
 pub use storage::{FileStorage, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};

@@ -1833,6 +1833,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "urlencoding",
 ]
 
 [[package]]
