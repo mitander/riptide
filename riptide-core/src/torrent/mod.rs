@@ -31,7 +31,7 @@ pub use protocol::{
 pub use simulated_peer_manager::{SimulatedPeerConfig, SimulatedPeerManager};
 pub use tracker::{
     AnnounceRequest, AnnounceResponse, HttpTrackerClient, ScrapeRequest, ScrapeResponse,
-    ScrapeStats, TrackerClient,
+    ScrapeStats, TrackerClient, TrackerManagement, TrackerManager,
 };
 
 use crate::storage::StorageError;

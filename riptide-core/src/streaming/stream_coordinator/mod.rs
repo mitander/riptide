@@ -21,22 +21,17 @@ mod tests {
     use super::*;
     use crate::config::RiptideConfig;
     use crate::torrent::test_data::create_test_info_hash;
-    use crate::torrent::{
-        EnhancedPeerManager, HttpTrackerClient, NetworkPeerManager, TorrentEngine,
-    };
+    use crate::torrent::{EnhancedPeerManager, NetworkPeerManager, TorrentEngine, TrackerManager};
 
     #[tokio::test]
     async fn test_stream_coordinator_creation() {
         let config = RiptideConfig::default();
         let peer_manager_impl = NetworkPeerManager::new_default();
-        let tracker_client = HttpTrackerClient::new(
-            "http://tracker.example.com/announce".to_string(),
-            &config.network,
-        );
+        let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
             peer_manager_impl,
-            tracker_client,
+            tracker_manager,
         )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
@@ -51,14 +46,11 @@ mod tests {
     async fn test_torrent_registration() {
         let config = RiptideConfig::default();
         let peer_manager_impl = NetworkPeerManager::new_default();
-        let tracker_client = HttpTrackerClient::new(
-            "http://tracker.example.com/announce".to_string(),
-            &config.network,
-        );
+        let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
             peer_manager_impl,
-            tracker_client,
+            tracker_manager,
         )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
@@ -83,14 +75,11 @@ mod tests {
     async fn test_file_info_retrieval() {
         let config = RiptideConfig::default();
         let peer_manager_impl = NetworkPeerManager::new_default();
-        let tracker_client = HttpTrackerClient::new(
-            "http://tracker.example.com/announce".to_string(),
-            &config.network,
-        );
+        let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
             peer_manager_impl,
-            tracker_client,
+            tracker_manager,
         )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
@@ -115,14 +104,11 @@ mod tests {
     async fn test_range_reading() {
         let config = RiptideConfig::default();
         let peer_manager_impl = NetworkPeerManager::new_default();
-        let tracker_client = HttpTrackerClient::new(
-            "http://tracker.example.com/announce".to_string(),
-            &config.network,
-        );
+        let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
             peer_manager_impl,
-            tracker_client,
+            tracker_manager,
         )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 

@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, post};
 use riptide_core::config::RiptideConfig;
-use riptide_core::torrent::{HttpTrackerClient, NetworkPeerManager, TorrentEngine};
+use riptide_core::engine::{ProductionTorrentEngine, SimulationTorrentEngine, TorrentEngineOps};
 use riptide_core::{LocalMovieManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
@@ -13,14 +13,15 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
 use crate::handlers::{
-    api_add_local_movie, api_add_torrent, api_library, api_local_movies, api_search, api_settings,
-    api_stats, api_torrents, dashboard_page, library_page, search_page, stream_local_movie,
-    stream_torrent, torrents_page, video_player_page,
+    api_add_local_movie, api_add_torrent, api_download_torrent, api_library, api_local_movies,
+    api_search, api_settings, api_stats, api_torrents, dashboard_page, library_page, search_page,
+    stream_local_movie, stream_torrent, torrents_page, video_player_page,
 };
 
+/// Unified app state that works with both production and simulation engines
 #[derive(Clone)]
 pub struct AppState {
-    pub torrent_engine: Arc<RwLock<TorrentEngine<NetworkPeerManager, HttpTrackerClient>>>,
+    pub torrent_engine: Arc<RwLock<dyn TorrentEngineOps>>,
     pub search_service: MediaSearchService,
     pub movie_manager: Option<Arc<RwLock<LocalMovieManager>>>,
 }
@@ -30,16 +31,17 @@ pub async fn run_server(
     mode: RuntimeMode,
     movies_dir: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let peer_manager = NetworkPeerManager::new_default();
-    let tracker_client = HttpTrackerClient::new(
-        "http://tracker.example.com/announce".to_string(),
-        &config.network,
-    );
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
-        config.clone(),
-        peer_manager,
-        tracker_client,
-    )));
+    // Create appropriate engine based on runtime mode
+    let torrent_engine: Arc<RwLock<dyn TorrentEngineOps>> = match mode {
+        RuntimeMode::Production => {
+            let engine = ProductionTorrentEngine::new_production(config.clone());
+            Arc::new(RwLock::new(engine))
+        }
+        RuntimeMode::Demo => {
+            let engine = SimulationTorrentEngine::new_simulation(config.clone());
+            Arc::new(RwLock::new(engine))
+        }
+    };
     let search_service = MediaSearchService::from_runtime_mode(mode);
 
     // Initialize movie manager for demo mode with local files
@@ -77,6 +79,7 @@ pub async fn run_server(
         .route("/api/stats", get(api_stats))
         .route("/api/torrents", get(api_torrents))
         .route("/api/torrents/add", get(api_add_torrent))
+        .route("/api/download", post(api_download_torrent))
         .route("/api/movies/local", get(api_local_movies))
         .route("/api/movies/add", get(api_add_local_movie))
         .route("/api/library", get(api_library))

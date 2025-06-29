@@ -23,6 +23,11 @@ pub struct AddTorrentQuery {
     pub magnet: String,
 }
 
+#[derive(Deserialize)]
+pub struct DownloadRequest {
+    pub magnet_link: String,
+}
+
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
     // Update progress simulation before reading stats
     {
@@ -31,7 +36,7 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
     }
 
     let engine = state.torrent_engine.read().await;
-    let stats = engine.get_download_stats().await;
+    let stats = engine.download_stats().await;
 
     Json(Stats {
         total_torrents: stats.active_torrents as u32,
@@ -184,7 +189,7 @@ pub async fn api_search(
 
 pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Value> {
     let engine = state.torrent_engine.read().await;
-    let _stats = engine.get_download_stats().await;
+    let _stats = engine.download_stats().await;
     let sessions = engine.active_sessions();
 
     let mut library_items = Vec::new();
@@ -270,4 +275,57 @@ pub async fn api_settings(State(_state): State<AppState>) -> Json<serde_json::Va
         "max_connections": 50,
         "dht_enabled": true
     }))
+}
+
+pub async fn api_download_torrent(
+    State(state): State<AppState>,
+    Json(payload): Json<DownloadRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if payload.magnet_link.is_empty() {
+        return Ok(Json(json!({
+            "success": false,
+            "error": "Empty magnet link"
+        })));
+    }
+
+    let mut engine = state.torrent_engine.write().await;
+    match engine.add_magnet(&payload.magnet_link).await {
+        Ok(info_hash) => {
+            // Start downloading immediately after adding
+            match engine.start_download(info_hash).await {
+                Ok(()) => Ok(Json(json!({
+                    "success": true,
+                    "message": "Download started successfully",
+                    "info_hash": info_hash.to_string()
+                }))),
+                Err(e) => {
+                    let error_str = e.to_string();
+                    let error_msg = if error_str.contains("404 Not Found") {
+                        "This torrent is not available on public trackers. Try a different torrent or one with embedded tracker URLs.".to_string()
+                    } else if error_str.contains("No peers available") {
+                        "BitTorrent peer connections not yet implemented. Riptide currently supports torrent search and tracker communication, but full peer-to-peer downloading requires additional development. Consider using this as a torrent search tool for now.".to_string()
+                    } else if error_str.contains("Tracker connection failed")
+                        || error_str.contains("HTTP request failed")
+                    {
+                        "Tracker connection failed. The tracker servers may be offline or unreachable. This is common with older torrents. Try:\n• A different torrent from the same content\n• Torrents from more recent search results\n• Checking your internet connection".to_string()
+                    } else if error_str.contains("Failed to connect to tracker") {
+                        "Unable to reach tracker servers. This could be due to network issues or the trackers being offline.".to_string()
+                    } else if error_str.contains("Tracker request timed out") {
+                        "Tracker request timed out. The tracker servers are responding slowly or may be overloaded.".to_string()
+                    } else {
+                        format!("Download failed: {e}")
+                    };
+
+                    Ok(Json(json!({
+                        "success": false,
+                        "error": error_msg
+                    })))
+                }
+            }
+        }
+        Err(e) => Ok(Json(json!({
+            "success": false,
+            "error": format!("Failed to add torrent: {e}")
+        }))),
+    }
 }

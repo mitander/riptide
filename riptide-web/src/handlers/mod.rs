@@ -7,8 +7,8 @@ pub mod utils;
 
 // Re-export handler functions
 pub use api::{
-    AddTorrentQuery, Stats, api_add_torrent, api_library, api_search, api_settings, api_stats,
-    api_torrents,
+    AddTorrentQuery, DownloadRequest, Stats, api_add_torrent, api_download_torrent, api_library,
+    api_search, api_settings, api_stats, api_torrents,
 };
 pub use pages::{
     DownloadStats, dashboard_page, library_page, search_page, torrents_page, video_player_page,

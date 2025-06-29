@@ -84,9 +84,9 @@ riptide-sim:
 
 ```rust
 // Core traits for unified interface
-pub trait TrackerClient: Send + Sync {
-    async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse>;
-    async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse>;
+pub trait TrackerManager: Send + Sync {
+    async fn announce_to_trackers(&mut self, tracker_urls: &[String], request: AnnounceRequest) -> Result<AnnounceResponse>;
+    async fn scrape_from_trackers(&mut self, tracker_urls: &[String], request: ScrapeRequest) -> Result<ScrapeResponse>;
 }
 
 pub trait PeerManager: Send + Sync {
@@ -97,25 +97,27 @@ pub trait PeerManager: Send + Sync {
 }
 
 // Dependency injection for swappable implementations
-pub struct TorrentEngine<P: PeerManager, T: TrackerClient> {
+pub struct TorrentEngine<P: PeerManager, T: TrackerManager> {
     peer_manager: Arc<RwLock<P>>,
-    tracker_client: Arc<RwLock<T>>,
+    tracker_manager: Arc<RwLock<T>>,
     // ... other fields
 }
 ```
 
 **Implementations**:
 
-- **Production**: `NetworkPeerManager` + `HttpTrackerClient` for real BitTorrent operations
-- **Testing**: `SimulatedPeerManager` + `SimulatedTrackerClient` for deterministic testing
-- **Development**: Mix real/simulated components for focused testing
+- **Production**: `NetworkPeerManager` + `TrackerManager` for real BitTorrent operations with multi-tracker support.
+- **Testing**: `SimulatedPeerManager` + `SimulatedTrackerManager` for deterministic testing.
+- **Development**: Mix real/simulated components for focused testing.
 
 **Benefits**:
 
-- **99% Generic Logic**: Core engine logic works identically with real or simulated implementations
-- **Comprehensive Fuzzing**: Test all code paths with deterministic simulated components
-- **Gradual Integration**: Develop with simulation, deploy with real implementations
-- **Protocol Compliance**: Real implementation ensures BitTorrent specification adherence
+- **99% Generic Logic**: Core engine logic works identically with real or simulated implementations.
+- **Multi-Tracker Support**: The `TrackerManager` can handle torrents with multiple trackers, improving peer discovery.
+- **Tracker Failover**: If one tracker is unavailable, the manager will automatically try the next one in the list.
+- **Comprehensive Fuzzing**: Test all code paths with deterministic simulated components.
+- **Gradual Integration**: Develop with simulation, deploy with real implementations.
+- **Protocol Compliance**: Real implementation ensures BitTorrent specification adherence.
 
 **Components**:
 

@@ -29,14 +29,19 @@ function displaySearchResults(results) {
         return;
     }
     
-    let html = '<div class="card"><h3>Search Results</h3><div class="grid">';
+    let html = '<div class="card"><h3>Search Results (' + results.length + ' torrents found)</h3><div class="search-grid">';
     for (const result of results) {
-        html += '<div class="grid-item">';
+        html += '<div class="torrent-item">';
+        html += '<div class="torrent-header">';
         html += '<h4>' + (result.title || 'Unknown Title') + '</h4>';
-        html += '<p>Quality: ' + (result.quality || 'Unknown') + '</p>';
-        html += '<p>Size: ' + (result.size || 'Unknown') + '</p>';
-        html += '<p>Seeds: ' + (result.seeds || '0') + '</p>';
-        html += '<button class="btn btn-small" onclick="downloadTorrent(\'' + (result.magnet_link || '') + '\')">Download</button>';
+        html += '<span class="torrent-source">' + (result.source || '') + '</span>';
+        html += '</div>';
+        html += '<div class="torrent-details">';
+        html += '<span class="quality">' + (result.quality || 'Unknown') + '</span>';
+        html += '<span class="size">' + (result.size || 'Unknown') + '</span>';
+        html += '<span class="seeds">🌱 ' + (result.seeds || '0') + '</span>';
+        html += '</div>';
+        html += '<button class="btn btn-small download-btn" onclick="downloadTorrent(\'' + (result.magnet_link || '') + '\')">Download</button>';
         html += '</div>';
     }
     html += '</div></div>';
@@ -51,14 +56,22 @@ async function downloadTorrent(magnetLink) {
     }
     
     try {
-        const result = await apiCall(`/api/torrents/add?magnet=${encodeURIComponent(magnetLink)}`);
-        if (result.success) {
-            alert('Download started! Check the Torrents page for progress.');
+        const data = await apiCall('/api/download', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ magnet_link: magnetLink })
+        });
+        
+        if (data.success) {
+            alert('Download started successfully!');
         } else {
-            alert('Failed to start download: ' + result.message);
+            alert('Failed to start download: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
-        alert('Failed to start download');
+        console.error('Download error:', error);
+        alert('Failed to start download. Please try again.');
     }
 }
 

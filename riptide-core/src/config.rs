@@ -67,7 +67,7 @@ pub struct NetworkConfig {
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
-            tracker_timeout: Duration::from_secs(30),
+            tracker_timeout: Duration::from_secs(5),
             min_announce_interval: Duration::from_secs(300), // 5 minutes
             default_announce_interval: Duration::from_secs(1800), // 30 minutes
             user_agent: "riptide/0.1.0",
@@ -233,7 +233,7 @@ mod tests {
 
         assert_eq!(config.torrent.client_id, "-RT0001-");
         assert_eq!(config.network.max_peer_connections, 50);
-        assert_eq!(config.network.tracker_timeout, Duration::from_secs(30));
+        assert_eq!(config.network.tracker_timeout, Duration::from_secs(5));
         assert_eq!(config.storage.file_buffer_size, 65536);
         assert_eq!(config.network.peer_timeout, Duration::from_secs(300));
         assert!(!config.simulation.enabled);

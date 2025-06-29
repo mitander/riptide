@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
+use super::TrackerManagement;
 use super::types::{
     AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, ScrapeStats,
     TrackerClient,
@@ -298,6 +299,84 @@ impl TrackerClient for SimulatedTrackerClient {
     /// Returns simulated tracker URL for debugging and logging.
     fn tracker_url(&self) -> &str {
         &self.announce_url
+    }
+}
+
+/// Simulated tracker management for testing multi-tracker scenarios.
+///
+/// Provides deterministic tracker selection and failover behavior
+/// without requiring real network infrastructure.
+pub struct SimulatedTrackerManager {
+    default_client: SimulatedTrackerClient,
+}
+
+impl Default for SimulatedTrackerManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SimulatedTrackerManager {
+    /// Creates new simulated tracker manager with default client.
+    pub fn new() -> Self {
+        Self {
+            default_client: SimulatedTrackerClient::new(
+                "http://sim-tracker.test/announce".to_string(),
+            ),
+        }
+    }
+
+    /// Creates simulated tracker manager with custom response configuration.
+    pub fn with_config(config: ResponseConfig) -> Self {
+        Self {
+            default_client: SimulatedTrackerClient::with_config(
+                "http://sim-tracker.test/announce".to_string(),
+                config,
+            ),
+        }
+    }
+}
+
+#[async_trait]
+impl TrackerManagement for SimulatedTrackerManager {
+    /// Simulates announcing to best available tracker from list.
+    ///
+    /// Uses internal simulated tracker client regardless of provided URLs
+    /// for deterministic testing behavior.
+    ///
+    /// # Errors
+    /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
+    async fn announce_to_trackers(
+        &mut self,
+        tracker_urls: &[String],
+        request: AnnounceRequest,
+    ) -> Result<AnnounceResponse, TorrentError> {
+        if tracker_urls.is_empty() {
+            return Err(TorrentError::TrackerConnectionFailed {
+                url: "No tracker URLs provided".to_string(),
+            });
+        }
+
+        // Simulate trying first tracker (always succeeds unless configured to fail)
+        self.default_client.announce(request).await
+    }
+
+    /// Simulates scraping statistics from trackers.
+    ///
+    /// # Errors  
+    /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
+    async fn scrape_from_trackers(
+        &mut self,
+        tracker_urls: &[String],
+        request: ScrapeRequest,
+    ) -> Result<ScrapeResponse, TorrentError> {
+        if tracker_urls.is_empty() {
+            return Err(TorrentError::TrackerConnectionFailed {
+                url: "No tracker URLs provided".to_string(),
+            });
+        }
+
+        self.default_client.scrape(request).await
     }
 }
 

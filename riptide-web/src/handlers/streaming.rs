@@ -29,7 +29,7 @@ pub async fn stream_torrent(
 
     // Get torrent session
     let engine = state.torrent_engine.read().await;
-    let session = match engine.get_session(info_hash) {
+    let session = match engine.session(info_hash) {
         Ok(session) => session,
         Err(_) => return Err(StatusCode::NOT_FOUND),
     };

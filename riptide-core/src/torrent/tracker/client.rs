@@ -37,6 +37,7 @@ impl HttpTrackerClient {
             client: reqwest::Client::builder()
                 .timeout(config.tracker_timeout)
                 .user_agent(config.user_agent)
+                .redirect(reqwest::redirect::Policy::limited(3))
                 .build()
                 .expect("HTTP client creation should not fail"),
         }
@@ -296,28 +297,58 @@ impl TrackerClient for HttpTrackerClient {
     /// - `TorrentError::ProtocolError` - Invalid tracker response format
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError> {
         let url = self.build_announce_url(&request)?;
+        tracing::debug!("Announcing to tracker: {}", self.announce_url);
 
         let response = self.client.get(&url).send().await.map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP request failed: {e}"),
-            }
+            tracing::warn!("HTTP request to {} failed: {}", self.announce_url, e);
+
+            // Provide more specific error context
+            let error_msg = if e.is_timeout() {
+                format!("Tracker request timed out: {}", self.announce_url)
+            } else if e.is_connect() {
+                format!("Failed to connect to tracker: {}", self.announce_url)
+            } else if e.is_request() {
+                format!("Invalid request to tracker: {}", self.announce_url)
+            } else {
+                format!("HTTP request failed: {e}")
+            };
+
+            TorrentError::TrackerConnectionFailed { url: error_msg }
         })?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
+            tracing::warn!(
+                "Tracker {} returned error status: {}",
+                self.announce_url,
+                status
+            );
             return Err(TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP {} from tracker", response.status()),
+                url: format!("HTTP {status} from tracker"),
             });
         }
 
-        let response_bytes =
-            response
-                .bytes()
-                .await
-                .map_err(|e| TorrentError::TrackerConnectionFailed {
-                    url: format!("Failed to read response body: {e}"),
-                })?;
+        let response_bytes = response.bytes().await.map_err(|e| {
+            tracing::warn!(
+                "Failed to read response body from {}: {}",
+                self.announce_url,
+                e
+            );
+            TorrentError::TrackerConnectionFailed {
+                url: format!("Failed to read response body: {e}"),
+            }
+        })?;
 
-        self.parse_announce_response(&response_bytes)
+        tracing::debug!(
+            "Successfully announced to {}, received {} peers",
+            self.announce_url,
+            response_bytes.len() / 6
+        );
+
+        self.parse_announce_response(&response_bytes).map_err(|e| {
+            tracing::warn!("Failed to parse response from {}: {}", self.announce_url, e);
+            e
+        })
     }
 
     /// Retrieves torrent statistics from tracker without announcing.

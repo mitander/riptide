@@ -5,19 +5,22 @@
 //! services, and configuration management.
 
 pub mod config;
+pub mod engine;
 pub mod local_movies;
 pub mod mode;
+pub mod network;
 pub mod storage;
 pub mod streaming;
 pub mod torrent;
 
 // Re-export main types for convenient access
 pub use config::RiptideConfig;
+pub use engine::{ProductionTorrentEngine, SimulationTorrentEngine, TorrentEngineOps};
 pub use local_movies::{LocalMovie, LocalMovieManager};
 pub use mode::RuntimeMode;
 pub use storage::{FileStorage, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
-pub use torrent::TorrentError;
+pub use torrent::{EngineStats, TorrentError};
 
 /// Core errors that can bubble up from any Riptide subsystem.
 ///
