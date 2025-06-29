@@ -76,26 +76,63 @@ riptide-sim:
 - Error conversion between crates via explicit mapping
 - Workspace-level dependency management for consistency
 
-### 2. Torrent Implementation
+### 2. Unified Trait-Based BitTorrent Architecture
 
-**Choice**: Trait abstractions with controlled external dependencies for non-streaming components.
+**Choice**: Trait abstractions enabling both real and simulated implementations with identical interfaces.
+
+**Architecture**:
+
+```rust
+// Core traits for unified interface
+pub trait TrackerClient: Send + Sync {
+    async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse>;
+    async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse>;
+}
+
+pub trait PeerManager: Send + Sync {
+    async fn connect_peer(&mut self, address: SocketAddr, info_hash: InfoHash, peer_id: PeerId) -> Result<()>;
+    async fn send_message(&mut self, peer_address: SocketAddr, message: PeerMessage) -> Result<()>;
+    async fn receive_message(&mut self) -> Result<PeerMessageEvent>;
+    // ... additional methods
+}
+
+// Dependency injection for swappable implementations
+pub struct TorrentEngine<P: PeerManager, T: TrackerClient> {
+    peer_manager: Arc<RwLock<P>>,
+    tracker_client: Arc<RwLock<T>>,
+    // ... other fields
+}
+```
+
+**Implementations**:
+
+- **Production**: `NetworkPeerManager` + `HttpTrackerClient` for real BitTorrent operations
+- **Testing**: `SimulatedPeerManager` + `SimulatedTrackerClient` for deterministic testing
+- **Development**: Mix real/simulated components for focused testing
+
+**Benefits**:
+
+- **99% Generic Logic**: Core engine logic works identically with real or simulated implementations
+- **Comprehensive Fuzzing**: Test all code paths with deterministic simulated components
+- **Gradual Integration**: Develop with simulation, deploy with real implementations
+- **Protocol Compliance**: Real implementation ensures BitTorrent specification adherence
 
 **Components**:
 
-- **Bencode Parsing**: Own `bencode-rs` crate for full control and streaming optimization
-- **Magnet Links**: `magnet-url` crate (zero dependencies, ultra-fast)
-- **Tracker Client**: Custom implementation using `reqwest` for HTTP, `tokio` for UDP
-- **Peer Protocol**: Custom implementation optimized for streaming piece selection
-- **Piece Selection**: Custom streaming-optimized algorithms with deadline-based prioritization
+- **HTTP Tracker Client**: Real tracker communication with bencode parsing and BEP 23 support
+- **TCP Peer Manager**: BitTorrent wire protocol with handshake and message serialization
+- **Peer Protocol**: Complete message types (bitfield, request, piece, have, etc.)
+- **Connection Management**: Async TCP with connection pooling and message routing
 
-**Rationale**: Trait abstractions enable swappable implementations while maintaining full control over streaming-critical components. External dependencies used only for non-streaming functionality.
+**Testing Strategy**:
 
-**Future Considerations**:
+The unified interface enables comprehensive testing:
+- Unit tests with simulated components for speed and determinism
+- Integration tests with real components for protocol validation
+- Mixed scenarios testing specific edge cases
+- Fuzzing with controlled inputs via simulation
 
-- `bencode-rs` may be enhanced and published to crates.io as a standalone library once streaming optimizations are proven. Current git dependency provides maximum development flexibility.
-- Upgrade to nightly Rust to enable automatic import grouping in rustfmt for better code organization.
-
-### 2. Storage Architecture
+### 3. Storage Architecture
 
 **Choice**: Simple directory structure with copy-on-write where available.
 
@@ -106,13 +143,13 @@ riptide-sim:
 
 **Implementation**: Try reflink → hard link → move. No complex content-addressing.
 
-### 3. Streaming Strategy
+### 4. Streaming Strategy
 
 **Choice**: Direct streaming by default, pre-transcode during download for incompatible formats.
 
 **Rationale**: Eliminates buffering/stuttering. Most devices support H.264/H.265 directly.
 
-### 4. Database Design
+### 5. Database Design
 
 ```sql
 -- Optimized schema with denormalized hot fields
@@ -165,32 +202,37 @@ Kill switch if VPN disconnects during torrent activity.
 
 ## Development Approach
 
-### Phase 1: Core (Weeks 1-2)
+### Phase 1: Core **COMPLETE**
 
-- Basic torrent downloading
-- Simple file storage
-- CLI interface
-- **Ship to self for testing**
+- Real BitTorrent tracker communication with HTTP announce/scrape
+- TCP peer connections with BitTorrent wire protocol  
+- Unified trait-based architecture for production and testing
+- File storage with piece management
+- CLI interface for torrent management
+- Comprehensive test suite
 
-### Phase 2: Web UI (Week 3)
+### Phase 2: Streaming (In Progress)
 
-- Browse library
-- Start/stop downloads
-- View progress
-- **Get family using it**
+- Basic streaming service architecture
+- HTTP range request handling
+- Stream coordinator with piece prioritization
+- **Current**: Template/asset extraction and organization
+- Direct streaming optimization
+- Bandwidth management and buffering
 
-### Phase 3: Streaming (Weeks 4-6)
+### Phase 3: Web UI Enhancement
 
-- Direct streaming first
-- Device detection
-- Pre-transcoding
+- Browse library with rich metadata
+- Real-time download progress
+- Search integration with providers
+- Device detection and compatibility
 
-### Phase 4: Polish (Weeks 7-16)
+### Phase 4: Production Polish
 
-- Subtitles
-- Apple TV app
-- Performance optimization
-- Monitoring
+- Subtitles and multi-language support
+- Apple TV app development
+- Performance optimization and monitoring
+- VPN integration and security features
 
 ## Performance Strategy
 

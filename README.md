@@ -25,14 +25,16 @@ cargo test
 ## Current Status
 
 **Working:**
-- BitTorrent protocol implementation
+- Real BitTorrent tracker communication and TCP peer connections
+- Unified trait architecture for production and testing
 - Piece downloading with hash verification  
 - File storage with library organization
-- Simulation environment for testing
+- Deterministic simulation framework
 
 **In Progress:**
 - Direct streaming service
-- Web interface
+- Template/asset extraction
+- Web interface enhancement
 
 ## Development
 
