@@ -17,6 +17,11 @@ use serde_json::json;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 
+use crate::templates::{
+    base_template, dashboard_content, library_content, search_content, torrents_content,
+    video_player_content,
+};
+
 #[derive(Clone)]
 pub struct AppState {
     torrent_engine: Arc<RwLock<TorrentEngine>>,
@@ -37,6 +42,13 @@ pub struct AddTorrentQuery {
     magnet: String,
 }
 
+#[derive(Default)]
+pub struct DownloadStats {
+    pub active_torrents: u32,
+    pub bytes_downloaded: u64,
+    pub bytes_uploaded: u64,
+}
+
 pub async fn run_server(
     config: RiptideConfig,
     mode: RuntimeMode,
@@ -46,9 +58,8 @@ pub async fn run_server(
     let search_service = MediaSearchService::from_runtime_mode(mode);
 
     // Initialize movie manager for demo mode with local files
-    let movie_manager = if mode.is_demo() && movies_dir.is_some() {
+    let movie_manager = if let Some(dir) = movies_dir.as_ref().filter(|_| mode.is_demo()) {
         let mut manager = LocalMovieManager::new();
-        let dir = movies_dir.as_ref().unwrap();
 
         match manager.scan_directory(dir).await {
             Ok(count) => {
@@ -56,7 +67,7 @@ pub async fn run_server(
                 Some(Arc::new(RwLock::new(manager)))
             }
             Err(e) => {
-                eprintln!("Warning: Failed to scan movies directory: {}", e);
+                eprintln!("Warning: Failed to scan movies directory: {e}");
                 None
             }
         }
@@ -95,724 +106,50 @@ pub async fn run_server(
     Ok(())
 }
 
-fn base_template(title: &str, active_page: &str, content: &str) -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>{title} - Riptide</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-               background: #0a0a0a; color: #ffffff; line-height: 1.6; }}
-        
-        /* Navigation */
-        nav {{ background: #1a1a1a; border-bottom: 1px solid #333; padding: 0 20px; }}
-        .nav-container {{ max-width: 1200px; margin: 0 auto; display: flex; align-items: center; height: 60px; }}
-        .logo {{ font-size: 24px; font-weight: bold; color: #4a9eff; margin-right: 40px; }}
-        .nav-links {{ display: flex; gap: 30px; flex: 1; }}
-        .nav-links a {{ color: #ccc; text-decoration: none; padding: 8px 16px; border-radius: 6px; 
-                        transition: all 0.2s; }}
-        .nav-links a:hover {{ color: #4a9eff; background: #2a2a2a; }}
-        .nav-links a.active {{ color: #4a9eff; background: #2a4a6a; }}
-        
-        /* Main Content */
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 30px 20px; }}
-        .page-header {{ margin-bottom: 30px; }}
-        .page-header h1 {{ font-size: 32px; margin-bottom: 10px; }}
-        .page-header p {{ color: #aaa; font-size: 16px; }}
-        
-        /* Cards */
-        .card {{ background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }}
-        .card h3 {{ color: #4a9eff; margin-bottom: 15px; }}
-        
-        /* Stats Grid */
-        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }}
-        .stat-card {{ background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; text-align: center; }}
-        .stat-value {{ font-size: 28px; font-weight: bold; color: #4a9eff; display: block; }}
-        .stat-label {{ color: #aaa; margin-top: 5px; }}
-        
-        /* Forms */
-        .search-form {{ margin-bottom: 30px; }}
-        .search-form input {{ width: 100%; max-width: 400px; padding: 12px; border: 1px solid #333; 
-                           background: #2a2a2a; color: #fff; border-radius: 6px; font-size: 16px; }}
-        .search-form button {{ padding: 12px 24px; background: #4a9eff; color: #fff; border: none; 
-                             border-radius: 6px; cursor: pointer; margin-left: 10px; font-size: 16px; }}
-        .search-form button:hover {{ background: #3a8edf; }}
-        
-        /* Tables */
-        .table {{ width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; overflow: hidden; }}
-        .table th, .table td {{ padding: 12px; text-align: left; border-bottom: 1px solid #333; }}
-        .table th {{ background: #2a2a2a; font-weight: 600; color: #4a9eff; }}
-        .table tr:last-child td {{ border-bottom: none; }}
-        .table tr:hover {{ background: #2a2a2a; }}
-        
-        /* Buttons */
-        .btn {{ padding: 8px 16px; background: #4a9eff; color: #fff; border: none; border-radius: 4px; 
-               cursor: pointer; text-decoration: none; display: inline-block; }}
-        .btn:hover {{ background: #3a8edf; }}
-        .btn-small {{ padding: 6px 12px; font-size: 14px; }}
-        
-        /* Grid Layouts */
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }}
-        .grid-item {{ background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; }}
-        .grid-item h4 {{ color: #4a9eff; margin-bottom: 10px; }}
-        .grid-item p {{ color: #aaa; font-size: 14px; }}
-        
-        /* Loading States */
-        .loading {{ text-align: center; padding: 40px; color: #aaa; }}
-        .error {{ background: #4a2a2a; border: 1px solid #664; color: #ffaaaa; padding: 15px; border-radius: 6px; margin: 20px 0; }}
-    </style>
-</head>
-<body>
-    <nav>
-        <div class="nav-container">
-            <div class="logo">Riptide</div>
-            <div class="nav-links">
-                <a href="/" class="{dashboard_active}">Dashboard</a>
-                <a href="/search" class="{search_active}">Search</a>
-                <a href="/torrents" class="{torrents_active}">Torrents</a>
-                <a href="/library" class="{library_active}">Library</a>
-            </div>
-        </div>
-    </nav>
-    
-    <div class="container">
-        {content}
-    </div>
-    
-    <script>
-        // Utility function for API calls
-        async function apiCall(endpoint) {{
-            try {{
-                const response = await fetch(endpoint);
-                if (!response.ok) throw new Error(`HTTP ${{response.status}}`);
-                return await response.json();
-            }} catch (error) {{
-                console.error('API call failed:', error);
-                throw error;
-            }}
-        }}
-        
-        // Auto-refresh stats every 30 seconds
-        setInterval(() => {{
-            if (window.updateStats) window.updateStats();
-        }}, 30000);
-    </script>
-</body>
-</html>"#,
-        title = title,
-        content = content,
-        dashboard_active = if active_page == "dashboard" {
-            "active"
-        } else {
-            ""
-        },
-        search_active = if active_page == "search" {
-            "active"
-        } else {
-            ""
-        },
-        torrents_active = if active_page == "torrents" {
-            "active"
-        } else {
-            ""
-        },
-        library_active = if active_page == "library" {
-            "active"
-        } else {
-            ""
-        }
-    )
-}
-
 async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let engine = state.torrent_engine.read().await;
-    let stats = engine.get_download_stats().await;
+    let api_stats = engine.get_download_stats().await;
     drop(engine);
 
-    let content = format!(
-        r#"
-        <div class="page-header">
-            <h1>Dashboard</h1>
-            <p>Monitor your downloads and server status</p>
-        </div>
-        
-        <div class="stats-grid" id="stats-grid">
-            <div class="stat-card">
-                <span class="stat-value" id="total-torrents">{}</span>
-                <div class="stat-label">Active Torrents</div>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value" id="download-speed">{:.1} MB/s</span>
-                <div class="stat-label">Download Speed</div>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value" id="upload-speed">{:.1} MB/s</span>
-                <div class="stat-label">Upload Speed</div>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value" id="total-downloaded">{:.1} GB</span>
-                <div class="stat-label">Total Downloaded</div>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3>Quick Actions</h3>
-            <p style="margin-bottom: 15px;">Get started with media discovery and torrents</p>
-            <a href="/search" class="btn">Search Media</a>
-            <a href="/torrents" class="btn" style="margin-left: 10px;">Manage Torrents</a>
-            <a href="/library" class="btn" style="margin-left: 10px;">Browse Library</a>
-        </div>
-        
-        <div class="card">
-            <h3>Recent Activity</h3>
-            <p id="recent-activity">No recent downloads</p>
-        </div>
-        
-        <script>
-            window.updateStats = async function() {{
-                try {{
-                    const stats = await apiCall('/api/stats');
-                    document.getElementById('total-torrents').textContent = stats.total_torrents;
-                    document.getElementById('download-speed').textContent = stats.download_speed.toFixed(1) + ' MB/s';
-                    document.getElementById('upload-speed').textContent = stats.upload_speed.toFixed(1) + ' MB/s';
-                    document.getElementById('total-downloaded').textContent = (stats.download_speed * 3600).toFixed(1) + ' GB';
-                }} catch (error) {{
-                    console.error('Failed to update stats:', error);
-                }}
-            }};
-            
-            // Load initial stats
-            window.updateStats();
-        </script>
-    "#,
-        stats.active_torrents,
-        (stats.bytes_downloaded as f64) / 1_048_576.0,
-        (stats.bytes_uploaded as f64) / 1_048_576.0,
-        (stats.bytes_downloaded as f64) / 1_073_741_824.0
-    );
+    // Convert API stats to DownloadStats format
+    let stats = DownloadStats {
+        active_torrents: api_stats.active_torrents as u32,
+        bytes_downloaded: api_stats.bytes_downloaded,
+        bytes_uploaded: api_stats.bytes_uploaded,
+    };
 
+    let content = dashboard_content(&stats);
     Html(base_template("Dashboard", "dashboard", &content))
 }
 
 async fn search_page(State(_state): State<AppState>) -> Html<String> {
-    let content = r#"
-        <div class="page-header">
-            <h1>Search Media</h1>
-            <p>Find movies and TV shows to download</p>
-        </div>
-        
-        <div class="search-form">
-            <input type="text" id="search-input" placeholder="Search for movies, TV shows..." onkeypress="handleSearchKeypress(event)">
-            <button onclick="performSearch()">Search</button>
-        </div>
-        
-        <div id="search-results"></div>
-        
-        <script>
-            let searchTimeout;
-            
-            function handleSearchKeypress(event) {
-                if (event.key === 'Enter') {
-                    performSearch();
-                }
-            }
-            
-            async function performSearch() {
-                const query = document.getElementById('search-input').value.trim();
-                if (!query) return;
-                
-                const resultsDiv = document.getElementById('search-results');
-                resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
-                
-                try {
-                    const results = await apiCall(`/api/search?q=${encodeURIComponent(query)}`);
-                    displaySearchResults(results);
-                } catch (error) {
-                    resultsDiv.innerHTML = '<div class="loading">No results found</div>';
-                }
-            }
-            
-            function displaySearchResults(results) {
-                const resultsDiv = document.getElementById('search-results');
-                
-                if (!results || results.length === 0) {
-                    resultsDiv.innerHTML = '<div class="loading">No results found</div>';
-                    return;
-                }
-                
-                // Group torrents by media and show poster
-                let mediaHtml = '';
-                results.forEach(media => {
-                    if (media.torrents && media.torrents.length > 0) {
-                        const posterImg = media.poster_url ? 
-                            `<img src="${media.poster_url}" alt="${media.title}" style="width: 200px; height: 300px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">` :
-                            `<div style="width: 200px; height: 300px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #666; flex-shrink: 0;">No Image</div>`;
-                        
-                        mediaHtml += `
-                            <div class="media-result" style="display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; gap: 20px;">
-                                ${posterImg}
-                                <div style="flex: 1; display: flex; flex-direction: column;">
-                                    <h2 style="color: #4a9eff; font-size: 24px; font-weight: 600; margin-bottom: 12px;">${media.title} ${media.year ? '(' + media.year + ')' : ''}</h2>
-                                    ${media.plot ? `<p style="color: #ccc; margin-bottom: 16px; line-height: 1.5;">${media.plot}</p>` : ''}
-                                    <div style="color: #aaa; margin-bottom: 20px; font-size: 14px;">
-                                        ${media.genre ? `<span style="margin-right: 20px;"><strong>Genre:</strong> ${media.genre}</span>` : ''}
-                                        ${media.rating ? `<span style="margin-right: 20px;"><strong>IMDb:</strong> ${media.rating.toFixed(1)}/10</span>` : ''}
-                                        <span><strong>Type:</strong> ${media.media_type || 'Unknown'}</span>
-                                    </div>
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
-                                        ${media.torrents.map(torrent => `
-                                            <div style="background: #2a2a2a; border: 1px solid #404040; border-radius: 6px; padding: 16px;">
-                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                                    <span style="color: #4a9eff; font-weight: 600; font-size: 16px;">${getQualityDisplay(torrent.quality)}</span>
-                                                    <button class="btn btn-small" onclick="addTorrent('${torrent.magnet_link}')" style="background: #4a9eff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Download</button>
-                                                </div>
-                                                <div style="color: #aaa; font-size: 13px;">
-                                                    ${formatSize(torrent.size)} • ${torrent.seeders || 0} seeds • ${torrent.leechers || 0} peers
-                                                </div>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }
-                });
-                
-                if (!mediaHtml) {
-                    resultsDiv.innerHTML = '<div class="loading">No torrents found</div>';
-                } else {
-                    resultsDiv.innerHTML = mediaHtml;
-                }
-            }
-            
-            function formatSize(bytes) {
-                if (!bytes) return 'Unknown';
-                const gb = 1024 * 1024 * 1024;
-                const mb = 1024 * 1024;
-                
-                if (bytes >= gb) {
-                    return (bytes / gb).toFixed(1) + ' GB';
-                } else if (bytes >= mb) {
-                    return (bytes / mb).toFixed(1) + ' MB';
-                } else {
-                    return (bytes / 1024).toFixed(1) + ' KB';
-                }
-            }
-            
-            function getQualityDisplay(quality) {
-                if (!quality) return 'Unknown Quality';
-                
-                // Handle Rust enum serialization
-                if (typeof quality === 'object' && quality !== null) {
-                    // Handle variants like {"BluRay1080p": null} or just "BluRay1080p"
-                    const keys = Object.keys(quality);
-                    if (keys.length > 0) {
-                        quality = keys[0];
-                    }
-                }
-                
-                // Convert enum names to display names
-                switch (quality) {
-                    case 'BluRay1080p': return '1080p BluRay';
-                    case 'BluRay720p': return '720p BluRay';
-                    case 'BluRay4K': return '4K BluRay';
-                    case 'WebDl1080p': return '1080p WEB-DL';
-                    case 'WebDl720p': return '720p WEB-DL';
-                    case 'Hdtv1080p': return '1080p HDTV';
-                    case 'Hdtv720p': return '720p HDTV';
-                    default: return quality.toString();
-                }
-            }
-            
-            async function addTorrent(magnetLink) {
-                try {
-                    const result = await apiCall(`/api/torrents/add?magnet=${encodeURIComponent(magnetLink)}`);
-                    if (result.success) {
-                        alert('Torrent added successfully!');
-                    } else {
-                        alert('Failed to add torrent: ' + result.message);
-                    }
-                } catch (error) {
-                    alert('Failed to add torrent');
-                }
-            }
-        </script>
-    "#;
-
-    Html(base_template("Search", "search", content))
+    let content = search_content();
+    Html(base_template("Search", "search", &content))
 }
 
 async fn torrents_page(State(_state): State<AppState>) -> Html<String> {
-    let content = r#"
-        <div class="page-header">
-            <h1>Torrent Management</h1>
-            <p>View and manage your active downloads</p>
-        </div>
-        
-        <div class="card">
-            <h3>Add New Torrent</h3>
-            <div class="search-form">
-                <input type="text" id="magnet-input" placeholder="Paste magnet link here...">
-                <button onclick="addMagnetLink()">Add Torrent</button>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3>Active Torrents</h3>
-            <div id="torrents-list">
-                <div class="loading">Loading torrents...</div>
-            </div>
-        </div>
-        
-        <script>
-            async function loadTorrents() {
-                try {
-                    const data = await apiCall('/api/torrents');
-                    displayTorrents(data.torrents || []);
-                } catch (error) {
-                    document.getElementById('torrents-list').innerHTML = 
-                        '<p>No active torrents</p>';
-                }
-            }
-            
-            function displayTorrents(torrents) {
-                const listDiv = document.getElementById('torrents-list');
-                
-                if (torrents.length === 0) {
-                    listDiv.innerHTML = '<p>No active torrents</p>';
-                    return;
-                }
-                
-                let tableRows = '';
-                for (const torrent of torrents) {
-                    const isDisabled = torrent.progress < 5 && !torrent.is_local ? 'disabled' : '';
-                    tableRows += `
-                        <tr>
-                            <td>` + (torrent.name || 'Unknown') + `</td>
-                            <td>` + (torrent.progress || '0') + `%</td>
-                            <td>` + (torrent.speed || '0') + ` KB/s</td>
-                            <td>` + (torrent.size || 'Unknown') + `</td>
-                            <td>
-                                <button class="btn btn-small" onclick="streamTorrent('` + (torrent.info_hash || '') + `', ` + (torrent.is_local || false) + `)" ` + isDisabled + `>Stream</button>
-                                <button class="btn btn-small">Pause</button>
-                                <button class="btn btn-small">Remove</button>
-                            </td>
-                        </tr>
-                    `;
-                }
-                
-                const html = `
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Progress</th>
-                                <th>Speed</th>
-                                <th>Size</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>` + tableRows + `
-                        </tbody>
-                    </table>
-                `;
-                
-                listDiv.innerHTML = html;
-            }
-            
-            async function addMagnetLink() {
-                const magnetInput = document.getElementById('magnet-input');
-                const magnetLink = magnetInput.value.trim();
-                
-                if (!magnetLink) {
-                    alert('Please enter a magnet link');
-                    return;
-                }
-                
-                try {
-                    const result = await apiCall(`/api/torrents/add?magnet=${encodeURIComponent(magnetLink)}`);
-                    if (result.success) {
-                        alert('Torrent added successfully!');
-                        magnetInput.value = '';
-                        loadTorrents(); // Refresh the list
-                    } else {
-                        alert('Failed to add torrent: ' + result.message);
-                    }
-                } catch (error) {
-                    alert('Failed to add torrent');
-                }
-            }
-            
-            function streamTorrent(infoHash, isLocal = false) {
-                if (!infoHash) {
-                    alert('Cannot stream: no torrent info hash');
-                    return;
-                }
-                
-                // Open video player page in new window
-                const playerUrl = isLocal ? `/player/${infoHash}?local=true` : `/player/${infoHash}`;
-                window.open(playerUrl, '_blank');
-            }
-            
-            // Load torrents on page load
-            loadTorrents();
-            
-            // Auto-refresh every 10 seconds
-            setInterval(loadTorrents, 10000);
-        </script>
-    "#;
-
-    Html(base_template("Torrents", "torrents", content))
+    let content = torrents_content();
+    Html(base_template("Torrents", "torrents", &content))
 }
 
 async fn library_page(State(_state): State<AppState>) -> Html<String> {
-    let content = r#"
-        <div class="page-header">
-            <h1>Media Library</h1>
-            <p>Browse your downloaded movies and TV shows</p>
-        </div>
-        
-        <div id="library-content">
-            <div class="loading">Loading library...</div>
-        </div>
-        
-        <script>
-            async function loadLibrary() {
-                try {
-                    const data = await apiCall('/api/library');
-                    displayLibrary(data.items || []);
-                } catch (error) {
-                    document.getElementById('library-content').innerHTML = 
-                        '<div class="card"><h3>Library Empty</h3><p>No media found. Start by <a href="/search">searching for content</a> to download.</p></div>';
-                }
-            }
-            
-            function displayLibrary(items) {
-                const contentDiv = document.getElementById('library-content');
-                
-                if (items.length === 0) {
-                    contentDiv.innerHTML = `
-                        <div class="card">
-                            <h3>No Media Found</h3>
-                            <p>Your library is empty. Start by <a href="/search">searching for media</a> to download.</p>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                let html = '<div class="grid">';
-                for (let i = 0; i < items.length; i++) {
-                    const item = items[i];
-                    html += '<div class="grid-item">';
-                    html += '<h4>' + (item.title || 'Unknown Title') + '</h4>';
-                    html += '<p>Type: ' + (item.type || 'Unknown') + '</p>';
-                    html += '<p>Size: ' + (item.size || 'Unknown') + '</p>';
-                    html += '<p>Added: ' + (item.added_date || 'Unknown') + '</p>';
-                    html += '<button class="btn btn-small" onclick="streamMedia(\'' + (item.info_hash || item.id || '') + '\', ' + (item.is_local || false) + ')">Stream</button>';
-                    html += '</div>';
-                }
-                html += '</div>';
-                
-                contentDiv.innerHTML = html;
-            }
-            
-            function streamMedia(infoHash, isLocal = false) {
-                if (!infoHash) {
-                    alert('Cannot stream this item');
-                    return;
-                }
-                
-                // Open video player page
-                const playerUrl = isLocal ? `/player/${infoHash}?local=true` : `/player/${infoHash}`;
-                window.open(playerUrl, '_blank');
-            }
-            
-            // Load library on page load
-            document.addEventListener('DOMContentLoaded', loadLibrary);
-        </script>
-    "#;
+    let content = library_content();
+    Html(base_template("Library", "library", &content))
+}
 
-    Html(base_template("Library", "library", content))
+#[derive(Deserialize)]
+struct VideoPlayerQuery {
+    local: Option<bool>,
 }
 
 async fn video_player_page(
-    State(state): State<AppState>,
-    Path(info_hash_str): Path<String>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Html<String>, StatusCode> {
-    // Validate info hash format
-    if info_hash_str.len() != 40 {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // Check if this is a local movie
-    let is_local = params.get("local").map(|v| v == "true").unwrap_or(false);
-
-    // Get display name
-    let torrent_name = if is_local && state.movie_manager.is_some() {
-        let movie_manager = state.movie_manager.as_ref().unwrap();
-        let manager = movie_manager.read().await;
-        if let Ok(info_hash) = parse_info_hash(&info_hash_str) {
-            manager
-                .get_movie(info_hash)
-                .map(|movie| movie.title.clone())
-                .unwrap_or_else(|| format!("Local Movie {}", &info_hash_str[..8]))
-        } else {
-            format!("Local Movie {}", &info_hash_str[..8])
-        }
-    } else {
-        format!("Torrent {}", &info_hash_str[..8])
-    };
-
-    // Determine streaming endpoint and content type
-    let (stream_url, video_type) = if is_local && state.movie_manager.is_some() {
-        let movie_manager = state.movie_manager.as_ref().unwrap();
-        let manager = movie_manager.read().await;
-        if let Ok(info_hash) = parse_info_hash(&info_hash_str) {
-            if let Some(movie) = manager.get_movie(info_hash) {
-                let video_type = if movie
-                    .file_path
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| ext.to_lowercase())
-                    .as_deref()
-                    == Some("mkv")
-                {
-                    "video/x-matroska" // MKV files - limited browser support
-                } else {
-                    "video/mp4"
-                };
-                (format!("/api/movies/stream/{}", info_hash_str), video_type)
-            } else {
-                (format!("/api/movies/stream/{}", info_hash_str), "video/mp4")
-            }
-        } else {
-            (format!("/api/movies/stream/{}", info_hash_str), "video/mp4")
-        }
-    } else {
-        (format!("/stream/{}", info_hash_str), "video/mp4")
-    };
-
-    let content = format!(
-        r#"
-        <div class="page-header">
-            <h1>Video Player</h1>
-            <p>Streaming: {torrent_name}</p>
-        </div>
-        
-        <div class="card">
-            <video id="video-player" controls style="width: 100%; max-width: 800px; height: auto;" preload="metadata">
-                <source src="{stream_url}" type="{video_type}">
-                <p><strong>Browser does not support this video format.</strong></p>
-                <p>File type: {video_type}</p>
-                <p>For MKV files: Most browsers have limited support. Use the MP4 version for guaranteed playback.</p>
-            </video>
-            
-            <div style="margin-top: 20px;">
-                <p><strong>Torrent:</strong> {torrent_name}</p>
-                <p><strong>Info Hash:</strong> {info_hash}</p>
-                <p id="progress-info">Loading progress...</p>
-            </div>
-        </div>
-        
-        <script>
-            const videoPlayer = document.getElementById('video-player');
-            const progressInfo = document.getElementById('progress-info');
-            const isLocal = {is_local};
-            const videoType = '{video_type}';
-            
-            // Check browser support for the video format
-            function checkVideoSupport() {{
-                const video = document.createElement('video');
-                const canPlay = video.canPlayType(videoType);
-                
-                if (canPlay === '') {{
-                    progressInfo.innerHTML += '<br><strong>Warning:</strong> Your browser does not support ' + videoType + ' format.';
-                    if (videoType === 'video/x-matroska') {{
-                        progressInfo.innerHTML += '<br><strong>Recommendation:</strong> Use the MP4 version for browser playback.';
-                    }}
-                }} else if (canPlay === 'probably') {{
-                    progressInfo.innerHTML += '<br>Format fully supported by your browser.';
-                }} else if (canPlay === 'maybe') {{
-                    progressInfo.innerHTML += '<br>Limited support - playback may not work reliably.';
-                }}
-            }}
-            
-            // Update progress info periodically
-            async function updateProgress() {{
-                if (isLocal) {{
-                    progressInfo.textContent = 'Local file - Ready to stream';
-                    videoPlayer.style.opacity = '1';
-                    return;
-                }}
-                
-                try {{
-                    const response = await fetch('/api/torrents');
-                    const data = await response.json();
-                    const torrent = data.torrents.find(t => t.info_hash === '{info_hash}');
-                    
-                    if (torrent) {{
-                        progressInfo.textContent = `Download Progress: ${{torrent.progress}}% (${{torrent.pieces || 'Unknown'}})`;
-                        
-                        // Enable/disable player based on progress
-                        if (torrent.progress < 5) {{
-                            videoPlayer.style.opacity = '0.5';
-                            progressInfo.textContent += ' - Waiting for more data...';
-                        }} else {{
-                            videoPlayer.style.opacity = '1';
-                        }}
-                    }} else {{
-                        progressInfo.textContent = 'Torrent not found';
-                    }}
-                }} catch (error) {{
-                    console.error('Failed to update progress:', error);
-                    progressInfo.textContent = 'Error loading progress';
-                }}
-            }}
-            
-            // Update every 2 seconds and check video support
-            updateProgress();
-            checkVideoSupport();
-            setInterval(updateProgress, 2000);
-            
-            // Video event handlers for debugging
-            videoPlayer.addEventListener('loadstart', () => {{
-                console.log('Video loading started');
-                progressInfo.innerHTML += '<br>Loading video...';
-            }});
-            
-            videoPlayer.addEventListener('canplay', () => {{
-                console.log('Video can start playing');
-                progressInfo.innerHTML += '<br>Video ready to play';
-            }});
-            
-            videoPlayer.addEventListener('error', (e) => {{
-                console.error('Video error:', e, videoPlayer.error);
-                let errorMsg = 'Unknown error';
-                if (videoPlayer.error) {{
-                    switch(videoPlayer.error.code) {{
-                        case 1: errorMsg = 'MEDIA_ERR_ABORTED - Loading aborted'; break;
-                        case 2: errorMsg = 'MEDIA_ERR_NETWORK - Network error'; break;
-                        case 3: errorMsg = 'MEDIA_ERR_DECODE - Decoding error'; break;
-                        case 4: errorMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED - Format not supported'; break;
-                    }}
-                }}
-                progressInfo.innerHTML += '<br>Video Error: ' + errorMsg;
-                if (videoType === 'video/x-matroska') {{
-                    progressInfo.innerHTML += '<br><strong>Solution:</strong> Use the MP4 version for guaranteed browser compatibility.';
-                }}
-            }});
-        </script>
-    "#,
-        torrent_name = torrent_name,
-        info_hash = info_hash_str
-    );
-
-    Ok(Html(base_template("Video Player", "player", &content)))
+    Path(info_hash): Path<String>,
+    Query(query): Query<VideoPlayerQuery>,
+    State(_state): State<AppState>,
+) -> Html<String> {
+    let is_local = query.local.unwrap_or(false);
+    let content = video_player_content(&info_hash, is_local);
+    Html(base_template("Video Player", "", &content))
 }
 
 async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
@@ -960,7 +297,7 @@ async fn api_search(
 
 async fn api_library(State(state): State<AppState>) -> Json<serde_json::Value> {
     let engine = state.torrent_engine.read().await;
-    let stats = engine.get_download_stats().await;
+    let _stats = engine.get_download_stats().await;
     let sessions = engine.active_sessions();
 
     let mut library_items = Vec::new();
@@ -1079,7 +416,7 @@ async fn stream_torrent(
 
     // Handle range requests for video streaming
     let range_header = headers.get("range");
-    let (start, end, content_length) = if let Some(range) = range_header {
+    let (start, end, _content_length) = if let Some(range) = range_header {
         parse_range_header(range.to_str().unwrap_or(""), available_size)
     } else {
         (0, available_size.saturating_sub(1), available_size)
@@ -1248,7 +585,7 @@ async fn stream_local_movie(
 
     // Handle range requests for video streaming
     let range_header = headers.get("range");
-    let (start, end, _content_length) = if let Some(range) = range_header {
+    let (start, end, __content_length) = if let Some(range) = range_header {
         parse_range_header(range.to_str().unwrap_or(""), movie.size)
     } else {
         (0, movie.size.saturating_sub(1), movie.size)
@@ -1322,8 +659,8 @@ fn parse_range_header(range: &str, total_size: u64) -> (u64, u64, u64) {
                 .parse::<u64>()
                 .unwrap_or(total_size.saturating_sub(1))
         };
-        let content_length = end.saturating_sub(start) + 1;
-        (start, end, content_length)
+        let _content_length = end.saturating_sub(start) + 1;
+        (start, end, _content_length)
     } else {
         (0, total_size.saturating_sub(1), total_size)
     }

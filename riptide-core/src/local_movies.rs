@@ -56,8 +56,8 @@ impl LocalMovieManager {
 
                 if path.is_dir() {
                     // Skip certain system directories
-                    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                        if matches!(
+                    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str())
+                        && matches!(
                             dir_name,
                             ".DS_Store"
                                 | "Thumbs.db"
@@ -65,9 +65,9 @@ impl LocalMovieManager {
                                 | ".localized"
                                 | ".tvlibrary"
                                 | ".tvdb"
-                        ) {
-                            continue;
-                        }
+                        )
+                    {
+                        continue;
                     }
 
                     // Recursively scan subdirectory
@@ -82,12 +82,11 @@ impl LocalMovieManager {
                         if matches!(
                             ext.as_str(),
                             "mp4" | "mkv" | "avi" | "mov" | "m4v" | "webm" | "flv"
-                        ) {
-                            if let Ok(metadata) = entry.metadata().await {
-                                let movie = self.create_movie_from_file(path, metadata.len()).await;
-                                self.movies.insert(movie.info_hash, movie);
-                                count += 1;
-                            }
+                        ) && let Ok(metadata) = entry.metadata().await
+                        {
+                            let movie = self.create_movie_from_file(path, metadata.len()).await;
+                            self.movies.insert(movie.info_hash, movie);
+                            count += 1;
                         }
                     }
                 }
@@ -140,8 +139,8 @@ impl LocalMovieManager {
         let mut hash_bytes = [0u8; 20];
         hash_bytes[0..8].copy_from_slice(&hash.to_be_bytes());
         // Fill remaining bytes with a pattern based on the hash
-        for i in 8..20 {
-            hash_bytes[i] = ((hash >> (i % 8)) & 0xFF) as u8;
+        for (offset, byte) in hash_bytes.iter_mut().enumerate().skip(8).take(12) {
+            *byte = ((hash >> (offset % 8)) & 0xFF) as u8;
         }
 
         InfoHash::new(hash_bytes)
