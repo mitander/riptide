@@ -55,7 +55,7 @@ pub fn parse_info_hash(hex_str: &str) -> Result<riptide_core::torrent::InfoHash,
 
 /// Simple hex decoder
 pub fn decode_hex(hex_str: &str) -> Result<Vec<u8>, String> {
-    if hex_str.len() % 2 != 0 {
+    if !hex_str.len().is_multiple_of(2) {
         return Err("Invalid hex string length".to_string());
     }
 
