@@ -5,10 +5,12 @@
 
 pub mod client;
 pub mod protocol;
+pub mod simulated;
 pub mod types;
 
 // Re-export public API
 pub use client::HttpTrackerClient;
+pub use simulated::{ResponseConfig, SimulatedTrackerClient};
 pub use types::{
     AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, ScrapeStats,
     TrackerClient,

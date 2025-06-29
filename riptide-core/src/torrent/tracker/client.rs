@@ -280,6 +280,93 @@ impl HttpTrackerClient {
     }
 }
 
+use async_trait::async_trait;
+
+use super::types::TrackerClient;
+
+#[async_trait]
+impl TrackerClient for HttpTrackerClient {
+    /// Announces client presence to tracker and retrieves peer list.
+    ///
+    /// Sends torrent statistics and receives updated peer information.
+    /// Handles HTTP request/response cycle with proper error handling.
+    ///
+    /// # Errors
+    /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
+    /// - `TorrentError::ProtocolError` - Invalid tracker response format
+    async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError> {
+        let url = self.build_announce_url(&request)?;
+
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            TorrentError::TrackerConnectionFailed {
+                url: format!("HTTP request failed: {e}"),
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(TorrentError::TrackerConnectionFailed {
+                url: format!("HTTP {} from tracker", response.status()),
+            });
+        }
+
+        let response_bytes =
+            response
+                .bytes()
+                .await
+                .map_err(|e| TorrentError::TrackerConnectionFailed {
+                    url: format!("Failed to read response body: {e}"),
+                })?;
+
+        self.parse_announce_response(&response_bytes)
+    }
+
+    /// Retrieves torrent statistics from tracker without announcing.
+    ///
+    /// Queries tracker for seeder/leecher counts without updating client state.
+    /// Returns statistics indexed by info hash.
+    ///
+    /// # Errors
+    /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
+    /// - `TorrentError::ProtocolError` - Invalid scrape response format
+    async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError> {
+        let _scrape_url =
+            self.scrape_url
+                .as_ref()
+                .ok_or_else(|| TorrentError::TrackerConnectionFailed {
+                    url: "Tracker does not support scrape operation".to_string(),
+                })?;
+
+        let url = self.build_scrape_url(&request)?;
+
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            TorrentError::TrackerConnectionFailed {
+                url: format!("HTTP request failed: {e}"),
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(TorrentError::TrackerConnectionFailed {
+                url: format!("HTTP {} from tracker", response.status()),
+            });
+        }
+
+        let response_bytes =
+            response
+                .bytes()
+                .await
+                .map_err(|e| TorrentError::TrackerConnectionFailed {
+                    url: format!("Failed to read response body: {e}"),
+                })?;
+
+        self.parse_scrape_response(&response_bytes)
+    }
+
+    /// Returns tracker URL for debugging and logging purposes.
+    fn tracker_url(&self) -> &str {
+        &self.announce_url
+    }
+}
+
 #[cfg(test)]
 mod tracker_client_tests {
     use std::time::Duration;
