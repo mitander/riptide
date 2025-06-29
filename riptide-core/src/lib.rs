@@ -17,7 +17,7 @@ pub use local_movies::{LocalMovie, LocalMovieManager};
 pub use mode::RuntimeMode;
 pub use storage::{FileStorage, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
-pub use torrent::{TorrentEngine, TorrentError};
+pub use torrent::TorrentError;
 
 /// Core errors that can bubble up from any Riptide subsystem.
 ///

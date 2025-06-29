@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::get;
 use riptide_core::config::RiptideConfig;
-use riptide_core::torrent::TorrentEngine;
+use riptide_core::torrent::{HttpTrackerClient, NetworkPeerManager, TorrentEngine};
 use riptide_core::{LocalMovieManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
@@ -19,7 +19,7 @@ use crate::handlers::{
 
 #[derive(Clone)]
 pub struct AppState {
-    pub torrent_engine: Arc<RwLock<TorrentEngine>>,
+    pub torrent_engine: Arc<RwLock<TorrentEngine<NetworkPeerManager, HttpTrackerClient>>>,
     pub search_service: MediaSearchService,
     pub movie_manager: Option<Arc<RwLock<LocalMovieManager>>>,
 }
@@ -29,7 +29,16 @@ pub async fn run_server(
     mode: RuntimeMode,
     movies_dir: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config)));
+    let peer_manager = NetworkPeerManager::new_default();
+    let tracker_client = HttpTrackerClient::new(
+        "http://tracker.example.com/announce".to_string(),
+        &config.network,
+    );
+    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
+        config.clone(),
+        peer_manager,
+        tracker_client,
+    )));
     let search_service = MediaSearchService::from_runtime_mode(mode);
 
     // Initialize movie manager for demo mode with local files

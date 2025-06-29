@@ -155,13 +155,13 @@ pub async fn api_add_local_movie(
                             })),
                             Err(e) => Json(json!({
                                 "success": false,
-                                "message": format!("Failed to start download: {}", e)
+                                "message": format!("Failed to start download: {e}")
                             })),
                         }
                     }
                     Err(e) => Json(json!({
                         "success": false,
-                        "message": format!("Failed to add movie: {}", e)
+                        "message": format!("Failed to add movie: {e}")
                     })),
                 }
             } else {

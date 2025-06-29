@@ -21,12 +21,23 @@ mod tests {
     use super::*;
     use crate::config::RiptideConfig;
     use crate::torrent::test_data::create_test_info_hash;
-    use crate::torrent::{EnhancedPeerManager, TorrentEngine};
+    use crate::torrent::{
+        EnhancedPeerManager, HttpTrackerClient, NetworkPeerManager, TorrentEngine,
+    };
 
     #[tokio::test]
     async fn test_stream_coordinator_creation() {
         let config = RiptideConfig::default();
-        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
+        let peer_manager_impl = NetworkPeerManager::new_default();
+        let tracker_client = HttpTrackerClient::new(
+            "http://tracker.example.com/announce".to_string(),
+            &config.network,
+        );
+        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
+            config.clone(),
+            peer_manager_impl,
+            tracker_client,
+        )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let coordinator = StreamCoordinator::new(torrent_engine, peer_manager);
@@ -39,7 +50,16 @@ mod tests {
     #[tokio::test]
     async fn test_torrent_registration() {
         let config = RiptideConfig::default();
-        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
+        let peer_manager_impl = NetworkPeerManager::new_default();
+        let tracker_client = HttpTrackerClient::new(
+            "http://tracker.example.com/announce".to_string(),
+            &config.network,
+        );
+        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
+            config.clone(),
+            peer_manager_impl,
+            tracker_client,
+        )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let mut coordinator = StreamCoordinator::new(torrent_engine, peer_manager);
@@ -62,7 +82,16 @@ mod tests {
     #[tokio::test]
     async fn test_file_info_retrieval() {
         let config = RiptideConfig::default();
-        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
+        let peer_manager_impl = NetworkPeerManager::new_default();
+        let tracker_client = HttpTrackerClient::new(
+            "http://tracker.example.com/announce".to_string(),
+            &config.network,
+        );
+        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
+            config.clone(),
+            peer_manager_impl,
+            tracker_client,
+        )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let mut coordinator = StreamCoordinator::new(torrent_engine, peer_manager);
@@ -85,7 +114,16 @@ mod tests {
     #[tokio::test]
     async fn test_range_reading() {
         let config = RiptideConfig::default();
-        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
+        let peer_manager_impl = NetworkPeerManager::new_default();
+        let tracker_client = HttpTrackerClient::new(
+            "http://tracker.example.com/announce".to_string(),
+            &config.network,
+        );
+        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
+            config.clone(),
+            peer_manager_impl,
+            tracker_client,
+        )));
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config)));
 
         let mut coordinator = StreamCoordinator::new(torrent_engine, peer_manager);

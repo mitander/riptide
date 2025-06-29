@@ -65,6 +65,8 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
 
     // Add local movies to torrents list if available
     let mut display_torrents = torrents;
+
+    // Add local movies to torrents list if available
     if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         let local_movies: Vec<serde_json::Value> = manager
@@ -85,7 +87,7 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
         display_torrents.extend(local_movies);
     }
 
-    // Fallback to demo data if no real torrents or local movies
+    // Fallback to demo data if no torrents or local movies
     let final_torrents = if display_torrents.is_empty() {
         vec![
             json!({
@@ -133,13 +135,13 @@ pub async fn api_add_torrent(
                 }))),
                 Err(e) => Ok(Json(json!({
                     "success": false,
-                    "message": format!("Added but failed to start download: {}", e)
+                    "message": format!("Added but failed to start download: {e}")
                 }))),
             }
         }
         Err(e) => Ok(Json(json!({
             "success": false,
-            "message": format!("Failed: {}", e)
+            "message": format!("Failed: {e}")
         }))),
     }
 }
