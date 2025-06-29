@@ -1,60 +1,47 @@
-//! Magneto torrent search provider for production use.
+//! Magneto torrent search provider using built-in indexers.
 
 use async_trait::async_trait;
-use serde::Deserialize;
+use magneto::{Magneto, PirateBay, SearchRequest, Yts};
 
 use super::TorrentSearchProvider;
 use crate::errors::MediaSearchError;
 use crate::types::{MediaSearchResult, MediaType, TorrentResult, VideoQuality};
 
-/// Magneto search provider for real torrent discovery.
+/// Magneto search provider using built-in torrent indexers.
 ///
-/// Integrates with Magneto API to find actual torrents from multiple indexers.
-/// Handles rate limiting, retries, and response parsing automatically.
-#[derive(Debug)]
+/// Uses Magneto library with built-in providers (Knaben, PirateBay, YTS)
+/// to search for torrents across multiple indexers simultaneously.
+/// No external server required - works completely offline.
 pub struct MagnetoProvider {
-    client: reqwest::Client,
-    base_url: String,
-    api_key: Option<String>,
+    magneto: Magneto,
 }
 
-/// Response from Magneto API search endpoint.
-#[derive(Debug, Deserialize)]
-struct MagnetoResponse {
-    results: Vec<MagnetoTorrent>,
-    #[allow(dead_code)]
-    total: u32,
-}
-
-/// Single torrent result from Magneto.
-#[derive(Debug, Deserialize)]
-struct MagnetoTorrent {
-    name: String,
-    magnet: String,
-    size: u64,
-    seeders: u32,
-    leechers: u32,
-    indexer: String,
-    #[allow(dead_code)]
-    category: String,
-    #[serde(rename = "publishDate")]
-    #[allow(dead_code)]
-    publish_date: String,
+impl std::fmt::Debug for MagnetoProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MagnetoProvider")
+            .field("magneto", &"<Magneto instance>")
+            .finish()
+    }
 }
 
 impl MagnetoProvider {
-    /// Create new Magneto provider with default configuration.
+    /// Create new Magneto provider with working indexers.
+    ///
+    /// Uses PirateBay and YTS providers (excludes Knaben due to downtime).
+    /// No configuration required - works out of the box.
     pub fn new() -> Self {
-        Self::with_config("http://localhost:8080".to_string(), None)
+        let magneto =
+            Magneto::with_providers(vec![Box::new(PirateBay::new()), Box::new(Yts::new())]);
+
+        Self { magneto }
     }
 
     /// Create Magneto provider with custom configuration.
-    pub fn with_config(base_url: String, api_key: Option<String>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            base_url,
-            api_key,
-        }
+    ///
+    /// For compatibility with existing interface.
+    /// Ignores URL and API key since Magneto library handles provider connections.
+    pub fn with_config(_base_url: String, _api_key: Option<String>) -> Self {
+        Self::new()
     }
 
     /// Parse video quality from torrent name.
@@ -107,7 +94,7 @@ impl MagnetoProvider {
     }
 
     /// Group torrents by extracted media title.
-    fn group_torrents(torrents: Vec<MagnetoTorrent>) -> Vec<MediaSearchResult> {
+    fn group_torrents(torrents: Vec<magneto::Torrent>) -> Vec<MediaSearchResult> {
         use std::collections::HashMap;
 
         let mut grouped: HashMap<String, Vec<TorrentResult>> = HashMap::new();
@@ -118,13 +105,13 @@ impl MagnetoProvider {
 
             let torrent_result = TorrentResult {
                 name: torrent.name,
-                magnet_link: torrent.magnet,
-                size: torrent.size,
+                magnet_link: torrent.magnet_link,
+                size: torrent.size_bytes,
                 seeders: torrent.seeders,
-                leechers: torrent.leechers,
+                leechers: torrent.peers,
                 quality,
-                source: torrent.indexer,
-                added_date: chrono::Utc::now(), // TODO: Parse torrent.publish_date
+                source: torrent.provider,
+                added_date: chrono::Utc::now(),
             };
 
             grouped
@@ -161,43 +148,19 @@ impl TorrentSearchProvider for MagnetoProvider {
     async fn search_torrents(
         &self,
         query: &str,
-        category: &str,
+        _category: &str,
     ) -> Result<Vec<MediaSearchResult>, MediaSearchError> {
-        let url = format!("{}/api/v1/search", self.base_url);
+        let request = SearchRequest::new(query);
 
-        let mut params = vec![("query", query), ("category", category), ("limit", "50")];
-
-        if let Some(ref api_key) = self.api_key {
-            params.push(("apikey", api_key));
-        }
-
-        let response = self
-            .client
-            .get(&url)
-            .query(&params)
-            .send()
-            .await
-            .map_err(|e| MediaSearchError::NetworkError {
-                reason: format!("Magneto request failed: {e}"),
-            })?;
-
-        if !response.status().is_success() {
-            return Err(MediaSearchError::SearchFailed {
-                query: query.to_string(),
-                reason: format!("Magneto HTTP {}", response.status()),
-            });
-        }
-
-        let magneto_response: MagnetoResponse =
-            response
-                .json()
+        let torrents =
+            self.magneto
+                .search(request)
                 .await
-                .map_err(|e| MediaSearchError::SearchFailed {
-                    query: query.to_string(),
-                    reason: format!("Magneto JSON parsing failed: {e}"),
+                .map_err(|e| MediaSearchError::NetworkError {
+                    reason: format!("Magneto search failed: {e}"),
                 })?;
 
-        Ok(Self::group_torrents(magneto_response.results))
+        Ok(Self::group_torrents(torrents))
     }
 }
 

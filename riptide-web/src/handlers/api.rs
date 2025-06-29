@@ -153,17 +153,31 @@ pub async fn api_search(
     let query = params.get("q").map(|s| s.as_str()).unwrap_or("");
 
     if query.is_empty() {
-        return Json(json!([]));
+        return Json(json!({"results": []}));
     }
 
     match state.search_service.search_with_metadata(query).await {
-        Ok(results) => Json(json!(results)),
+        Ok(results) => {
+            // Flatten MediaSearchResult into individual torrents for the frontend
+            let mut individual_torrents = Vec::new();
+            for media_result in results {
+                for torrent in media_result.torrents {
+                    individual_torrents.push(json!({
+                        "title": torrent.name,
+                        "quality": format!("{:?}", torrent.quality),
+                        "size": torrent.format_size(),
+                        "seeds": torrent.seeders,
+                        "magnet_link": torrent.magnet_link,
+                        "source": torrent.source
+                    }));
+                }
+            }
+
+            Json(json!({"results": individual_torrents}))
+        }
         Err(e) => {
-            eprintln!("Search error: {e:?}");
-            Json(json!([
-                {"title": format!("Movie: {}", query), "type": "movie"},
-                {"title": format!("Show: {}", query), "type": "tv"}
-            ]))
+            tracing::error!("Search failed for query '{}': {}", query, e);
+            Json(json!({"results": []}))
         }
     }
 }
