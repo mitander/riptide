@@ -1,6 +1,6 @@
 //! Dashboard page template
 
-use crate::server::DownloadStats;
+use crate::handlers::DownloadStats;
 
 /// Generates the dashboard page content
 pub fn dashboard_content(stats: &DownloadStats) -> String {

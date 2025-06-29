@@ -3,6 +3,7 @@
 //! Clean, minimal web interface using vanilla JavaScript,
 //! providing modern UI for managing torrents and streaming media.
 
+pub mod handlers;
 pub mod server;
 pub mod templates;
 
