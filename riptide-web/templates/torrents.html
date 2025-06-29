@@ -1,0 +1,21 @@
+<div class="page-header">
+    <h1>Torrent Management</h1>
+    <p>View and manage your active downloads</p>
+</div>
+
+<div class="card">
+    <h3>Add New Torrent</h3>
+    <div class="search-form">
+        <input type="text" id="magnet-input" placeholder="Paste magnet link here...">
+        <button onclick="addMagnetLink()">Add Torrent</button>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Active Torrents</h3>
+    <div id="torrents-list">
+        <div class="loading">Loading torrents...</div>
+    </div>
+</div>
+
+<script src="/static/js/torrents.js"></script>

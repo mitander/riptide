@@ -10,6 +10,7 @@ use riptide_core::{LocalMovieManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 
 use crate::handlers::{
     api_add_local_movie, api_add_torrent, api_library, api_local_movies, api_search, api_settings,
@@ -81,6 +82,7 @@ pub async fn run_server(
         .route("/api/library", get(api_library))
         .route("/api/search", get(api_search))
         .route("/api/settings", get(api_settings))
+        .nest_service("/static", ServeDir::new("riptide-web/static"))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
