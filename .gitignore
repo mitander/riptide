@@ -24,7 +24,6 @@ build/
 # Generated TypeScript builds
 riptide-web/static/js/app.js
 riptide-web/static/js/app.js.map
-riptide-web/static/css/
 
 # Environment variables
 .env
