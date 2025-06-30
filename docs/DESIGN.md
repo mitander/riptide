@@ -8,21 +8,33 @@ A Rust-based torrent media server focused on streaming performance and rapid ite
 
 ```
 riptide/
-├── riptide-core/     → Core BitTorrent and streaming functionality
-├── riptide-web/      → Web UI and HTTP API server
-├── riptide-search/   → Media search and metadata services
-├── riptide-cli/      → Command-line interface
-└── riptide-sim/      → Deterministic simulation framework
+├── riptide-core/     → Core BitTorrent and streaming functionality (foundational)
+├── riptide-web/      → Web UI and HTTP API server (depends on core)
+├── riptide-search/   → Media search and metadata services (depends on core)
+├── riptide-cli/      → Command-line interface (depends on core)
+└── riptide-sim/      → Deterministic simulation framework (depends on core)
+```
+
+**Dependency Graph**: Clean tree structure with no circular dependencies
+```
+riptide-core (foundational)
+    ↑
+    ├── riptide-sim (simulation & testing)
+    ├── riptide-web (UI & API) 
+    ├── riptide-cli (command interface)
+    └── riptide-search (media discovery)
 ```
 
 ### Core Components
 
 ```
 riptide-core:
-  - Torrent Engine    → BitTorrent protocol, piece management, peer connections
-  - Storage Layer     → File organization, reflink/CoW support
-  - Streaming Service → Direct streaming, piece buffering, bandwidth control
-  - Configuration     → Runtime simulation config, network settings
+  - TorrentEngine     → BitTorrent protocol with trait-based peer/tracker abstractions
+  - TcpPeerManager    → Production TCP peer connections and message handling
+  - TrackerManager    → Real HTTP/UDP tracker communication
+  - Storage Layer     → File organization, reflink/CoW support, piece verification
+  - Streaming Service → Direct streaming, range requests, bandwidth control
+  - TorrentCreator    → File-to-torrent conversion with piece splitting and hashing
 
 riptide-web:
   - Web Server        → Axum-based HTTP server with template rendering
@@ -40,12 +52,12 @@ riptide-cli:
   - Simulation Mode   → Development environment with configurable parameters
 
 riptide-sim:
-  - Deterministic Clock    → Controlled time advancement for reproducible tests
-  - Event Scheduler        → Priority-based event queue with deterministic ordering
-  - Network Simulation     → Configurable latency, packet loss, bandwidth limits
-  - Peer Simulation        → Mock peers with deterministic behavior patterns
-  - Media Scenarios        → Real-world streaming patterns and edge cases
-  - Invariant Checking     → Runtime validation of system properties
+  - InMemoryPeerManager     → Simulated peer connections for deterministic testing
+  - ContentAwarePeerManager → Piece-serving simulation with real file data
+  - InMemoryPieceStore      → In-memory storage of actual torrent pieces
+  - PieceReconstructionService → Reassembly of downloaded pieces for streaming
+  - SimulatedTrackerManager → Mock tracker responses for offline development
+  - DeterministicSimulation → Controlled time and event scheduling for tests
 ```
 
 ## Key Design Decisions
@@ -56,18 +68,18 @@ riptide-sim:
 
 **Structure**:
 
-- **riptide-core**: Essential BitTorrent and streaming functionality, no web dependencies
-- **riptide-web**: Web UI and HTTP API, depends on core and search crates
-- **riptide-search**: Media search and metadata, standalone with optional integration
-- **riptide-cli**: Command-line interface, orchestrates other crates
-- **riptide-sim**: Deterministic simulation framework for testing and development
+- **riptide-core**: BitTorrent protocol and streaming, trait abstractions for testability
+- **riptide-web**: HTTP API and UI, depends only on core
+- **riptide-search**: Media search and metadata, depends only on core  
+- **riptide-cli**: Command interface, depends only on core
+- **riptide-sim**: Simulation implementations of core traits, depends only on core
 
 **Benefits**:
 
-- **Modular Development**: Independent versioning and testing of components
-- **Deployment Flexibility**: Core can be embedded without web UI overhead
-- **Clear Boundaries**: Web concerns separated from protocol implementation
-- **Runtime Configuration**: Simulation mode configurable at runtime vs compile-time
+- **No Circular Dependencies**: Clean tree structure with single foundational crate
+- **Modular Development**: Independent testing and parallel development
+- **Deployment Flexibility**: Core embeddable without UI dependencies
+- **Simulation Isolation**: Test implementations separated from production code
 
 **Architecture Patterns**:
 
@@ -83,21 +95,30 @@ riptide-sim:
 **Architecture**:
 
 ```rust
-// Core traits for unified interface
-pub trait TrackerManager: Send + Sync {
-    async fn announce_to_trackers(&mut self, tracker_urls: &[String], request: AnnounceRequest) -> Result<AnnounceResponse>;
-    async fn scrape_from_trackers(&mut self, tracker_urls: &[String], request: ScrapeRequest) -> Result<ScrapeResponse>;
+// Core traits enabling production and simulation implementations
+pub trait TrackerManagement: Send + Sync {
+    async fn announce_to_trackers(&mut self, request: AnnounceRequest) -> Result<AnnounceResponse>;
+    async fn scrape_from_trackers(&mut self, request: ScrapeRequest) -> Result<ScrapeResponse>;
 }
 
 pub trait PeerManager: Send + Sync {
-    async fn connect_peer(&mut self, address: SocketAddr, info_hash: InfoHash, peer_id: PeerId) -> Result<()>;
+    async fn connect_peer(&mut self, address: SocketAddr, info_hash: InfoHash) -> Result<()>;
     async fn send_message(&mut self, peer_address: SocketAddr, message: PeerMessage) -> Result<()>;
     async fn receive_message(&mut self) -> Result<PeerMessageEvent>;
-    // ... additional methods
+    async fn connected_peers(&self) -> Vec<PeerInfo>;
+    async fn shutdown(&mut self) -> Result<()>;
 }
 
-// Dependency injection for swappable implementations
-pub struct TorrentEngine<P: PeerManager, T: TrackerManager> {
+// Production implementations (riptide-core)
+pub struct TcpPeerManager { /* TCP peer connections */ }
+pub struct TrackerManager { /* HTTP/UDP tracker communication */ }
+
+// Simulation implementations (riptide-sim) 
+pub struct InMemoryPeerManager { /* Deterministic peer simulation */ }
+pub struct SimulatedTrackerManager { /* Offline tracker responses */ }
+pub struct ContentAwarePeerManager<P: PieceStore> { /* Real piece data serving */ }
+// Engine uses dependency injection for swappable implementations
+pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
     peer_manager: Arc<RwLock<P>>,
     tracker_manager: Arc<RwLock<T>>,
     // ... other fields
@@ -106,17 +127,16 @@ pub struct TorrentEngine<P: PeerManager, T: TrackerManager> {
 
 **Implementations**:
 
-- **Production**: `NetworkPeerManager` + `TrackerManager` for real BitTorrent operations with multi-tracker support.
-- **Testing**: `SimulatedPeerManager` + `SimulatedTrackerManager` for deterministic testing.
-- **Development**: Mix real/simulated components for focused testing.
+- **Production**: `TcpPeerManager` + `TrackerManager` for real BitTorrent operations
+- **Simulation**: `InMemoryPeerManager` + `SimulatedTrackerManager` for deterministic testing
+- **Content-Aware**: `ContentAwarePeerManager<InMemoryPieceStore>` for end-to-end file simulation
 
 **Benefits**:
 
-- **99% Generic Logic**: Core engine logic works identically with real or simulated implementations.
-- **Multi-Tracker Support**: The `TrackerManager` can handle torrents with multiple trackers, improving peer discovery.
-- **Tracker Failover**: If one tracker is unavailable, the manager will automatically try the next one in the list.
-- **Comprehensive Fuzzing**: Test all code paths with deterministic simulated components.
-- **Gradual Integration**: Develop with simulation, deploy with real implementations.
+- **Identical API**: Core engine logic works with real or simulated implementations
+- **Deterministic Testing**: Complete reproducibility with simulation implementations
+- **Comprehensive Coverage**: Test all code paths without network dependencies
+- **Development Flexibility**: Mix real/simulated components for focused testing
 - **Protocol Compliance**: Real implementation ensures BitTorrent specification adherence.
 
 **Components**:
@@ -134,7 +154,52 @@ The unified interface enables comprehensive testing:
 - Mixed scenarios testing specific edge cases
 - Fuzzing with controlled inputs via simulation
 
-### 3. Storage Architecture
+### 3. Content Distribution Simulation
+
+**Choice**: True content distribution simulation using real file data and piece reconstruction.
+
+**Architecture**:
+
+```rust
+// File-to-torrent conversion with piece storage
+pub struct SimulationTorrentCreator {
+    creator: TorrentCreator,
+    pieces: Vec<TorrentPiece>,  // Actual file data stored as pieces
+}
+
+// In-memory piece storage for simulation
+pub struct InMemoryPieceStore {
+    torrents: HashMap<InfoHash, HashMap<u32, TorrentPiece>>,
+}
+
+// Content-aware peer serving real piece data
+pub struct ContentAwarePeerManager<P: PieceStore> {
+    piece_store: Arc<P>,
+    // Serves actual piece data in response to requests
+}
+
+// Piece reconstruction for streaming
+pub struct PieceReconstructionService {
+    verified_pieces: HashMap<InfoHash, BTreeMap<u32, VerifiedPiece>>,
+    reconstructed_segments: HashMap<InfoHash, Vec<u8>>,
+}
+```
+
+**Capabilities**:
+
+- **Real File Conversion**: Split actual media files into torrent pieces with SHA-1 hashes
+- **True Piece Serving**: Simulated peers serve actual file data, not mock responses
+- **Content Reconstruction**: Downloaded pieces reassembled into streamable content
+- **End-to-End Validation**: Complete pipeline from file → pieces → download → streaming
+
+**Benefits**:
+
+- **Realistic Testing**: Uses actual file data throughout the pipeline
+- **Content Verification**: Ensures reconstructed content matches original files
+- **Streaming Validation**: Test streaming with real media content
+- **Performance Testing**: Real piece sizes and file formats
+
+### 4. Storage Architecture
 
 **Choice**: Simple directory structure with copy-on-write where available.
 
@@ -145,13 +210,13 @@ The unified interface enables comprehensive testing:
 
 **Implementation**: Try reflink → hard link → move. No complex content-addressing.
 
-### 4. Streaming Strategy
+### 5. Streaming Strategy
 
 **Choice**: Direct streaming by default, pre-transcode during download for incompatible formats.
 
 **Rationale**: Eliminates buffering/stuttering. Most devices support H.264/H.265 directly.
 
-### 5. Database Design
+### 6. Database Design
 
 ```sql
 -- Optimized schema with denormalized hot fields

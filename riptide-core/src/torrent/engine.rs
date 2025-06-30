@@ -469,10 +469,13 @@ mod tests {
         // This tests the engine logic, not the network layer
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8080);
         let result = engine.connect_peer(info_hash, address).await;
-        
+
         // We expect this to fail due to no server running, but that's expected
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TorrentError::PeerConnectionError { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            TorrentError::PeerConnectionError { .. }
+        ));
     }
 
     #[tokio::test]
@@ -534,8 +537,11 @@ mod tests {
         // Test that start_download will fail on tracker connection (expected for unit test)
         let result = engine.start_download(info_hash).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), TorrentError::TrackerConnectionFailed { .. }));
-        
+        assert!(matches!(
+            result.unwrap_err(),
+            TorrentError::TrackerConnectionFailed { .. }
+        ));
+
         // Test that the session was created even though download failed
         let session = engine.get_session(info_hash).unwrap();
         assert_eq!(session.piece_count, 100); // Placeholder value from magnet link
