@@ -52,12 +52,16 @@
 //! - **Invariant System**: Runtime validation of protocol correctness
 //! - **Metrics Collection**: Detailed performance and behavior analysis
 
+pub mod content_aware_peer_manager;
 pub mod deterministic;
 pub mod magneto_provider;
 pub mod media;
 pub mod network;
 pub mod peer;
+pub mod piece_reconstruction;
+pub mod piece_store;
 pub mod scenarios;
+pub mod simulated_peer_manager;
 pub mod tracker;
 
 // Re-export core types for convenience
@@ -65,6 +69,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+pub use content_aware_peer_manager::ContentAwareSimulatedPeerManager;
 pub use deterministic::{
     BandwidthInvariant, DataIntegrityInvariant, DeterministicClock, DeterministicRng,
     DeterministicSimulation, EventPriority, EventType, Invariant, InvariantViolation,
@@ -79,12 +84,15 @@ pub use magneto_provider::{
 pub use media::{MediaStreamingSimulation, MovieFolder, StreamingResult};
 pub use network::{NetworkSimulator, NetworkSimulatorBuilder};
 pub use peer::{MockPeer, MockPeerBuilder};
+pub use piece_reconstruction::{PieceReconstructionService, ReconstructionProgress, VerifiedPiece};
+pub use piece_store::InMemoryPieceStore;
 // Re-export config from core for convenience
 pub use riptide_core::config::SimulationConfig;
 pub use scenarios::{
     ScenarioResult, ScenarioResults, ScenarioRunner, SimulationScenarios, StreamingScenario,
     StressScenario, streaming_edge_cases,
 };
+pub use simulated_peer_manager::{SimulatedPeerConfig, SimulatedPeerManager};
 pub use tracker::{MockTracker, MockTrackerBuilder};
 
 /// Simulation environment for BitTorrent development.

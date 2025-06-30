@@ -1,5 +1,6 @@
 //! BitTorrent protocol implementation optimized for streaming
 
+pub mod creation;
 pub mod downloader;
 pub mod engine;
 pub mod enhanced_peer_manager;
@@ -7,28 +8,29 @@ pub mod parsing;
 pub mod peer_connection;
 pub mod peer_manager;
 pub mod piece_picker;
+pub mod piece_store;
 pub mod protocol;
-pub mod simulated_peer_manager;
 #[cfg(test)]
 pub mod test_data;
 pub mod tracker;
 
 use std::fmt;
 
+pub use creation::{DEFAULT_PIECE_SIZE, SimulationTorrentCreator, TorrentCreator, TorrentPiece};
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
 pub use engine::{EngineStats, TorrentEngine, TorrentSession};
 pub use enhanced_peer_manager::{
     EnhancedPeerManager, EnhancedPeerManagerStats, PieceRequestParams, PieceResult, Priority,
 };
-pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentMetadata, TorrentParser};
+pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentFile, TorrentMetadata, TorrentParser};
 pub use peer_manager::{
     ConnectionStatus, NetworkPeerManager, PeerInfo, PeerManager, PeerMessageEvent,
 };
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
+pub use piece_store::PieceStore;
 pub use protocol::{
     BitTorrentPeerProtocol, PeerHandshake, PeerId, PeerMessage, PeerProtocol, PeerState,
 };
-pub use simulated_peer_manager::{SimulatedPeerConfig, SimulatedPeerManager};
 pub use tracker::{
     AnnounceRequest, AnnounceResponse, HttpTrackerClient, ScrapeRequest, ScrapeResponse,
     ScrapeStats, TrackerClient, TrackerManagement, TrackerManager,

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::{get, post};
 use riptide_core::config::RiptideConfig;
-use riptide_core::engine::{ProductionTorrentEngine, SimulationTorrentEngine, TorrentEngineOps};
+use riptide_core::engine::{ProductionTorrentEngine, TorrentEngineOps};
 use riptide_core::{LocalMovieManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
@@ -38,7 +38,9 @@ pub async fn run_server(
             Arc::new(RwLock::new(engine))
         }
         RuntimeMode::Demo => {
-            let engine = SimulationTorrentEngine::new_simulation(config.clone());
+            // TODO: Create simulation engine using riptide-sim components
+            // For now, use production engine in demo mode
+            let engine = ProductionTorrentEngine::new_production(config.clone());
             Arc::new(RwLock::new(engine))
         }
     };

@@ -7,9 +7,8 @@ use async_trait::async_trait;
 
 use super::torrent::protocol::PeerId;
 use super::torrent::{
-    EngineStats, InfoHash, NetworkPeerManager, PeerManager, SimulatedPeerManager,
-    TorrentEngine as CoreTorrentEngine, TorrentError, TorrentSession, TrackerManagement,
-    TrackerManager,
+    EngineStats, InfoHash, NetworkPeerManager, PeerManager, TorrentEngine as CoreTorrentEngine,
+    TorrentError, TorrentSession, TrackerManagement, TrackerManager,
 };
 use crate::config::RiptideConfig;
 
@@ -71,24 +70,11 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngineOps for CoreTorrentEngin
 /// Production torrent engine using real network operations
 pub type ProductionTorrentEngine = CoreTorrentEngine<NetworkPeerManager, TrackerManager>;
 
-/// Simulation torrent engine using deterministic network simulation  
-pub type SimulationTorrentEngine = CoreTorrentEngine<SimulatedPeerManager, TrackerManager>;
-
 impl ProductionTorrentEngine {
     /// Create production engine with real HTTP client and TCP peer connections
     pub fn new_production(config: RiptideConfig) -> Self {
         let peer_id = PeerId::generate();
         let peer_manager = NetworkPeerManager::new(peer_id, config.network.max_peer_connections);
-        let tracker_manager = TrackerManager::new(config.network.clone());
-        Self::new(config, peer_manager, tracker_manager)
-    }
-}
-
-impl SimulationTorrentEngine {
-    /// Create simulation engine with deterministic responses
-    pub fn new_simulation(config: RiptideConfig) -> Self {
-        // For simulation, we use a default piece count since we don't have a torrent yet
-        let peer_manager = SimulatedPeerManager::new(1000); // Default pieces for simulation
         let tracker_manager = TrackerManager::new(config.network.clone());
         Self::new(config, peer_manager, tracker_manager)
     }

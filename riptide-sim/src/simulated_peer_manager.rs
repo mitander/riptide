@@ -6,11 +6,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use riptide_core::torrent::{
+    ConnectionStatus, InfoHash, PeerId, PeerInfo, PeerManager, PeerMessage, PeerMessageEvent,
+    PieceIndex, TorrentError,
+};
 use tokio::sync::{Mutex, RwLock, mpsc};
-
-use super::peer_manager::{ConnectionStatus, PeerInfo, PeerManager, PeerMessageEvent};
-use super::protocol::types::PeerMessage;
-use super::{InfoHash, PeerId, PieceIndex, TorrentError};
 
 /// Configuration for simulated peer behavior
 #[derive(Debug, Clone)]
