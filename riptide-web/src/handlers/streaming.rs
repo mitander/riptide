@@ -222,6 +222,34 @@ pub async fn stream_local_movie(
         return Err(StatusCode::RANGE_NOT_SATISFIABLE);
     }
 
+    // Check if the file format is supported by browsers
+    let file_extension = movie
+        .file_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_lowercase());
+
+    // Set content type based on file extension, but serve all formats
+    // Let the browser decide what it can handle
+    let content_type = match file_extension.as_deref() {
+        Some("mp4") | Some("m4v") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("ogg") | Some("ogv") => "video/ogg",
+        Some("mkv") => "video/x-matroska",
+        Some("avi") => "video/x-msvideo",
+        Some("mov") => "video/quicktime",
+        Some("flv") => "video/x-flv",
+        Some("wmv") => "video/x-ms-wmv",
+        Some("3gp") => "video/3gpp",
+        Some("ts") | Some("m2ts") => "video/mp2t",
+        _ => "video/mp4", // Default to MP4 for unknown extensions
+    };
+
+    println!(
+        "STREAMING: {} ({:?}) as {}",
+        movie.title, file_extension, content_type
+    );
+
     // Read the actual movie file segment
     let video_data = match manager
         .read_file_segment(info_hash, start, safe_length)
@@ -229,20 +257,6 @@ pub async fn stream_local_movie(
     {
         Ok(data) => data,
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-    };
-
-    // Determine content type based on file extension
-    let content_type = if movie
-        .file_path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_lowercase())
-        .as_deref()
-        == Some("mkv")
-    {
-        "video/x-matroska" // MKV files - limited browser support
-    } else {
-        "video/mp4"
     };
 
     let mut response = Response::builder()
