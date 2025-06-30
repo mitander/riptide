@@ -12,7 +12,7 @@ use super::types::{
 use crate::streaming::range_handler::{FileInfo, PiecePriority, PieceRange};
 use crate::streaming::{ContentInfo, RangeHandler};
 use crate::torrent::{
-    EnhancedPeerManager, InfoHash, TcpPeerManager, PieceRequestParams, Priority, TorrentEngine,
+    EnhancedPeerManager, InfoHash, PieceRequestParams, Priority, TcpPeerManager, TorrentEngine,
     TrackerManager,
 };
 

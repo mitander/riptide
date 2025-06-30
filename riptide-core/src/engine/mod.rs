@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 use super::torrent::protocol::PeerId;
 use super::torrent::{
-    EngineStats, InfoHash, TcpPeerManager, PeerManager, TorrentEngine as CoreTorrentEngine,
+    EngineStats, InfoHash, PeerManager, TcpPeerManager, TorrentEngine as CoreTorrentEngine,
     TorrentError, TorrentSession, TrackerManagement, TrackerManager,
 };
 use crate::config::RiptideConfig;

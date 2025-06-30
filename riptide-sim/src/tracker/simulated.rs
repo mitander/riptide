@@ -7,12 +7,10 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
-use super::TrackerManagement;
-use super::types::{
-    AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, ScrapeStats,
-    TrackerClient,
+use riptide_core::torrent::{
+    InfoHash, TorrentError, TrackerManagement, AnnounceEvent, AnnounceRequest, AnnounceResponse, 
+    ScrapeRequest, ScrapeResponse, ScrapeStats, TrackerClient,
 };
-use crate::torrent::{InfoHash, TorrentError};
 
 /// Simulated tracker client for deterministic testing and development.
 ///
