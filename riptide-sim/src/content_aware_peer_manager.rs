@@ -15,13 +15,14 @@ use riptide_core::torrent::{
 };
 use tokio::sync::{Mutex, RwLock, mpsc};
 
-use super::simulated_peer_manager::SimulatedPeerConfig;
+use super::simulated_peer_manager::InMemoryPeerConfig;
 
 /// Simulated peer with content awareness
 #[derive(Debug, Clone)]
 struct ContentAwarePeer {
     address: SocketAddr,
     info_hash: InfoHash,
+    #[allow(dead_code)]
     peer_id: PeerId,
     status: ConnectionStatus,
     connected_at: Option<Instant>,
@@ -79,23 +80,24 @@ impl ContentAwarePeer {
     }
 }
 
-/// Content-aware simulated peer manager with real piece serving
+/// Content-aware peer manager with real piece serving
 ///
 /// Uses a PieceStore to serve actual file data in response to piece requests.
 /// Enables true end-to-end content distribution simulation where downloaded
 /// pieces can be reassembled into the original media files.
-pub struct ContentAwareSimulatedPeerManager<P: PieceStore> {
-    config: SimulatedPeerConfig,
+pub struct ContentAwarePeerManager<P: PieceStore> {
+    config: InMemoryPeerConfig,
     piece_store: Arc<P>,
     peers: Arc<RwLock<HashMap<SocketAddr, ContentAwarePeer>>>,
     message_receiver: Arc<Mutex<mpsc::Receiver<PeerMessageEvent>>>,
     message_sender: mpsc::Sender<PeerMessageEvent>,
+    #[allow(dead_code)]
     next_peer_address: Arc<Mutex<u32>>,
 }
 
-impl<P: PieceStore> ContentAwareSimulatedPeerManager<P> {
+impl<P: PieceStore> ContentAwarePeerManager<P> {
     /// Creates content-aware peer manager with piece store
-    pub fn new(config: SimulatedPeerConfig, piece_store: Arc<P>) -> Self {
+    pub fn new(config: InMemoryPeerConfig, piece_store: Arc<P>) -> Self {
         let (message_sender, message_receiver) = mpsc::channel(1000);
 
         Self {
@@ -224,6 +226,7 @@ impl<P: PieceStore> ContentAwareSimulatedPeerManager<P> {
     }
 
     /// Generates deterministic peer address for testing
+    #[allow(dead_code)]
     async fn generate_peer_address(&self) -> SocketAddr {
         let mut counter = self.next_peer_address.lock().await;
         let address_int = *counter;
@@ -243,7 +246,7 @@ impl<P: PieceStore> ContentAwareSimulatedPeerManager<P> {
 }
 
 #[async_trait]
-impl<P: PieceStore> PeerManager for ContentAwareSimulatedPeerManager<P> {
+impl<P: PieceStore> PeerManager for ContentAwarePeerManager<P> {
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -454,8 +457,8 @@ mod tests {
     #[tokio::test]
     async fn test_content_aware_peer_manager_creation() {
         let piece_store = Arc::new(InMemoryPieceStore::new());
-        let config = SimulatedPeerConfig::default();
-        let manager = ContentAwareSimulatedPeerManager::new(config, piece_store);
+        let config = InMemoryPeerConfig::default();
+        let manager = ContentAwarePeerManager::new(config, piece_store);
         assert_eq!(manager.connection_count().await, 0);
     }
 
@@ -475,8 +478,8 @@ mod tests {
             .await
             .unwrap();
 
-        let config = SimulatedPeerConfig::default();
-        let mut manager = ContentAwareSimulatedPeerManager::new(config, piece_store);
+        let config = InMemoryPeerConfig::default();
+        let mut manager = ContentAwarePeerManager::new(config, piece_store);
 
         let peer_address = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let peer_id = PeerId::generate();
@@ -524,8 +527,8 @@ mod tests {
     #[tokio::test]
     async fn test_content_aware_peer_without_piece() {
         let piece_store = Arc::new(InMemoryPieceStore::new());
-        let config = SimulatedPeerConfig::default();
-        let mut manager = ContentAwareSimulatedPeerManager::new(config, piece_store);
+        let config = InMemoryPeerConfig::default();
+        let mut manager = ContentAwarePeerManager::new(config, piece_store);
 
         let peer_address = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([2u8; 20]);

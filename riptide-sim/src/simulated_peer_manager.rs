@@ -12,9 +12,9 @@ use riptide_core::torrent::{
 };
 use tokio::sync::{Mutex, RwLock, mpsc};
 
-/// Configuration for simulated peer behavior
+/// Configuration for in-memory peer behavior
 #[derive(Debug, Clone)]
-pub struct SimulatedPeerConfig {
+pub struct InMemoryPeerConfig {
     /// Base delay for message responses in milliseconds
     pub message_delay_ms: u64,
     /// Probability of connection failure (0.0 to 1.0)
@@ -27,7 +27,7 @@ pub struct SimulatedPeerConfig {
     pub auto_keepalive: bool,
 }
 
-impl Default for SimulatedPeerConfig {
+impl Default for InMemoryPeerConfig {
     fn default() -> Self {
         Self {
             message_delay_ms: 50,
@@ -39,9 +39,9 @@ impl Default for SimulatedPeerConfig {
     }
 }
 
-/// Simulated peer for deterministic testing
+/// In-memory peer for deterministic testing
 #[derive(Debug, Clone)]
-struct SimulatedPeer {
+struct InMemoryPeer {
     address: SocketAddr,
     _info_hash: InfoHash,
     _peer_id: PeerId,
@@ -51,7 +51,7 @@ struct SimulatedPeer {
     has_pieces: Vec<bool>, // Which pieces this peer has
 }
 
-impl SimulatedPeer {
+impl InMemoryPeer {
     fn new(address: SocketAddr, info_hash: InfoHash, peer_id: PeerId, total_pieces: u32) -> Self {
         // Simulate peer having random pieces
         let has_pieces = (0..total_pieces)
@@ -81,27 +81,27 @@ impl SimulatedPeer {
     }
 }
 
-/// Simulated peer manager for deterministic testing and development.
+/// In-memory peer manager for deterministic testing and development.
 ///
 /// Provides controllable peer behavior without network communication.
 /// Enables deterministic testing and fuzzing of BitTorrent engine logic.
-pub struct SimulatedPeerManager {
-    config: SimulatedPeerConfig,
-    peers: Arc<RwLock<HashMap<SocketAddr, SimulatedPeer>>>,
+pub struct InMemoryPeerManager {
+    config: InMemoryPeerConfig,
+    peers: Arc<RwLock<HashMap<SocketAddr, InMemoryPeer>>>,
     message_receiver: Arc<Mutex<mpsc::Receiver<PeerMessageEvent>>>,
     message_sender: mpsc::Sender<PeerMessageEvent>,
     _next_peer_address: Arc<Mutex<u32>>,
     total_pieces: u32,
 }
 
-impl SimulatedPeerManager {
-    /// Creates new simulated peer manager with default configuration.
+impl InMemoryPeerManager {
+    /// Creates new in-memory peer manager with default configuration.
     pub fn new(total_pieces: u32) -> Self {
-        Self::with_config(SimulatedPeerConfig::default(), total_pieces)
+        Self::with_config(InMemoryPeerConfig::default(), total_pieces)
     }
 
-    /// Creates simulated peer manager with custom configuration.
-    pub fn with_config(config: SimulatedPeerConfig, total_pieces: u32) -> Self {
+    /// Creates in-memory peer manager with custom configuration.
+    pub fn with_config(config: InMemoryPeerConfig, total_pieces: u32) -> Self {
         let (message_sender, message_receiver) = mpsc::channel(1000);
 
         Self {
@@ -122,7 +122,7 @@ impl SimulatedPeerManager {
         has_pieces: Vec<bool>,
     ) {
         let peer_id = PeerId::generate();
-        let mut peer = SimulatedPeer::new(address, info_hash, peer_id, has_pieces.len() as u32);
+        let mut peer = InMemoryPeer::new(address, info_hash, peer_id, has_pieces.len() as u32);
         peer.has_pieces = has_pieces;
         peer.status = ConnectionStatus::Connected;
         peer.connected_at = Some(Instant::now());
@@ -241,7 +241,7 @@ impl SimulatedPeerManager {
 }
 
 #[async_trait]
-impl PeerManager for SimulatedPeerManager {
+impl PeerManager for InMemoryPeerManager {
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -266,7 +266,7 @@ impl PeerManager for SimulatedPeerManager {
         }
 
         // Create simulated peer
-        let mut peer = SimulatedPeer::new(address, info_hash, peer_id, self.total_pieces);
+        let mut peer = InMemoryPeer::new(address, info_hash, peer_id, self.total_pieces);
         peer.status = ConnectionStatus::Connected;
         peer.connected_at = Some(Instant::now());
 
@@ -402,13 +402,13 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_simulated_peer_manager_creation() {
-        let manager = SimulatedPeerManager::new(100);
+        let manager = InMemoryPeerManager::new(100);
         assert_eq!(manager.connection_count().await, 0);
     }
 
     #[tokio::test]
     async fn test_simulated_peer_connection_success() {
-        let mut manager = SimulatedPeerManager::new(100);
+        let mut manager = InMemoryPeerManager::new(100);
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
@@ -425,11 +425,11 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_simulated_peer_connection_failure() {
-        let config = SimulatedPeerConfig {
+        let config = InMemoryPeerConfig {
             connection_failure_rate: 1.0, // Always fail
             ..Default::default()
         };
-        let mut manager = SimulatedPeerManager::with_config(config, 100);
+        let mut manager = InMemoryPeerManager::with_config(config, 100);
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
@@ -441,7 +441,7 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_peer_message_simulation() {
-        let mut manager = SimulatedPeerManager::new(100);
+        let mut manager = InMemoryPeerManager::new(100);
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
@@ -467,7 +467,7 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_peer_has_piece_functionality() {
-        let mut manager = SimulatedPeerManager::new(100);
+        let mut manager = InMemoryPeerManager::new(100);
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([1u8; 20]);
 
@@ -485,11 +485,11 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_connection_limit() {
-        let config = SimulatedPeerConfig {
+        let config = InMemoryPeerConfig {
             max_connections: 2,
             ..Default::default()
         };
-        let mut manager = SimulatedPeerManager::with_config(config, 100);
+        let mut manager = InMemoryPeerManager::with_config(config, 100);
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
 
@@ -519,7 +519,7 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_automatic_piece_response() {
-        let mut manager = SimulatedPeerManager::new(100);
+        let mut manager = InMemoryPeerManager::new(100);
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
@@ -551,7 +551,7 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_disconnect_peer() {
-        let mut manager = SimulatedPeerManager::new(100);
+        let mut manager = InMemoryPeerManager::new(100);
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
@@ -569,7 +569,7 @@ mod simulated_peer_manager_tests {
 
     #[tokio::test]
     async fn test_shutdown() {
-        let mut manager = SimulatedPeerManager::new(100);
+        let mut manager = InMemoryPeerManager::new(100);
         let result = manager.shutdown().await;
         assert!(result.is_ok());
     }

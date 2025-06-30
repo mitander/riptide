@@ -24,7 +24,7 @@ pub use enhanced_peer_manager::{
 };
 pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentFile, TorrentMetadata, TorrentParser};
 pub use peer_manager::{
-    ConnectionStatus, NetworkPeerManager, PeerInfo, PeerManager, PeerMessageEvent,
+    ConnectionStatus, TcpPeerManager, PeerInfo, PeerManager, PeerMessageEvent,
 };
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
 pub use piece_store::PieceStore;

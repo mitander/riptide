@@ -88,10 +88,10 @@ pub async fn handle_command(command: Commands) -> Result<()> {
 /// - `RiptideError::Torrent` - Failed to parse or add torrent
 /// - `RiptideError::Io` - File system operation failed
 pub async fn add_torrent(source: String, output: Option<PathBuf>) -> Result<()> {
-    use riptide_core::torrent::{NetworkPeerManager, TrackerManager};
+    use riptide_core::torrent::{TcpPeerManager, TrackerManager};
 
     let config = RiptideConfig::default();
-    let peer_manager = NetworkPeerManager::new_default();
+    let peer_manager = TcpPeerManager::new_default();
     let tracker_manager = TrackerManager::new(config.network.clone());
     let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
 
@@ -120,10 +120,10 @@ pub async fn add_torrent(source: String, output: Option<PathBuf>) -> Result<()> 
 /// # Errors
 /// - `RiptideError::Torrent` - Torrent not found or download failed to start
 pub async fn start_torrent(torrent: String) -> Result<()> {
-    use riptide_core::torrent::{NetworkPeerManager, TrackerManager};
+    use riptide_core::torrent::{TcpPeerManager, TrackerManager};
 
     let config = RiptideConfig::default();
-    let peer_manager = NetworkPeerManager::new_default();
+    let peer_manager = TcpPeerManager::new_default();
     let tracker_manager = TrackerManager::new(config.network.clone());
     let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
 
@@ -160,10 +160,10 @@ pub async fn stop_torrent(torrent: String) -> Result<()> {
 /// # Errors
 /// - `RiptideError::Torrent` - Failed to retrieve torrent status
 pub async fn show_status(torrent: Option<String>) -> Result<()> {
-    use riptide_core::torrent::{NetworkPeerManager, TrackerManager};
+    use riptide_core::torrent::{TcpPeerManager, TrackerManager};
 
     let config = RiptideConfig::default();
-    let peer_manager = NetworkPeerManager::new_default();
+    let peer_manager = TcpPeerManager::new_default();
     let tracker_manager = TrackerManager::new(config.network.clone());
     let engine = TorrentEngine::new(config, peer_manager, tracker_manager);
 
@@ -181,10 +181,10 @@ pub async fn show_status(torrent: Option<String>) -> Result<()> {
 /// # Errors
 /// - `RiptideError::Torrent` - Failed to retrieve torrent list
 pub async fn list_torrents() -> Result<()> {
-    use riptide_core::torrent::{NetworkPeerManager, TrackerManager};
+    use riptide_core::torrent::{TcpPeerManager, TrackerManager};
 
     let config = RiptideConfig::default();
-    let peer_manager = NetworkPeerManager::new_default();
+    let peer_manager = TcpPeerManager::new_default();
     let tracker_manager = TrackerManager::new(config.network.clone());
     let engine = TorrentEngine::new(config, peer_manager, tracker_manager);
 

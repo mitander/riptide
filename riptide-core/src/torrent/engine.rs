@@ -441,10 +441,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_torrent_engine_creation() {
-        use super::super::{NetworkPeerManager, TrackerManager};
+        use super::super::{TcpPeerManager, TrackerManager};
 
         let config = RiptideConfig::default();
-        let peer_manager = NetworkPeerManager::new_default();
+        let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let engine = TorrentEngine::new(config, peer_manager, tracker_manager);
 
@@ -455,10 +455,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_connect_peer_to_torrent() {
-        use super::super::{SimulatedPeerManager, TrackerManager};
+        use super::super::{TcpPeerManager, TrackerManager};
 
         let config = RiptideConfig::default();
-        let peer_manager = SimulatedPeerManager::new(100);
+        let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
         let info_hash = create_test_info_hash();
@@ -472,10 +472,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_magnet_link() {
-        use super::super::{SimulatedPeerManager, TrackerManager};
+        use super::super::{TcpPeerManager, TrackerManager};
 
         let config = RiptideConfig::default();
-        let peer_manager = SimulatedPeerManager::new(100);
+        let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
         let magnet_url = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test%20Torrent&tr=http://tracker.example.com/announce";
@@ -494,10 +494,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_torrent_data() {
-        use super::super::{SimulatedPeerManager, TrackerManager};
+        use super::super::{TcpPeerManager, TrackerManager};
 
         let config = RiptideConfig::default();
-        let peer_manager = SimulatedPeerManager::new(100);
+        let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
         let torrent_data = b"d8:announce9:test:80804:infod6:lengthi1000e4:name8:test.txt12:piece lengthi32768e6:pieces20:12345678901234567890ee";
@@ -515,12 +515,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_start_download() {
-        use super::super::SimulatedPeerManager;
-        use super::super::tracker::SimulatedTrackerManager;
+        use super::super::TcpPeerManager;
+        use super::super::TrackerManager;
 
         let config = RiptideConfig::default();
-        let peer_manager = SimulatedPeerManager::new(100);
-        let tracker_manager = SimulatedTrackerManager::new();
+        let peer_manager = TcpPeerManager::new_default();
+        let tracker_manager = TrackerManager::new(config.network.clone());
         let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
         let magnet_url = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test%20Torrent&tr=http://tracker.example.com/announce";
 
@@ -536,10 +536,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_magnet_link() {
-        use super::super::{SimulatedPeerManager, TrackerManager};
+        use super::super::{TcpPeerManager, TrackerManager};
 
         let config = RiptideConfig::default();
-        let peer_manager = SimulatedPeerManager::new(100);
+        let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
         let invalid_magnet = "invalid://not-a-magnet";
@@ -550,10 +550,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_nonexistent_session() {
-        use super::super::{SimulatedPeerManager, TrackerManager};
+        use super::super::{TcpPeerManager, TrackerManager};
 
         let config = RiptideConfig::default();
-        let peer_manager = SimulatedPeerManager::new(100);
+        let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let engine = TorrentEngine::new(config, peer_manager, tracker_manager);
         let info_hash = create_test_info_hash();
@@ -582,10 +582,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_maintenance_cleanup() {
-        use super::super::{SimulatedPeerManager, TrackerManager};
+        use super::super::{TcpPeerManager, TrackerManager};
 
         let config = RiptideConfig::default();
-        let peer_manager = SimulatedPeerManager::new(100);
+        let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
 

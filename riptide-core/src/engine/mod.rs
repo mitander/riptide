@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 use super::torrent::protocol::PeerId;
 use super::torrent::{
-    EngineStats, InfoHash, NetworkPeerManager, PeerManager, TorrentEngine as CoreTorrentEngine,
+    EngineStats, InfoHash, TcpPeerManager, PeerManager, TorrentEngine as CoreTorrentEngine,
     TorrentError, TorrentSession, TrackerManagement, TrackerManager,
 };
 use crate::config::RiptideConfig;
@@ -68,13 +68,13 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngineOps for CoreTorrentEngin
 }
 
 /// Production torrent engine using real network operations
-pub type ProductionTorrentEngine = CoreTorrentEngine<NetworkPeerManager, TrackerManager>;
+pub type ProductionTorrentEngine = CoreTorrentEngine<TcpPeerManager, TrackerManager>;
 
 impl ProductionTorrentEngine {
     /// Create production engine with real HTTP client and TCP peer connections
     pub fn new_production(config: RiptideConfig) -> Self {
         let peer_id = PeerId::generate();
-        let peer_manager = NetworkPeerManager::new(peer_id, config.network.max_peer_connections);
+        let peer_manager = TcpPeerManager::new(peer_id, config.network.max_peer_connections);
         let tracker_manager = TrackerManager::new(config.network.clone());
         Self::new(config, peer_manager, tracker_manager)
     }

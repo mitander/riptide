@@ -69,7 +69,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-pub use content_aware_peer_manager::ContentAwareSimulatedPeerManager;
+pub use content_aware_peer_manager::ContentAwarePeerManager;
 pub use deterministic::{
     BandwidthInvariant, DataIntegrityInvariant, DeterministicClock, DeterministicRng,
     DeterministicSimulation, EventPriority, EventType, Invariant, InvariantViolation,
@@ -92,7 +92,7 @@ pub use scenarios::{
     ScenarioResult, ScenarioResults, ScenarioRunner, SimulationScenarios, StreamingScenario,
     StressScenario, streaming_edge_cases,
 };
-pub use simulated_peer_manager::{SimulatedPeerConfig, SimulatedPeerManager};
+pub use simulated_peer_manager::{InMemoryPeerConfig, InMemoryPeerManager};
 pub use tracker::{MockTracker, MockTrackerBuilder};
 
 /// Simulation environment for BitTorrent development.

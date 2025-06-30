@@ -260,25 +260,25 @@ impl TorrentCreator {
 
                 if metadata.is_file() {
                     // Skip hidden files and system files
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if !name.starts_with('.') && !name.starts_with('~') {
-                            let relative_path =
-                                path.strip_prefix(directory_path).map_err(|_| {
-                                    TorrentError::InvalidTorrentFile {
-                                        reason: "Failed to create relative path".to_string(),
-                                    }
-                                })?;
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                        && !name.starts_with('.')
+                        && !name.starts_with('~')
+                    {
+                        let relative_path = path.strip_prefix(directory_path).map_err(|_| {
+                            TorrentError::InvalidTorrentFile {
+                                reason: "Failed to create relative path".to_string(),
+                            }
+                        })?;
 
-                            let path_components: Vec<String> = relative_path
-                                .components()
-                                .map(|c| c.as_os_str().to_string_lossy().to_string())
-                                .collect();
+                        let path_components: Vec<String> = relative_path
+                            .components()
+                            .map(|c| c.as_os_str().to_string_lossy().to_string())
+                            .collect();
 
-                            files.push(TorrentFile {
-                                path: path_components,
-                                length: metadata.len(),
-                            });
-                        }
+                        files.push(TorrentFile {
+                            path: path_components,
+                            length: metadata.len(),
+                        });
                     }
                 } else if metadata.is_dir() {
                     // Add subdirectory to processing queue

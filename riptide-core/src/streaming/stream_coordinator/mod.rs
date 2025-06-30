@@ -21,12 +21,12 @@ mod tests {
     use super::*;
     use crate::config::RiptideConfig;
     use crate::torrent::test_data::create_test_info_hash;
-    use crate::torrent::{EnhancedPeerManager, NetworkPeerManager, TorrentEngine, TrackerManager};
+    use crate::torrent::{EnhancedPeerManager, TcpPeerManager, TorrentEngine, TrackerManager};
 
     #[tokio::test]
     async fn test_stream_coordinator_creation() {
         let config = RiptideConfig::default();
-        let peer_manager_impl = NetworkPeerManager::new_default();
+        let peer_manager_impl = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
@@ -45,7 +45,7 @@ mod tests {
     #[tokio::test]
     async fn test_torrent_registration() {
         let config = RiptideConfig::default();
-        let peer_manager_impl = NetworkPeerManager::new_default();
+        let peer_manager_impl = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
@@ -74,7 +74,7 @@ mod tests {
     #[tokio::test]
     async fn test_file_info_retrieval() {
         let config = RiptideConfig::default();
-        let peer_manager_impl = NetworkPeerManager::new_default();
+        let peer_manager_impl = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
@@ -103,7 +103,7 @@ mod tests {
     #[tokio::test]
     async fn test_range_reading() {
         let config = RiptideConfig::default();
-        let peer_manager_impl = NetworkPeerManager::new_default();
+        let peer_manager_impl = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),

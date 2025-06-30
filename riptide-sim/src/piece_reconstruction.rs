@@ -261,10 +261,10 @@ impl PieceReconstructionService {
         // Update reconstructed segments if we have new data
         if !sequential_data.is_empty() {
             let mut segments = self.reconstructed_segments.write().await;
-            if let Some(current_segments) = segments.get_mut(&info_hash) {
-                if sequential_data.len() > current_segments.len() {
-                    *current_segments = sequential_data;
-                }
+            if let Some(current_segments) = segments.get_mut(&info_hash)
+                && sequential_data.len() > current_segments.len()
+            {
+                *current_segments = sequential_data;
             }
         }
 

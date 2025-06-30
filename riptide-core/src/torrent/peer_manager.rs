@@ -126,7 +126,7 @@ pub trait PeerManager: Send + Sync {
 ///
 /// Manages multiple BitTorrent peer connections with concurrent message handling.
 /// Provides connection pooling, automatic reconnection, and message routing.
-pub struct NetworkPeerManager {
+pub struct TcpPeerManager {
     _peer_id: PeerId,
     connections: Arc<RwLock<HashMap<SocketAddr, Arc<Mutex<PeerConnection>>>>>,
     peer_info: Arc<RwLock<HashMap<SocketAddr, PeerInfo>>>,
@@ -137,7 +137,7 @@ pub struct NetworkPeerManager {
     max_connections: usize,
 }
 
-impl NetworkPeerManager {
+impl TcpPeerManager {
     /// Creates new network peer manager with specified peer ID and connection limit.
     ///
     /// Initializes connection pool and message routing infrastructure.
@@ -245,7 +245,7 @@ impl NetworkPeerManager {
 }
 
 #[async_trait]
-impl PeerManager for NetworkPeerManager {
+impl PeerManager for TcpPeerManager {
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -439,7 +439,7 @@ mod peer_manager_tests {
     #[tokio::test]
     async fn test_network_peer_manager_creation() {
         let peer_id = PeerId::generate();
-        let manager = NetworkPeerManager::new(peer_id, 25);
+        let manager = TcpPeerManager::new(peer_id, 25);
 
         assert_eq!(manager.connection_count().await, 0);
         assert!(manager.connected_peers().await.is_empty());
@@ -447,13 +447,13 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_network_peer_manager_default() {
-        let manager = NetworkPeerManager::new_default();
+        let manager = TcpPeerManager::new_default();
         assert_eq!(manager.connection_count().await, 0);
     }
 
     #[tokio::test]
     async fn test_connect_to_nonexistent_peer() {
-        let mut manager = NetworkPeerManager::new_default();
+        let mut manager = TcpPeerManager::new_default();
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0); // Port 0 should fail
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
@@ -465,7 +465,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_connection_limit() {
-        let mut manager = NetworkPeerManager::new(PeerId::generate(), 1); // Limit to 1 connection
+        let mut manager = TcpPeerManager::new(PeerId::generate(), 1); // Limit to 1 connection
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6882);
         let info_hash = InfoHash::new([1u8; 20]);
@@ -482,7 +482,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_disconnect_nonexistent_peer() {
-        let mut manager = NetworkPeerManager::new_default();
+        let mut manager = TcpPeerManager::new_default();
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
 
         // Should not error when disconnecting non-existent peer
@@ -492,7 +492,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_send_message_to_nonexistent_peer() {
-        let mut manager = NetworkPeerManager::new_default();
+        let mut manager = TcpPeerManager::new_default();
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let message = PeerMessage::Choke;
 
@@ -518,7 +518,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_shutdown() {
-        let mut manager = NetworkPeerManager::new_default();
+        let mut manager = TcpPeerManager::new_default();
 
         // Should succeed even with no connections
         let result = manager.shutdown().await;

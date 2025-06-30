@@ -103,20 +103,20 @@ impl PieceStore for InMemoryPieceStore {
 
     fn has_piece(&self, info_hash: InfoHash, piece_index: PieceIndex) -> bool {
         // Use try_read to avoid blocking in sync context
-        if let Ok(torrents) = self.torrents.try_read() {
-            if let Some(pieces) = torrents.get(&info_hash) {
-                return pieces.contains_key(&piece_index.as_u32());
-            }
+        if let Ok(torrents) = self.torrents.try_read()
+            && let Some(pieces) = torrents.get(&info_hash)
+        {
+            return pieces.contains_key(&piece_index.as_u32());
         }
         false
     }
 
     fn piece_count(&self, info_hash: InfoHash) -> Result<u32, TorrentError> {
         // Use try_read for sync context
-        if let Ok(torrents) = self.torrents.try_read() {
-            if let Some(pieces) = torrents.get(&info_hash) {
-                return Ok(pieces.len() as u32);
-            }
+        if let Ok(torrents) = self.torrents.try_read()
+            && let Some(pieces) = torrents.get(&info_hash)
+        {
+            return Ok(pieces.len() as u32);
         }
         Err(TorrentError::TorrentNotFound { info_hash })
     }

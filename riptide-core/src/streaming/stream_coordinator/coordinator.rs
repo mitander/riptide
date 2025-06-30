@@ -12,14 +12,14 @@ use super::types::{
 use crate::streaming::range_handler::{FileInfo, PiecePriority, PieceRange};
 use crate::streaming::{ContentInfo, RangeHandler};
 use crate::torrent::{
-    EnhancedPeerManager, InfoHash, NetworkPeerManager, PieceRequestParams, Priority, TorrentEngine,
+    EnhancedPeerManager, InfoHash, TcpPeerManager, PieceRequestParams, Priority, TorrentEngine,
     TrackerManager,
 };
 
 impl StreamCoordinator {
     /// Creates new stream coordinator with engine and peer manager.
     pub fn new(
-        torrent_engine: Arc<RwLock<TorrentEngine<NetworkPeerManager, TrackerManager>>>,
+        torrent_engine: Arc<RwLock<TorrentEngine<TcpPeerManager, TrackerManager>>>,
         peer_manager: Arc<RwLock<EnhancedPeerManager>>,
     ) -> Self {
         Self {

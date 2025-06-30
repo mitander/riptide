@@ -15,7 +15,7 @@ pub use stream_coordinator::{StreamCoordinator, StreamingError, StreamingSession
 use tokio::sync::RwLock;
 
 use crate::config::RiptideConfig;
-use crate::torrent::{EnhancedPeerManager, NetworkPeerManager, TorrentEngine, TrackerManager};
+use crate::torrent::{EnhancedPeerManager, TcpPeerManager, TorrentEngine, TrackerManager};
 
 /// Streaming service integrating HTTP server with BitTorrent backend.
 ///
@@ -24,7 +24,7 @@ use crate::torrent::{EnhancedPeerManager, NetworkPeerManager, TorrentEngine, Tra
 pub struct DirectStreamingService {
     http_server: StreamingHttpServer,
     stream_coordinator: Arc<RwLock<StreamCoordinator>>,
-    torrent_engine: Arc<RwLock<TorrentEngine<NetworkPeerManager, TrackerManager>>>,
+    torrent_engine: Arc<RwLock<TorrentEngine<TcpPeerManager, TrackerManager>>>,
     peer_manager: Arc<RwLock<EnhancedPeerManager>>,
 }
 
@@ -33,7 +33,7 @@ impl DirectStreamingService {
     pub fn new(config: RiptideConfig) -> Self {
         let server_config = StreamingServerConfig::from_riptide_config(&config);
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config.clone())));
-        let peer_manager_impl = NetworkPeerManager::new_default();
+        let peer_manager_impl = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
         let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
             config.clone(),
