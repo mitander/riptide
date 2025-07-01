@@ -62,6 +62,7 @@ pub mod piece_reconstruction;
 pub mod piece_store;
 pub mod scenarios;
 pub mod simulated_peer_manager;
+pub mod streaming_integration_tests;
 pub mod tracker;
 
 // Re-export core types for convenience

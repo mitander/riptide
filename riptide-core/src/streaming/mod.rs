@@ -4,12 +4,14 @@
 //! peer management system for streaming performance.
 
 pub mod http_server;
+pub mod piece_reader;
 pub mod range_handler;
 pub mod stream_coordinator;
 
 use std::sync::Arc;
 
 pub use http_server::{StreamingHttpServer, StreamingServerConfig};
+pub use piece_reader::{PieceBasedStreamReader, PieceReaderError};
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
 pub use stream_coordinator::{StreamCoordinator, StreamingError, StreamingSession, StreamingStats};
 use tokio::sync::RwLock;
