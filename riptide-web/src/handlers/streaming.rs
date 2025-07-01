@@ -1,14 +1,17 @@
-//! Streaming handlers for video content and local movies
+//! BitTorrent piece-based streaming handlers
+
+use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Json, Response};
+use riptide_core::streaming::PieceBasedStreamReader;
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::handlers::utils::{create_fake_video_segment, parse_info_hash, parse_range_header};
-use crate::server::AppState;
+use crate::server::{AppState, PieceStoreType};
 
 pub async fn stream_torrent(
     State(state): State<AppState>,
@@ -55,8 +58,29 @@ pub async fn stream_torrent(
         return Err(StatusCode::RANGE_NOT_SATISFIABLE);
     }
 
-    // Get video data - real file if available, otherwise fake data
-    let video_data = if let Some(ref movie_manager) = state.movie_manager {
+    // Use BitTorrent piece-based streaming if available
+    let video_data = if let Some(ref piece_store) = state.piece_store {
+        match piece_store {
+            PieceStoreType::Simulation(sim_store) => {
+                // Create piece reader with session piece size
+                let piece_reader =
+                    PieceBasedStreamReader::new(Arc::clone(sim_store), session.piece_size as u32);
+
+                // Read the requested range using piece reconstruction
+                match piece_reader
+                    .read_range(info_hash, start..start + safe_length)
+                    .await
+                {
+                    Ok(data) => data,
+                    Err(_) => {
+                        // Fall back to fake data if piece reading fails
+                        create_fake_video_segment(start, safe_length)
+                    }
+                }
+            }
+        }
+    } else if let Some(ref movie_manager) = state.movie_manager {
+        // Fall back to local file reading
         let manager = movie_manager.read().await;
         match manager
             .read_file_segment(info_hash, start, safe_length)
@@ -66,6 +90,7 @@ pub async fn stream_torrent(
             Err(_) => create_fake_video_segment(start, safe_length),
         }
     } else {
+        // Ultimate fallback to fake data
         create_fake_video_segment(start, safe_length)
     };
 

@@ -18,12 +18,20 @@ use crate::handlers::{
     stream_local_movie, stream_torrent, torrents_page, video_player_page,
 };
 
+/// Concrete piece store types for different runtime modes
+#[derive(Clone)]
+pub enum PieceStoreType {
+    Simulation(Arc<riptide_sim::InMemoryPieceStore>),
+    // TODO: Add production piece store variant
+}
+
 /// Unified app state that works with both production and simulation engines
 #[derive(Clone)]
 pub struct AppState {
     pub torrent_engine: Arc<RwLock<dyn TorrentEngineOps>>,
     pub search_service: MediaSearchService,
     pub movie_manager: Option<Arc<RwLock<LocalMovieManager>>>,
+    pub piece_store: Option<PieceStoreType>,
 }
 
 pub async fn run_server(
@@ -64,10 +72,21 @@ pub async fn run_server(
         None
     };
 
+    // Initialize piece store for demo mode
+    let piece_store = if mode.is_demo() {
+        Some(PieceStoreType::Simulation(Arc::new(
+            riptide_sim::InMemoryPieceStore::new(),
+        )))
+    } else {
+        // TODO: Add production piece store implementation
+        None
+    };
+
     let state = AppState {
         torrent_engine,
         search_service,
         movie_manager,
+        piece_store,
     };
 
     let app = Router::new()

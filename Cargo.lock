@@ -1833,6 +1833,7 @@ dependencies = [
  "mime_guess",
  "riptide-core",
  "riptide-search",
+ "riptide-sim",
  "serde",
  "serde_json",
  "thiserror",
