@@ -32,6 +32,7 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
+ffmpeg-next = { workspace = true }
 
 # Web dependencies (temporary - will move to riptide-web)
 axum = { workspace = true }

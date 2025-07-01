@@ -3,14 +3,24 @@
 //! Provides media streaming capabilities that integrate with the
 //! peer management system for streaming performance.
 
+pub mod ffmpeg;
 pub mod piece_reader;
 pub mod range_handler;
+pub mod strategy;
 pub mod stream_coordinator;
 
 use std::sync::Arc;
 
+pub use ffmpeg::{
+    FfmpegProcessor, ProductionFfmpegProcessor, RemuxingOptions, RemuxingResult,
+    SimulationFfmpegProcessor,
+};
 pub use piece_reader::{PieceBasedStreamReader, PieceReaderError};
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
+pub use strategy::{
+    ContainerDetector, ContainerFormat, StreamingError as StrategyError, StreamingResult,
+    StreamingStrategy,
+};
 pub use stream_coordinator::{StreamCoordinator, StreamingError, StreamingSession, StreamingStats};
 use tokio::sync::RwLock;
 
