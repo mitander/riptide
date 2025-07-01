@@ -7,10 +7,13 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Json, Response};
 use riptide_core::streaming::PieceBasedStreamReader;
+use riptide_core::torrent::InfoHash;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::handlers::utils::{create_fake_video_segment, parse_info_hash, parse_range_header};
+use crate::handlers::range::{
+    build_range_response, extract_range_header, parse_range_header, validate_range_bounds,
+};
 use crate::server::{AppState, PieceStoreType};
 
 pub async fn stream_torrent(
@@ -21,8 +24,7 @@ pub async fn stream_torrent(
     // Update download progress first
     state.torrent_engine.simulate_download_progress();
 
-    // Parse info hash
-    let info_hash = match parse_info_hash(&info_hash_str) {
+    let info_hash = match InfoHash::from_hex(&info_hash_str) {
         Ok(hash) => hash,
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
@@ -39,20 +41,14 @@ pub async fn stream_torrent(
     let available_size = completed_pieces * session.piece_size as u64;
 
     // Handle range requests for video streaming
-    let range_header = headers.get("range");
-    let (start, end, _content_length) = if let Some(range) = range_header {
-        parse_range_header(range.to_str().unwrap_or(""), available_size)
+    let (start, end, _content_length) = if let Some(range_str) = extract_range_header(&headers) {
+        parse_range_header(&range_str, available_size)
     } else {
         (0, available_size.saturating_sub(1), available_size)
     };
 
-    // Ensure we don't serve data beyond what's downloaded
-    let safe_end = end.min(available_size.saturating_sub(1));
-    let safe_length = safe_end.saturating_sub(start) + 1;
-
-    if start > available_size {
-        return Err(StatusCode::RANGE_NOT_SATISFIABLE);
-    }
+    // Validate range bounds and get safe values
+    let (start, safe_end, safe_length) = validate_range_bounds(start, end, available_size)?;
 
     // Use BitTorrent piece-based streaming if available
     let video_data = if let Some(ref piece_store) = state.piece_store {
@@ -63,52 +59,32 @@ pub async fn stream_torrent(
                     PieceBasedStreamReader::new(Arc::clone(sim_store), session.piece_size as u32);
 
                 // Read the requested range using piece reconstruction
-                match piece_reader
+                piece_reader
                     .read_range(info_hash, start..start + safe_length)
                     .await
-                {
-                    Ok(data) => data,
-                    Err(_) => {
-                        // Fall back to fake data if piece reading fails
-                        create_fake_video_segment(start, safe_length)
-                    }
-                }
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             }
         }
     } else if let Some(ref movie_manager) = state.movie_manager {
-        // Fall back to local file reading
+        // Use local file reading
         let manager = movie_manager.read().await;
-        match manager
+        manager
             .read_file_segment(info_hash, start, safe_length)
             .await
-        {
-            Ok(data) => data,
-            Err(_) => create_fake_video_segment(start, safe_length),
-        }
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     } else {
-        // Ultimate fallback to fake data
-        create_fake_video_segment(start, safe_length)
+        // No data source available - this is a configuration error
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     };
 
-    let mut response = Response::builder()
-        .header("Content-Type", "video/mp4")
-        .header("Accept-Ranges", "bytes")
-        .header("Content-Length", safe_length.to_string())
-        .header("Cache-Control", "no-cache");
-
-    // Add range response headers if this is a range request
-    if range_header.is_some() {
-        response = response.status(StatusCode::PARTIAL_CONTENT).header(
-            "Content-Range",
-            format!("bytes {start}-{safe_end}/{total_size}"),
-        );
-    } else {
-        response = response.status(StatusCode::OK);
-    }
-
-    response
-        .body(Body::from(video_data))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    build_range_response(
+        &headers,
+        video_data,
+        "video/mp4",
+        start,
+        safe_end,
+        total_size,
+    )
 }
 
 pub async fn api_local_movies(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -153,7 +129,7 @@ pub async fn api_add_local_movie(
         let manager = movie_manager.read().await;
 
         // Parse the info hash
-        if let Ok(info_hash) = parse_info_hash(&params.info_hash) {
+        if let Ok(info_hash) = InfoHash::from_hex(&params.info_hash) {
             if let Some(movie) = manager.get_movie(info_hash) {
                 // Add this movie as a simulated torrent
                 // Create a fake magnet link for the movie
@@ -210,7 +186,7 @@ pub async fn stream_local_movie(
     headers: HeaderMap,
 ) -> Result<Response<Body>, StatusCode> {
     // Parse info hash
-    let info_hash = match parse_info_hash(&info_hash_str) {
+    let info_hash = match InfoHash::from_hex(&info_hash_str) {
         Ok(hash) => hash,
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
@@ -228,18 +204,14 @@ pub async fn stream_local_movie(
     };
 
     // Handle range requests for video streaming
-    let range_header = headers.get("range");
-    let (start, end, __content_length) = if let Some(range) = range_header {
-        parse_range_header(range.to_str().unwrap_or(""), movie.size)
+    let (start, end, _content_length) = if let Some(range_str) = extract_range_header(&headers) {
+        parse_range_header(&range_str, movie.size)
     } else {
         (0, movie.size.saturating_sub(1), movie.size)
     };
 
-    let safe_length = end.saturating_sub(start) + 1;
-
-    if start > movie.size {
-        return Err(StatusCode::RANGE_NOT_SATISFIABLE);
-    }
+    // Validate range bounds and get safe values
+    let (start, safe_end, safe_length) = validate_range_bounds(start, end, movie.size)?;
 
     // Check if the file format is supported by browsers
     let file_extension = movie
@@ -278,25 +250,12 @@ pub async fn stream_local_movie(
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
-    let mut response = Response::builder()
-        .header("Content-Type", content_type)
-        .header("Accept-Ranges", "bytes")
-        .header("Content-Length", video_data.len().to_string())
-        .header("Cache-Control", "no-cache");
-
-    if range_header.is_some() {
-        response = response.status(StatusCode::PARTIAL_CONTENT).header(
-            "Content-Range",
-            format!(
-                "bytes {}-{}/{}",
-                start,
-                start + video_data.len() as u64 - 1,
-                movie.size
-            ),
-        );
-    }
-
-    response
-        .body(Body::from(video_data))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    build_range_response(
+        &headers,
+        video_data,
+        content_type,
+        start,
+        safe_end,
+        movie.size,
+    )
 }
