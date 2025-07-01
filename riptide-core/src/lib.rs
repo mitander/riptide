@@ -15,12 +15,11 @@ pub mod torrent;
 
 // Re-export main types for convenient access
 pub use config::RiptideConfig;
-pub use engine::{ProductionTorrentEngine, TorrentEngineOps};
 pub use local_movies::{LocalMovie, LocalMovieManager};
 pub use mode::RuntimeMode;
 pub use storage::{FileStorage, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
-pub use torrent::{EngineStats, TorrentCreator, TorrentError};
+pub use torrent::{EngineStats, TorrentCreator, TorrentEngineHandle, TorrentError};
 
 /// Core errors that can bubble up from any Riptide subsystem.
 ///

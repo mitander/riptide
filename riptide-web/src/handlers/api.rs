@@ -30,13 +30,9 @@ pub struct DownloadRequest {
 
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
     // Update progress simulation before reading stats
-    {
-        let mut engine = state.torrent_engine.write().await;
-        engine.simulate_download_progress();
-    }
+    state.torrent_engine.simulate_download_progress();
 
-    let engine = state.torrent_engine.read().await;
-    let stats = engine.download_stats().await;
+    let stats = state.torrent_engine.get_download_stats().await.unwrap();
 
     Json(Stats {
         total_torrents: stats.active_torrents as u32,
@@ -48,13 +44,9 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 
 pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
     // Update progress simulation before reading
-    {
-        let mut engine = state.torrent_engine.write().await;
-        engine.simulate_download_progress();
-    }
+    state.torrent_engine.simulate_download_progress();
 
-    let engine = state.torrent_engine.read().await;
-    let sessions = engine.active_sessions();
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
 
     let torrents: Vec<serde_json::Value> = sessions.iter().map(|session| {
         json!({
@@ -128,11 +120,10 @@ pub async fn api_add_torrent(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let mut engine = state.torrent_engine.write().await;
-    match engine.add_magnet(&params.magnet).await {
+    match state.torrent_engine.add_magnet(&params.magnet).await {
         Ok(info_hash) => {
             // Start downloading immediately after adding
-            match engine.start_download(info_hash).await {
+            match state.torrent_engine.start_download(info_hash).await {
                 Ok(()) => Ok(Json(json!({
                     "success": true,
                     "message": "Torrent added and download started",
@@ -188,9 +179,7 @@ pub async fn api_search(
 }
 
 pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let engine = state.torrent_engine.read().await;
-    let _stats = engine.download_stats().await;
-    let sessions = engine.active_sessions();
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
 
     let mut library_items = Vec::new();
     let mut total_size = 0u64;
@@ -288,11 +277,10 @@ pub async fn api_download_torrent(
         })));
     }
 
-    let mut engine = state.torrent_engine.write().await;
-    match engine.add_magnet(&payload.magnet_link).await {
+    match state.torrent_engine.add_magnet(&payload.magnet_link).await {
         Ok(info_hash) => {
             // Start downloading immediately after adding
-            match engine.start_download(info_hash).await {
+            match state.torrent_engine.start_download(info_hash).await {
                 Ok(()) => Ok(Json(json!({
                     "success": true,
                     "message": "Download started successfully",

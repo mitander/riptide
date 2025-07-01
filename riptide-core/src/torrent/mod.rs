@@ -18,7 +18,7 @@ use std::fmt;
 
 pub use creation::{DEFAULT_PIECE_SIZE, SimulationTorrentCreator, TorrentCreator, TorrentPiece};
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
-pub use engine::{EngineStats, TorrentEngine, TorrentSession};
+pub use engine::{EngineStats, TorrentEngineHandle, TorrentSession, spawn_torrent_engine};
 pub use enhanced_peer_manager::{
     EnhancedPeerManager, EnhancedPeerManagerStats, PieceRequestParams, PieceResult, Priority,
 };
@@ -52,6 +52,39 @@ impl InfoHash {
     /// Returns reference to underlying 20-byte hash.
     pub fn as_bytes(&self) -> &[u8; 20] {
         &self.0
+    }
+
+    /// Creates InfoHash from a 40-character hex string.
+    ///
+    /// # Errors
+    /// - `TorrentError::InvalidTorrentFile` if the hex string is invalid.
+    pub fn from_hex(hex_str: &str) -> Result<Self, TorrentError> {
+        if hex_str.len() != 40 {
+            return Err(TorrentError::InvalidTorrentFile {
+                reason: format!(
+                    "Invalid info hash length: expected 40, got {}",
+                    hex_str.len()
+                ),
+            });
+        }
+
+        let mut bytes = [0u8; 20];
+        for (i, chunk) in hex_str.as_bytes().chunks(2).enumerate() {
+            let hex_byte_str =
+                std::str::from_utf8(chunk).map_err(|_| TorrentError::InvalidTorrentFile {
+                    reason: "Invalid UTF-8 in info hash hex string".to_string(),
+                })?;
+
+            let byte = u8::from_str_radix(hex_byte_str, 16).map_err(|_| {
+                TorrentError::InvalidTorrentFile {
+                    reason: format!("Invalid hex character in info hash: '{hex_byte_str}'"),
+                }
+            })?;
+
+            bytes[i] = byte;
+        }
+
+        Ok(InfoHash::new(bytes))
     }
 }
 
@@ -139,6 +172,12 @@ pub enum TorrentError {
 
     #[error("HTTP error")]
     Http(#[from] reqwest::Error),
+
+    #[error("Engine channel closed")]
+    EngineClosed,
+
+    #[error("Engine response dropped")]
+    EngineResponseDropped,
 }
 
 #[cfg(test)]

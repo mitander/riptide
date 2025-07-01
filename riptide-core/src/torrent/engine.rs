@@ -4,15 +4,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use tokio::sync::{mpsc, oneshot};
+
 use super::tracker::{AnnounceEvent, AnnounceRequest, TrackerManagement};
 use super::{BencodeTorrentParser, InfoHash, PeerId, PeerManager, TorrentError, TorrentParser};
 use crate::config::RiptideConfig;
 
-/// Main orchestrator for torrent downloads with unified interface support.
-///
-/// Uses trait-based peer and tracker management enabling both real and simulated
-/// implementations for production use and comprehensive testing/fuzzing.
-pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
+// The original TorrentEngine is now private to the module
+struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
     /// Peer connection manager (real or simulated)
     peer_manager: Arc<tokio::sync::RwLock<P>>,
     /// Tracker manager (real or simulated)
@@ -31,7 +30,7 @@ pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
 ///
 /// Tracks download progress, piece completion status, and session metadata
 /// for an individual torrent being downloaded by the engine.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TorrentSession {
     /// Torrent info hash
     pub info_hash: InfoHash,
@@ -49,6 +48,156 @@ pub struct TorrentSession {
     pub is_downloading: bool,
     /// Tracker URLs for this torrent
     pub tracker_urls: Vec<String>,
+}
+
+/// Define the messages (commands) that can be sent to the TorrentEngine actor
+pub enum TorrentEngineCommand {
+    AddMagnet {
+        magnet_link: String,
+        responder: oneshot::Sender<Result<InfoHash, TorrentError>>,
+    },
+    StartDownload {
+        info_hash: InfoHash,
+        responder: oneshot::Sender<Result<(), TorrentError>>,
+    },
+    GetSession {
+        info_hash: InfoHash,
+        responder: oneshot::Sender<Result<TorrentSession, TorrentError>>,
+    },
+    GetActiveSessions {
+        responder: oneshot::Sender<Vec<TorrentSession>>,
+    },
+    GetDownloadStats {
+        responder: oneshot::Sender<EngineStats>,
+    },
+    SimulateProgress, // No response needed for this one
+}
+
+/// This will be the new public-facing handle to the engine
+#[derive(Clone)]
+pub struct TorrentEngineHandle {
+    sender: mpsc::Sender<TorrentEngineCommand>,
+}
+
+impl TorrentEngineHandle {
+    pub async fn add_magnet(&self, magnet_link: &str) -> Result<InfoHash, TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::AddMagnet {
+            magnet_link: magnet_link.to_string(),
+            responder,
+        };
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineClosed)?;
+        rx.await.map_err(|_| TorrentError::EngineResponseDropped)?
+    }
+
+    pub async fn start_download(&self, info_hash: InfoHash) -> Result<(), TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::StartDownload {
+            info_hash,
+            responder,
+        };
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineClosed)?;
+        rx.await.map_err(|_| TorrentError::EngineResponseDropped)?
+    }
+
+    pub async fn get_session(&self, info_hash: InfoHash) -> Result<TorrentSession, TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::GetSession {
+            info_hash,
+            responder,
+        };
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineClosed)?;
+        rx.await.map_err(|_| TorrentError::EngineResponseDropped)?
+    }
+
+    pub async fn get_active_sessions(&self) -> Result<Vec<TorrentSession>, TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::GetActiveSessions { responder };
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineClosed)?;
+        rx.await.map_err(|_| TorrentError::EngineResponseDropped)
+    }
+
+    pub async fn get_download_stats(&self) -> Result<EngineStats, TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        self.sender
+            .send(TorrentEngineCommand::GetDownloadStats { responder })
+            .await
+            .map_err(|_| TorrentError::EngineClosed)?;
+        rx.await.map_err(|_| TorrentError::EngineResponseDropped)
+    }
+
+    pub fn simulate_download_progress(&self) {
+        // Use try_send for fire-and-forget messages
+        let _ = self.sender.try_send(TorrentEngineCommand::SimulateProgress);
+    }
+}
+
+// This function spawns the actor and returns its handle.
+pub fn spawn_torrent_engine<P, T>(
+    config: RiptideConfig,
+    peer_manager: P,
+    tracker_manager: T,
+) -> TorrentEngineHandle
+where
+    P: PeerManager + 'static, // Note the 'static lifetime
+    T: TrackerManagement + 'static,
+{
+    let (sender, mut receiver) = mpsc::channel(100); // 100 is the channel capacity
+    let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
+
+    tokio::spawn(async move {
+        while let Some(command) = receiver.recv().await {
+            match command {
+                TorrentEngineCommand::AddMagnet {
+                    magnet_link,
+                    responder,
+                } => {
+                    let result = engine.add_magnet(&magnet_link).await;
+                    let _ = responder.send(result);
+                }
+                TorrentEngineCommand::StartDownload {
+                    info_hash,
+                    responder,
+                } => {
+                    let result = engine.start_download(info_hash).await;
+                    let _ = responder.send(result);
+                }
+                TorrentEngineCommand::GetSession {
+                    info_hash,
+                    responder,
+                } => {
+                    // Clone the session to send back, avoiding lifetime issues
+                    let result = engine.get_session(info_hash).cloned();
+                    let _ = responder.send(result);
+                }
+                TorrentEngineCommand::GetActiveSessions { responder } => {
+                    let sessions = engine.active_sessions().into_iter().cloned().collect();
+                    let _ = responder.send(sessions);
+                }
+                TorrentEngineCommand::GetDownloadStats { responder } => {
+                    let stats = engine.get_download_stats().await;
+                    let _ = responder.send(stats);
+                }
+                TorrentEngineCommand::SimulateProgress => {
+                    engine.simulate_download_progress();
+                }
+            }
+        }
+    });
+
+    TorrentEngineHandle { sender }
 }
 
 impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
@@ -128,6 +277,7 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
         ]
     }
 
+    #[allow(dead_code)]
     /// Add a torrent from .torrent file data
     ///
     /// # Errors
@@ -371,6 +521,7 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
     }
 
     /// Cleanup stale connections and update statistics
+    #[allow(dead_code)]
     pub async fn maintenance(&mut self) {
         // In the new interface, cleanup is handled internally by the peer manager
         // This can be extended to include torrent-specific maintenance tasks
@@ -438,104 +589,78 @@ mod tests {
 
     use super::*;
     use crate::torrent::test_data::create_test_info_hash;
+    use crate::torrent::{TcpPeerManager, TrackerManager};
+
+    #[tokio::test]
+    async fn test_engine_actor_add_magnet() {
+        // Setup
+        let config = RiptideConfig::default();
+        let peer_manager = TcpPeerManager::new_default(); // Using real types for this test
+        let tracker_manager = TrackerManager::new(config.network.clone());
+
+        // Spawn the engine actor
+        let engine_handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+
+        // Act
+        let magnet_url = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567";
+        let add_result = engine_handle.add_magnet(magnet_url).await;
+
+        // Assert
+        assert!(add_result.is_ok());
+        let info_hash = add_result.unwrap();
+
+        // Verify the state change by sending another message
+        let session_result = engine_handle.get_session(info_hash).await;
+        assert!(session_result.is_ok());
+        let session = session_result.unwrap();
+        assert_eq!(session.info_hash, info_hash);
+    }
 
     #[tokio::test]
     async fn test_torrent_engine_creation() {
-        use super::super::{TcpPeerManager, TrackerManager};
-
         let config = RiptideConfig::default();
         let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
-        let engine = TorrentEngine::new(config, peer_manager, tracker_manager);
+        let engine_handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
-        let stats = engine.get_download_stats().await;
+        let stats = engine_handle.get_download_stats().await.unwrap();
         assert_eq!(stats.active_torrents, 0);
         assert_eq!(stats.total_peers, 0);
     }
 
     #[tokio::test]
-    async fn test_connect_peer_to_torrent() {
-        // This test should verify the engine's connect_peer logic without network I/O
-        // Since we can't easily mock TcpPeerManager, we'll test the basic state management
-        use super::super::{TcpPeerManager, TrackerManager};
-
-        let config = RiptideConfig::default();
-        let peer_manager = TcpPeerManager::new_default();
-        let tracker_manager = TrackerManager::new(config.network.clone());
-        let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
-        let info_hash = create_test_info_hash();
-
-        // Test that engine accepts the peer connection call (but network will fail)
-        // This tests the engine logic, not the network layer
-        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8080);
-        let result = engine.connect_peer(info_hash, address).await;
-
-        // We expect this to fail due to no server running, but that's expected
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            TorrentError::PeerConnectionError { .. }
-        ));
-    }
-
-    #[tokio::test]
     async fn test_add_magnet_link() {
-        use super::super::{TcpPeerManager, TrackerManager};
-
         let config = RiptideConfig::default();
         let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
-        let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
+        let engine_handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
         let magnet_url = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test%20Torrent&tr=http://tracker.example.com/announce";
 
-        let info_hash = engine.add_magnet(magnet_url).await.unwrap();
+        let info_hash = engine_handle.add_magnet(magnet_url).await.unwrap();
 
         // Verify session was created
-        let session = engine.get_session(info_hash).unwrap();
+        let session = engine_handle.get_session(info_hash).await.unwrap();
         assert_eq!(session.info_hash, info_hash);
         assert_eq!(session.piece_count, 0); // Unknown from magnet link
         assert_eq!(session.progress, 0.0);
 
-        let stats = engine.get_download_stats().await;
+        let stats = engine_handle.get_download_stats().await.unwrap();
         assert_eq!(stats.active_torrents, 1);
-    }
-
-    #[tokio::test]
-    async fn test_add_torrent_data() {
-        use super::super::{TcpPeerManager, TrackerManager};
-
-        let config = RiptideConfig::default();
-        let peer_manager = TcpPeerManager::new_default();
-        let tracker_manager = TrackerManager::new(config.network.clone());
-        let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
-        let torrent_data = b"d8:announce9:test:80804:infod6:lengthi1000e4:name8:test.txt12:piece lengthi32768e6:pieces20:12345678901234567890ee";
-
-        let info_hash = engine.add_torrent_data(torrent_data).await.unwrap();
-
-        // Verify session was created with metadata
-        let session = engine.get_session(info_hash).unwrap();
-        assert_eq!(session.info_hash, info_hash);
-        assert_eq!(session.piece_count, 1); // One piece from torrent data
-        assert_eq!(session.piece_size, 32768);
-        assert_eq!(session.completed_pieces.len(), 1);
-        assert_eq!(session.progress, 0.0);
     }
 
     #[tokio::test]
     async fn test_start_download() {
         // This test verifies magnet link parsing and session creation without network I/O
-        use super::super::{TcpPeerManager, TrackerManager};
-
         let config = RiptideConfig::default();
         let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
-        let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
+        let engine_handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
         let magnet_url = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Test%20Torrent&tr=http://tracker.example.com/announce";
 
-        let info_hash = engine.add_magnet(magnet_url).await.unwrap();
+        let info_hash = engine_handle.add_magnet(magnet_url).await.unwrap();
 
         // Test that start_download will fail on tracker connection (expected for unit test)
-        let result = engine.start_download(info_hash).await;
+        let result = engine_handle.start_download(info_hash).await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -543,36 +668,32 @@ mod tests {
         ));
 
         // Test that the session was created even though download failed
-        let session = engine.get_session(info_hash).unwrap();
+        let session = engine_handle.get_session(info_hash).await.unwrap();
         assert_eq!(session.piece_count, 100); // Placeholder value from magnet link
         assert_eq!(session.completed_pieces.len(), 100);
     }
 
     #[tokio::test]
     async fn test_invalid_magnet_link() {
-        use super::super::{TcpPeerManager, TrackerManager};
-
         let config = RiptideConfig::default();
         let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
-        let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
+        let engine_handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
         let invalid_magnet = "invalid://not-a-magnet";
 
-        let result = engine.add_magnet(invalid_magnet).await;
+        let result = engine_handle.add_magnet(invalid_magnet).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_get_nonexistent_session() {
-        use super::super::{TcpPeerManager, TrackerManager};
-
         let config = RiptideConfig::default();
         let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
-        let engine = TorrentEngine::new(config, peer_manager, tracker_manager);
+        let engine_handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
         let info_hash = create_test_info_hash();
 
-        let result = engine.get_session(info_hash);
+        let result = engine_handle.get_session(info_hash).await;
         assert!(result.is_err());
     }
 
@@ -592,21 +713,5 @@ mod tests {
         session.complete_piece(3);
         assert_eq!(session.progress, 1.0);
         assert!(session.is_complete());
-    }
-
-    #[tokio::test]
-    async fn test_maintenance_cleanup() {
-        use super::super::{TcpPeerManager, TrackerManager};
-
-        let config = RiptideConfig::default();
-        let peer_manager = TcpPeerManager::new_default();
-        let tracker_manager = TrackerManager::new(config.network.clone());
-        let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager);
-
-        // Maintenance should not panic on empty engine
-        engine.maintenance().await;
-
-        let stats = engine.get_download_stats().await;
-        assert_eq!(stats.active_torrents, 0);
     }
 }

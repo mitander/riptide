@@ -3,54 +3,45 @@
 //! Provides media streaming capabilities that integrate with the
 //! peer management system for streaming performance.
 
-pub mod http_server;
 pub mod piece_reader;
 pub mod range_handler;
 pub mod stream_coordinator;
 
 use std::sync::Arc;
 
-pub use http_server::{StreamingHttpServer, StreamingServerConfig};
 pub use piece_reader::{PieceBasedStreamReader, PieceReaderError};
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
 pub use stream_coordinator::{StreamCoordinator, StreamingError, StreamingSession, StreamingStats};
 use tokio::sync::RwLock;
 
 use crate::config::RiptideConfig;
-use crate::torrent::{EnhancedPeerManager, TcpPeerManager, TorrentEngine, TrackerManager};
+use crate::torrent::{
+    EnhancedPeerManager, TcpPeerManager, TorrentEngineHandle, TrackerManager, spawn_torrent_engine,
+};
 
 /// Streaming service integrating HTTP server with BitTorrent backend.
 ///
 /// Coordinates between HTTP range requests from media players and the underlying
 /// BitTorrent downloading system to provide media streaming.
 pub struct DirectStreamingService {
-    http_server: StreamingHttpServer,
     stream_coordinator: Arc<RwLock<StreamCoordinator>>,
-    torrent_engine: Arc<RwLock<TorrentEngine<TcpPeerManager, TrackerManager>>>,
+    torrent_engine: TorrentEngineHandle,
     peer_manager: Arc<RwLock<EnhancedPeerManager>>,
 }
 
 impl DirectStreamingService {
     /// Creates new streaming service with configuration.
     pub fn new(config: RiptideConfig) -> Self {
-        let server_config = StreamingServerConfig::from_riptide_config(&config);
         let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config.clone())));
         let peer_manager_impl = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
-        let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(
-            config.clone(),
-            peer_manager_impl,
-            tracker_manager,
-        )));
+        let torrent_engine = spawn_torrent_engine(config, peer_manager_impl, tracker_manager);
         let stream_coordinator = Arc::new(RwLock::new(StreamCoordinator::new(
-            Arc::clone(&torrent_engine),
+            torrent_engine.clone(),
             Arc::clone(&peer_manager),
         )));
 
-        let http_server = StreamingHttpServer::new(server_config, Arc::clone(&stream_coordinator));
-
         Self {
-            http_server,
             stream_coordinator,
             torrent_engine,
             peer_manager,
@@ -70,9 +61,6 @@ impl DirectStreamingService {
             .start_background_tasks()
             .await;
 
-        // Start HTTP server
-        self.http_server.start().await?;
-
         Ok(())
     }
 
@@ -81,15 +69,12 @@ impl DirectStreamingService {
     /// # Errors
     /// - `StreamingError::TorrentAddFailed` - Failed to add torrent to engine
     pub async fn add_torrent(&self, source: String) -> Result<String, StreamingError> {
-        let mut engine = self.torrent_engine.write().await;
-
         let info_hash = if source.starts_with("magnet:") {
-            engine
-                .add_magnet(&source)
-                .await
-                .map_err(|e| StreamingError::TorrentAddFailed {
+            self.torrent_engine.add_magnet(&source).await.map_err(|e| {
+                StreamingError::TorrentAddFailed {
                     reason: e.to_string(),
-                })?
+                }
+            })?
         } else {
             return Err(StreamingError::UnsupportedSource);
         };
@@ -120,7 +105,6 @@ impl DirectStreamingService {
 
     /// Stop the streaming service gracefully.
     pub async fn stop(&mut self) -> Result<(), StreamingError> {
-        self.http_server.stop().await?;
         Ok(())
     }
 }

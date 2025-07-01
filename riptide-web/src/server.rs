@@ -5,7 +5,9 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::{get, post};
 use riptide_core::config::RiptideConfig;
-use riptide_core::engine::{ProductionTorrentEngine, TorrentEngineOps};
+use riptide_core::torrent::{
+    TcpPeerManager, TorrentEngineHandle, TrackerManager, spawn_torrent_engine,
+};
 use riptide_core::{LocalMovieManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
@@ -28,7 +30,7 @@ pub enum PieceStoreType {
 /// Unified app state that works with both production and simulation engines
 #[derive(Clone)]
 pub struct AppState {
-    pub torrent_engine: Arc<RwLock<dyn TorrentEngineOps>>,
+    pub torrent_engine: TorrentEngineHandle,
     pub search_service: MediaSearchService,
     pub movie_manager: Option<Arc<RwLock<LocalMovieManager>>>,
     pub piece_store: Option<PieceStoreType>,
@@ -40,16 +42,18 @@ pub async fn run_server(
     movies_dir: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Create appropriate engine based on runtime mode
-    let torrent_engine: Arc<RwLock<dyn TorrentEngineOps>> = match mode {
+    let torrent_engine: TorrentEngineHandle = match mode {
         RuntimeMode::Production => {
-            let engine = ProductionTorrentEngine::new_production(config.clone());
-            Arc::new(RwLock::new(engine))
+            let peer_manager = TcpPeerManager::new_default();
+            let tracker_manager = TrackerManager::new(config.network.clone());
+            spawn_torrent_engine(config.clone(), peer_manager, tracker_manager)
         }
         RuntimeMode::Demo => {
             // TODO: Create simulation engine using riptide-sim components
             // For now, use production engine in demo mode
-            let engine = ProductionTorrentEngine::new_production(config.clone());
-            Arc::new(RwLock::new(engine))
+            let peer_manager = TcpPeerManager::new_default();
+            let tracker_manager = TrackerManager::new(config.network.clone());
+            spawn_torrent_engine(config.clone(), peer_manager, tracker_manager)
         }
     };
     let search_service = MediaSearchService::from_runtime_mode(mode);

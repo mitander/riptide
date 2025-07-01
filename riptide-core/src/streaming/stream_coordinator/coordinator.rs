@@ -12,14 +12,13 @@ use super::types::{
 use crate::streaming::range_handler::{FileInfo, PiecePriority, PieceRange};
 use crate::streaming::{ContentInfo, RangeHandler};
 use crate::torrent::{
-    EnhancedPeerManager, InfoHash, PieceRequestParams, Priority, TcpPeerManager, TorrentEngine,
-    TrackerManager,
+    EnhancedPeerManager, InfoHash, PieceRequestParams, Priority, TorrentEngineHandle,
 };
 
 impl StreamCoordinator {
     /// Creates new stream coordinator with engine and peer manager.
     pub fn new(
-        torrent_engine: Arc<RwLock<TorrentEngine<TcpPeerManager, TrackerManager>>>,
+        torrent_engine: TorrentEngineHandle,
         peer_manager: Arc<RwLock<EnhancedPeerManager>>,
     ) -> Self {
         Self {
@@ -283,8 +282,7 @@ impl StreamCoordinator {
         source: String,
     ) -> Result<TorrentMetadata, StreamingError> {
         // TODO: Replace mock with real implementation:
-        // let engine = self._torrent_engine.read().await;
-        // let metadata = engine.get_torrent_metadata(info_hash)?;
+        // let session = self._torrent_engine.get_session(info_hash).await??;
         // For now, create minimal metadata
 
         Ok(TorrentMetadata {

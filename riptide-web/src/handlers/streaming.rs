@@ -19,10 +19,7 @@ pub async fn stream_torrent(
     headers: HeaderMap,
 ) -> Result<Response<Body>, StatusCode> {
     // Update download progress first
-    {
-        let mut engine = state.torrent_engine.write().await;
-        engine.simulate_download_progress();
-    }
+    state.torrent_engine.simulate_download_progress();
 
     // Parse info hash
     let info_hash = match parse_info_hash(&info_hash_str) {
@@ -31,8 +28,7 @@ pub async fn stream_torrent(
     };
 
     // Get torrent session
-    let engine = state.torrent_engine.read().await;
-    let session = match engine.session(info_hash) {
+    let session = match state.torrent_engine.get_session(info_hash).await {
         Ok(session) => session,
         Err(_) => return Err(StatusCode::NOT_FOUND),
     };
@@ -160,8 +156,6 @@ pub async fn api_add_local_movie(
         if let Ok(info_hash) = parse_info_hash(&params.info_hash) {
             if let Some(movie) = manager.get_movie(info_hash) {
                 // Add this movie as a simulated torrent
-                let mut engine = state.torrent_engine.write().await;
-
                 // Create a fake magnet link for the movie
                 let magnet = format!(
                     "magnet:?xt=urn:btih:{}&dn={}",
@@ -169,10 +163,10 @@ pub async fn api_add_local_movie(
                     urlencoding::encode(&movie.title)
                 );
 
-                match engine.add_magnet(&magnet).await {
+                match state.torrent_engine.add_magnet(&magnet).await {
                     Ok(hash) => {
                         // Start downloading immediately
-                        match engine.start_download(hash).await {
+                        match state.torrent_engine.start_download(hash).await {
                             Ok(()) => Json(json!({
                                 "success": true,
                                 "message": format!("Added local movie: {}", movie.title),

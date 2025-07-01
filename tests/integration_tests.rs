@@ -4,18 +4,20 @@ use std::sync::Arc;
 
 use riptide::config::RiptideConfig;
 use riptide::streaming::DirectStreamingService;
-use riptide::torrent::TorrentEngine;
 use riptide::web::handlers::WebHandlers;
 use tokio::sync::RwLock;
+
+fn create_test_handlers() -> WebHandlers {
+    let config = RiptideConfig::default();
+    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
+
+    WebHandlers::new(streaming_service)
+}
 
 /// Test that web handlers can be created and provide basic functionality.
 #[tokio::test]
 async fn test_web_service_integration() {
-    let config = RiptideConfig::default();
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
-
-    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let handlers = create_test_handlers();
 
     // Test basic server stats
     let stats = handlers.get_server_stats().await.unwrap();
@@ -40,11 +42,7 @@ async fn test_web_service_integration() {
 /// Test media search functionality works end-to-end.
 #[tokio::test]
 async fn test_media_search_integration() {
-    let config = RiptideConfig::default();
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
-
-    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let handlers = create_test_handlers();
 
     // Test general search
     let results = handlers.search_media("test").await.unwrap();
@@ -88,11 +86,7 @@ async fn test_template_engine_integration() {
 /// Test error handling across service boundaries.
 #[tokio::test]
 async fn test_error_handling_integration() {
-    let config = RiptideConfig::default();
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
-
-    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let handlers = create_test_handlers();
 
     // Test invalid magnet link
     let result = handlers.add_torrent("invalid-magnet-link").await.unwrap();
@@ -107,11 +101,7 @@ async fn test_error_handling_integration() {
 /// Test concurrent access to shared resources.
 #[tokio::test]
 async fn test_concurrent_access_integration() {
-    let config = RiptideConfig::default();
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
-
-    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let handlers = create_test_handlers();
 
     // Spawn multiple concurrent tasks
     let mut tasks = Vec::new();
@@ -142,11 +132,7 @@ async fn test_concurrent_access_integration() {
 /// Test the full streaming workflow integration.
 #[tokio::test]
 async fn test_streaming_workflow_integration() {
-    let config = RiptideConfig::default();
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
-
-    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let handlers = create_test_handlers();
 
     // Test adding a magnet link
     let magnet = "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678";
@@ -160,11 +146,7 @@ async fn test_streaming_workflow_integration() {
 /// Test configuration and settings integration.
 #[tokio::test]
 async fn test_configuration_integration() {
-    let config = RiptideConfig::default();
-    let torrent_engine = Arc::new(RwLock::new(TorrentEngine::new(config.clone())));
-    let streaming_service = Arc::new(RwLock::new(DirectStreamingService::new(config)));
-
-    let handlers = WebHandlers::new(torrent_engine, streaming_service);
+    let handlers = create_test_handlers();
 
     let settings = handlers.get_server_settings().await.unwrap();
 

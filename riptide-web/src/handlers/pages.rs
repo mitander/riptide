@@ -18,9 +18,7 @@ pub struct DownloadStats {
 }
 
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
-    let engine = state.torrent_engine.read().await;
-    let api_stats = engine.download_stats().await;
-    drop(engine);
+    let api_stats = state.torrent_engine.get_download_stats().await.unwrap();
 
     // Convert API stats to DownloadStats format
     let stats = DownloadStats {
