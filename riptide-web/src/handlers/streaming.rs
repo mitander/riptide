@@ -118,7 +118,7 @@ pub async fn stream_torrent(
 async fn get_video_data_with_conversion(
     state: &AppState,
     info_hash: InfoHash,
-    session: &riptide_core::torrent::engine::TorrentSession,
+    session: &riptide_core::engine::TorrentSession,
     start: u64,
     length: u64,
 ) -> Result<(Vec<u8>, u64), StatusCode> {
@@ -170,7 +170,7 @@ async fn get_video_data_with_conversion(
 async fn read_original_data(
     state: &AppState,
     info_hash: InfoHash,
-    session: &riptide_core::torrent::engine::TorrentSession,
+    session: &riptide_core::engine::TorrentSession,
     start: u64,
     length: u64,
 ) -> Result<Vec<u8>, StatusCode> {
@@ -200,7 +200,7 @@ async fn read_original_data(
 async fn convert_file_to_mp4(
     state: &AppState,
     info_hash: InfoHash,
-    session: &riptide_core::torrent::engine::TorrentSession,
+    session: &riptide_core::engine::TorrentSession,
 ) -> Result<std::path::PathBuf, StatusCode> {
     // First, we need to reconstruct the original file for FFmpeg
     let temp_input = reconstruct_original_file(state, info_hash, session).await?;
@@ -256,7 +256,7 @@ async fn convert_file_to_mp4(
 async fn reconstruct_original_file(
     state: &AppState,
     info_hash: InfoHash,
-    session: &riptide_core::torrent::engine::TorrentSession,
+    session: &riptide_core::engine::TorrentSession,
 ) -> Result<std::path::PathBuf, StatusCode> {
     let temp_dir = std::env::temp_dir();
     let temp_path = temp_dir.join(format!(

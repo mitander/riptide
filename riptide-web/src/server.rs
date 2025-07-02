@@ -10,8 +10,7 @@ use riptide_core::streaming::{
     FfmpegProcessor, ProductionFfmpegProcessor, SimulationFfmpegProcessor,
 };
 use riptide_core::torrent::{
-    InfoHash, PieceStore, TcpPeerManager, TorrentCreator, TorrentEngineHandle, TrackerManager,
-    spawn_torrent_engine,
+    InfoHash, PieceStore, TcpPeerManager, TorrentEngineHandle, TrackerManager, spawn_torrent_engine,
 };
 use riptide_core::{LocalMovieManager, RuntimeMode};
 use riptide_search::MediaSearchService;
@@ -52,12 +51,17 @@ pub async fn run_server(
     movies_dir: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // For demo mode, we need to keep references to simulation managers for setup
-    let (torrent_engine, _sim_peer_manager, _sim_tracker_manager, sim_piece_store) = match mode {
+    let (torrent_engine, sim_memory_store, _sim_tracker_manager, sim_piece_store) = match mode {
         RuntimeMode::Production => {
             let peer_manager = TcpPeerManager::new_default();
             let tracker_manager = TrackerManager::new(config.network.clone());
             let engine = spawn_torrent_engine(config.clone(), peer_manager, tracker_manager);
-            (engine, None::<()>, None::<()>, None::<Arc<dyn PieceStore>>)
+            (
+                engine,
+                None::<Arc<riptide_sim::InMemoryPieceStore>>,
+                None::<()>,
+                None::<Arc<dyn PieceStore>>,
+            )
         }
         RuntimeMode::Demo => {
             // In demo mode, we use simulation components that are aware of the content.
@@ -72,7 +76,7 @@ pub async fn run_server(
 
             (
                 engine,
-                None::<()>,
+                Some(piece_store.clone()),
                 None::<()>,
                 Some(piece_store as Arc<dyn PieceStore>),
             )
@@ -87,15 +91,17 @@ pub async fn run_server(
             Ok(count) => {
                 println!("Found {} movie files in {}", count, dir.display());
 
-                if let Some(store) = &sim_piece_store {
+                if let Some(memory_store) = &sim_memory_store {
                     // Set up the simulated swarm with local movie content.
-                    if let Err(e) = setup_demo_swarm(&mut manager, &torrent_engine).await {
+                    if let Err(e) =
+                        setup_demo_swarm(&mut manager, &torrent_engine, memory_store.clone()).await
+                    {
                         eprintln!("Warning: Failed to populate piece store: {e}");
                     }
 
                     (
                         Some(Arc::new(RwLock::new(manager))),
-                        Some(store.clone() as Arc<dyn PieceStore>),
+                        sim_piece_store.clone(),
                     )
                 } else {
                     // Production mode or no simulation managers
@@ -166,6 +172,7 @@ pub async fn run_server(
 async fn setup_demo_swarm(
     movie_manager: &mut LocalMovieManager,
     torrent_engine: &TorrentEngineHandle,
+    piece_store: Arc<riptide_sim::InMemoryPieceStore>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let movies = movie_manager.all_movies().to_vec();
     let movie_count = movies.len();
@@ -176,21 +183,24 @@ async fn setup_demo_swarm(
     for movie in movies {
         let movie_title = movie.title.clone();
         let movie_path = movie.file_path.clone();
+        let _old_info_hash = movie.info_hash;
         let torrent_engine = torrent_engine.clone();
+        let piece_store = piece_store.clone();
 
         tokio::spawn(async move {
             println!("Converting {movie_title} to BitTorrent pieces...");
 
-            let torrent_creator = TorrentCreator::new();
+            // Create SimulationTorrentCreator per task since it needs to be mutable
+            let mut sim_creator = riptide_core::torrent::SimulationTorrentCreator::new();
 
-            match torrent_creator
-                .create_from_file(
+            match sim_creator
+                .create_with_pieces(
                     &movie_path,
                     vec!["http://demo-tracker.riptide.local/announce".to_string()],
                 )
                 .await
             {
-                Ok(metadata) => {
+                Ok((metadata, pieces)) => {
                     let canonical_info_hash = metadata.info_hash;
                     let piece_count = metadata.piece_hashes.len();
 
@@ -204,24 +214,26 @@ async fn setup_demo_swarm(
                         return;
                     }
 
-                    // Start the download to initialize the session
-                    if let Err(e) = torrent_engine.start_download(canonical_info_hash).await {
-                        tracing::warn!("Failed to start download for {}: {}", movie_title, e);
-                    }
-
-                    // In demo mode, simulate completed download by marking all pieces as complete
-                    let piece_indices: Vec<u32> = (0..piece_count as u32).collect();
-                    if let Err(e) = torrent_engine
-                        .mark_pieces_completed(canonical_info_hash, piece_indices)
+                    // Populate the piece store with actual torrent pieces
+                    if let Err(e) = piece_store
+                        .add_torrent_pieces(canonical_info_hash, pieces)
                         .await
                     {
                         tracing::error!(
-                            "Failed to mark pieces complete for {}: {}",
+                            "Failed to populate piece store for {}: {}",
                             movie_title,
                             e
                         );
                         return;
                     }
+
+                    // Start the download to initialize the session
+                    if let Err(e) = torrent_engine.start_download(canonical_info_hash).await {
+                        tracing::warn!("Failed to start download for {}: {}", movie_title, e);
+                    }
+
+                    // Let the simulation naturally download pieces from ContentAwarePeerManager
+                    // This allows realistic download progress and streaming while downloading
 
                     println!("✓ Converted {movie_title} ({piece_count} pieces)");
                 }
@@ -231,6 +243,11 @@ async fn setup_demo_swarm(
             }
         });
     }
+
+    // Update movie manager with canonical info hashes after spawning tasks
+    // Note: This is a limitation of the current approach - we can't easily update
+    // the movie manager from background tasks. In a future version, we should
+    // use channels to communicate back the canonical info hashes.
 
     println!("Demo mode: {movie_count} movies queued for background conversion");
     Ok(())

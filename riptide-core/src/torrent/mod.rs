@@ -2,7 +2,7 @@
 
 pub mod creation;
 pub mod downloader;
-pub mod engine;
+
 pub mod enhanced_peer_manager;
 pub mod parsing;
 pub mod peer_connection;
@@ -18,7 +18,6 @@ use std::fmt;
 
 pub use creation::{DEFAULT_PIECE_SIZE, SimulationTorrentCreator, TorrentCreator, TorrentPiece};
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
-pub use engine::{EngineStats, TorrentEngineHandle, TorrentSession, spawn_torrent_engine};
 pub use enhanced_peer_manager::{
     EnhancedPeerManager, EnhancedPeerManagerStats, PieceRequestParams, PieceResult, Priority,
 };
@@ -34,6 +33,9 @@ pub use tracker::{
     ScrapeStats, TrackerClient, TrackerManagement, TrackerManager,
 };
 
+pub use crate::engine::{EngineStats, TorrentEngineHandle, TorrentSession, spawn_torrent_engine};
+#[cfg(test)]
+pub use crate::engine::{MockPeerManager, MockTrackerManager};
 use crate::storage::StorageError;
 
 /// SHA-1 hash identifying a unique torrent.
@@ -182,11 +184,20 @@ pub enum TorrentError {
     #[error("HTTP error")]
     Http(#[from] reqwest::Error),
 
-    #[error("Engine channel closed")]
-    EngineClosed,
+    #[error("Engine has been shut down")]
+    EngineShutdown,
 
-    #[error("Engine response dropped")]
-    EngineResponseDropped,
+    #[error("Invalid piece index {index}, max is {max_index}")]
+    InvalidPieceIndex { index: u32, max_index: u32 },
+
+    #[error("Duplicate torrent {info_hash}")]
+    DuplicateTorrent { info_hash: InfoHash },
+
+    #[error("Invalid magnet link: {reason}")]
+    InvalidMagnetLink { reason: String },
+
+    #[error("Invalid metadata: {reason}")]
+    InvalidMetadata { reason: String },
 }
 
 #[cfg(test)]
