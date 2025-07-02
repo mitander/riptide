@@ -6,7 +6,7 @@ use axum::Router;
 use axum::routing::{get, post};
 use riptide_core::config::RiptideConfig;
 use riptide_core::torrent::{
-    TcpPeerManager, TorrentEngineHandle, TrackerManager, spawn_torrent_engine,
+    TcpPeerManager, TorrentCreator, TorrentEngineHandle, TrackerManager, spawn_torrent_engine,
 };
 use riptide_core::{LocalMovieManager, RuntimeMode};
 use riptide_search::MediaSearchService;
@@ -58,32 +58,32 @@ pub async fn run_server(
     };
     let search_service = MediaSearchService::from_runtime_mode(mode);
 
-    // Initialize movie manager for demo mode with local files
-    let movie_manager = if let Some(dir) = movies_dir.as_ref().filter(|_| mode.is_demo()) {
+    // Initialize movie manager and piece store for demo mode
+    let (movie_manager, piece_store) = if let Some(dir) = movies_dir.as_ref().filter(|_| mode.is_demo()) {
         let mut manager = LocalMovieManager::new();
+        let piece_store = Arc::new(riptide_sim::InMemoryPieceStore::new());
 
         match manager.scan_directory(dir).await {
             Ok(count) => {
                 println!("Found {} movie files in {}", count, dir.display());
-                Some(Arc::new(RwLock::new(manager)))
+                
+                // Convert local movies to BitTorrent pieces for simulation
+                if let Err(e) = populate_piece_store_from_movies(&manager, &piece_store, &torrent_engine).await {
+                    eprintln!("Warning: Failed to populate piece store: {e}");
+                }
+                
+                (
+                    Some(Arc::new(RwLock::new(manager))),
+                    Some(PieceStoreType::Simulation(piece_store))
+                )
             }
             Err(e) => {
                 eprintln!("Warning: Failed to scan movies directory: {e}");
-                None
+                (None, None)
             }
         }
     } else {
-        None
-    };
-
-    // Initialize piece store for demo mode
-    let piece_store = if mode.is_demo() {
-        Some(PieceStoreType::Simulation(Arc::new(
-            riptide_sim::InMemoryPieceStore::new(),
-        )))
-    } else {
-        // TODO: Add production piece store implementation
-        None
+        (None, None)
     };
 
     let state = AppState {
@@ -117,5 +117,64 @@ pub async fn run_server(
     println!("Riptide media server running on http://127.0.0.1:3000");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     axum::serve(listener, app).await?;
+    Ok(())
+}
+
+/// Convert local movies to BitTorrent pieces and populate the piece store
+///
+/// This is the critical integration that enables piece-based simulation in demo mode.
+/// Each local movie file is split into BitTorrent pieces and added to the simulation
+/// piece store, allowing the streaming system to demonstrate real BitTorrent behavior.
+async fn populate_piece_store_from_movies(
+    movie_manager: &LocalMovieManager,
+    piece_store: &Arc<riptide_sim::InMemoryPieceStore>,
+    torrent_engine: &TorrentEngineHandle,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use riptide_core::torrent::TorrentPiece;
+    
+    let torrent_creator = TorrentCreator::new();
+    
+    for movie in movie_manager.all_movies() {
+        println!("Converting {} to BitTorrent pieces...", movie.title);
+        
+        // Create torrent metadata from the local file
+        let metadata = torrent_creator.create_from_file(
+            &movie.file_path,
+            vec!["http://demo-tracker.riptide.local/announce".to_string()]
+        ).await?;
+        
+        // Verify info hash matches (should be deterministic)
+        if metadata.info_hash != movie.info_hash {
+            eprintln!("Warning: Info hash mismatch for {}", movie.title);
+            continue;
+        }
+        
+        // Read file and split into pieces
+        let file_data = tokio::fs::read(&movie.file_path).await?;
+        let piece_size = metadata.piece_length as usize;
+        let mut pieces = Vec::new();
+        
+        for (index, chunk) in file_data.chunks(piece_size).enumerate() {
+            pieces.push(TorrentPiece {
+                index: index as u32,
+                hash: metadata.piece_hashes[index],
+                data: chunk.to_vec(),
+            });
+        }
+        
+        // Add pieces to simulation store
+        piece_store.add_torrent_pieces(movie.info_hash, pieces).await?;
+        
+        // Create torrent session so streaming system has metadata
+        torrent_engine.add_magnet(&format!(
+            "magnet:?xt=urn:btih:{}&dn={}",
+            hex::encode(movie.info_hash.as_bytes()),
+            urlencoding::encode(&movie.title)
+        )).await?;
+        
+        println!("✓ Converted {} ({} pieces)", movie.title, metadata.piece_hashes.len());
+    }
+    
+    println!("Demo mode: All movies converted to piece-based simulation");
     Ok(())
 }

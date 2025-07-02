@@ -22,3 +22,4 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 urlencoding = { workspace = true }
+hex = { workspace = true }

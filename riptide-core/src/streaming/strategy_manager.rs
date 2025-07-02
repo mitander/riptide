@@ -3,7 +3,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use super::ffmpeg::SimulationFfmpegProcessor;
+use super::ffmpeg::FfmpegProcessor;
 use super::remuxed_streaming::{RemuxedStreaming, RemuxingConfig};
 use super::strategy::{
     ContainerDetector, ContainerFormat, StreamingError, StreamingResult, StreamingStrategy,
@@ -11,12 +11,12 @@ use super::strategy::{
 use crate::torrent::{InfoHash, PieceStore};
 
 /// Manager that selects appropriate streaming strategy based on container format
-pub struct StreamingStrategyManager<P: PieceStore> {
+pub struct StreamingStrategyManager<P: PieceStore, F: FfmpegProcessor = super::ffmpeg::SimulationFfmpegProcessor> {
     piece_store: Arc<P>,
-    remuxed_streaming: Option<RemuxedStreaming<P, SimulationFfmpegProcessor>>,
+    remuxed_streaming: Option<RemuxedStreaming<P, F>>,
 }
 
-impl<P: PieceStore> StreamingStrategyManager<P> {
+impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
     /// Create new strategy manager with piece store (direct streaming only)
     pub fn new(piece_store: Arc<P>) -> Self {
         Self {
@@ -28,9 +28,9 @@ impl<P: PieceStore> StreamingStrategyManager<P> {
     /// Create strategy manager with remuxing support
     pub fn with_remuxing(
         piece_store: Arc<P>,
+        ffmpeg_processor: F,
         remuxing_config: RemuxingConfig,
     ) -> StreamingResult<Self> {
-        let ffmpeg_processor = SimulationFfmpegProcessor::new(); // Use simulation for now
         let remuxed_streaming = RemuxedStreaming::new(
             Arc::clone(&piece_store),
             ffmpeg_processor,
@@ -139,7 +139,7 @@ pub struct StreamingCapability {
     pub estimated_delay: Option<std::time::Duration>,
 }
 
-impl<P: PieceStore> StreamingStrategyManager<P> {
+impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
     /// Get detailed streaming capability information
     pub async fn get_streaming_capability(
         &self,
