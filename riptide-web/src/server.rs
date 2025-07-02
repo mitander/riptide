@@ -167,44 +167,71 @@ async fn setup_demo_swarm(
     movie_manager: &mut LocalMovieManager,
     torrent_engine: &TorrentEngineHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let torrent_creator = TorrentCreator::new();
     let movies = movie_manager.all_movies().to_vec();
-    let mut hash_updates = Vec::new();
+    let movie_count = movies.len();
 
+    println!("Starting background conversion of {movie_count} movies to BitTorrent pieces...");
+
+    // Spawn background tasks for each movie conversion to avoid blocking server startup
     for movie in movies {
-        println!("Converting {} to BitTorrent pieces...", movie.title);
+        let movie_title = movie.title.clone();
+        let movie_path = movie.file_path.clone();
+        let torrent_engine = torrent_engine.clone();
 
-        let metadata = torrent_creator
-            .create_from_file(
-                &movie.file_path,
-                vec!["http://demo-tracker.riptide.local/announce".to_string()],
-            )
-            .await?;
-        let canonical_info_hash = metadata.info_hash;
+        tokio::spawn(async move {
+            println!("Converting {movie_title} to BitTorrent pieces...");
 
-        if canonical_info_hash != movie.info_hash {
-            hash_updates.push((movie.info_hash, canonical_info_hash));
-        }
+            let torrent_creator = TorrentCreator::new();
 
-        // Note: In true simulation mode, pieces would be populated by the simulated peers
-        // For now, we just register the torrent metadata
+            match torrent_creator
+                .create_from_file(
+                    &movie_path,
+                    vec!["http://demo-tracker.riptide.local/announce".to_string()],
+                )
+                .await
+            {
+                Ok(metadata) => {
+                    let canonical_info_hash = metadata.info_hash;
+                    let piece_count = metadata.piece_hashes.len();
 
-        // Add torrent metadata to the engine (but don't mark as complete!)
-        torrent_engine
-            .add_torrent_metadata(metadata.clone())
-            .await?;
+                    // Add torrent metadata to the engine
+                    if let Err(e) = torrent_engine.add_torrent_metadata(metadata.clone()).await {
+                        tracing::error!(
+                            "Failed to add torrent metadata for {}: {}",
+                            movie_title,
+                            e
+                        );
+                        return;
+                    }
 
-        println!(
-            "✓ Converted {} ({} pieces)",
-            movie.title,
-            metadata.piece_hashes.len()
-        );
+                    // Start the download to initialize the session
+                    if let Err(e) = torrent_engine.start_download(canonical_info_hash).await {
+                        tracing::warn!("Failed to start download for {}: {}", movie_title, e);
+                    }
+
+                    // In demo mode, simulate completed download by marking all pieces as complete
+                    let piece_indices: Vec<u32> = (0..piece_count as u32).collect();
+                    if let Err(e) = torrent_engine
+                        .mark_pieces_completed(canonical_info_hash, piece_indices)
+                        .await
+                    {
+                        tracing::error!(
+                            "Failed to mark pieces complete for {}: {}",
+                            movie_title,
+                            e
+                        );
+                        return;
+                    }
+
+                    println!("✓ Converted {movie_title} ({piece_count} pieces)");
+                }
+                Err(e) => {
+                    tracing::error!("Failed to convert {} to torrent: {}", movie_title, e);
+                }
+            }
+        });
     }
 
-    for (old_hash, new_hash) in hash_updates {
-        movie_manager.update_movie_info_hash(old_hash, new_hash);
-    }
-
-    println!("Demo mode: All movies converted to piece-based simulation");
+    println!("Demo mode: {movie_count} movies queued for background conversion");
     Ok(())
 }
