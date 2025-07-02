@@ -33,12 +33,12 @@ pub enum PieceReaderError {
 }
 
 /// Efficiently reads file data from BitTorrent pieces
-pub struct PieceBasedStreamReader<P: PieceStore> {
+pub struct PieceBasedStreamReader<P: PieceStore + ?Sized> {
     piece_store: Arc<P>,
     piece_size: u32,
 }
 
-impl<P: PieceStore> PieceBasedStreamReader<P> {
+impl<P: PieceStore + ?Sized> PieceBasedStreamReader<P> {
     /// Create new piece reader with the given piece store and piece size
     ///
     /// Since piece size is typically known from torrent metadata, it's provided
@@ -156,8 +156,19 @@ impl<P: PieceStore> PieceBasedStreamReader<P> {
     }
 }
 
+/// Creates a piece reader from a trait object for dynamic dispatch
+pub fn create_piece_reader_from_trait_object(
+    piece_store: Arc<dyn PieceStore>,
+    piece_size: u32,
+) -> PieceBasedStreamReader<dyn PieceStore> {
+    PieceBasedStreamReader {
+        piece_store,
+        piece_size,
+    }
+}
+
 /// Calculate the actual file size by examining the last piece
-async fn calculate_file_size<P: PieceStore>(
+async fn calculate_file_size<P: PieceStore + ?Sized>(
     piece_count: u32,
     piece_size: u64,
     info_hash: InfoHash,

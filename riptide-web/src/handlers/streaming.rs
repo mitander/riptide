@@ -6,7 +6,9 @@ use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Json, Response};
-use riptide_core::streaming::{ContainerFormat, PieceBasedStreamReader, RemuxingOptions};
+use riptide_core::streaming::{
+    ContainerFormat, RemuxingOptions, create_piece_reader_from_trait_object,
+};
 use riptide_core::torrent::InfoHash;
 use serde::Deserialize;
 use serde_json::json;
@@ -14,7 +16,7 @@ use serde_json::json;
 use crate::handlers::range::{
     build_range_response, extract_range_header, parse_range_header, validate_range_bounds,
 };
-use crate::server::{AppState, ConvertedFile, PieceStoreType};
+use crate::server::{AppState, ConvertedFile};
 
 /// Detect container format from filename extension
 fn detect_container_format(filename: &str) -> ContainerFormat {
@@ -173,20 +175,16 @@ async fn read_original_data(
     length: u64,
 ) -> Result<Vec<u8>, StatusCode> {
     if let Some(ref piece_store) = state.piece_store {
-        match piece_store {
-            PieceStoreType::Simulation(sim_store) => {
-                let piece_reader =
-                    PieceBasedStreamReader::new(Arc::clone(sim_store), session.piece_size);
+        let piece_reader =
+            create_piece_reader_from_trait_object(Arc::clone(piece_store), session.piece_size);
 
-                piece_reader
-                    .read_range(info_hash, start..start + length)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to read from piece store: {:?}", e);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    })
-            }
-        }
+        piece_reader
+            .read_range(info_hash, start..start + length)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to read from piece store: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })
     } else if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         manager
@@ -272,20 +270,16 @@ async fn reconstruct_original_file(
 
     // Read entire file from piece store
     let total_data = if let Some(ref piece_store) = state.piece_store {
-        match piece_store {
-            PieceStoreType::Simulation(sim_store) => {
-                let piece_reader =
-                    PieceBasedStreamReader::new(Arc::clone(sim_store), session.piece_size);
+        let piece_reader =
+            create_piece_reader_from_trait_object(Arc::clone(piece_store), session.piece_size);
 
-                piece_reader
-                    .read_range(info_hash, 0..session.total_size)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to read full file from piece store: {:?}", e);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    })?
-            }
-        }
+        piece_reader
+            .read_range(info_hash, 0..session.total_size)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to read full file from piece store: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
     } else if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         manager

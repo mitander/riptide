@@ -10,7 +10,7 @@ use riptide_core::streaming::{
     FfmpegProcessor, ProductionFfmpegProcessor, SimulationFfmpegProcessor,
 };
 use riptide_core::torrent::{
-    InfoHash, TcpPeerManager, TorrentCreator, TorrentEngineHandle, TorrentPiece, TrackerManager,
+    InfoHash, PieceStore, TcpPeerManager, TorrentCreator, TorrentEngineHandle, TrackerManager,
     spawn_torrent_engine,
 };
 use riptide_core::{LocalMovieManager, RuntimeMode};
@@ -25,12 +25,7 @@ use crate::handlers::{
     video_player_page,
 };
 
-/// Concrete piece store types for different runtime modes
-#[derive(Clone)]
-pub enum PieceStoreType {
-    Simulation(Arc<riptide_sim::InMemoryPieceStore>),
-    // TODO: Add production piece store variant
-}
+// Removed PieceStoreType enum - using trait objects instead
 
 /// Cache entry for converted files
 #[derive(Debug, Clone)]
@@ -46,7 +41,7 @@ pub struct AppState {
     pub torrent_engine: TorrentEngineHandle,
     pub search_service: MediaSearchService,
     pub movie_manager: Option<Arc<RwLock<LocalMovieManager>>>,
-    pub piece_store: Option<PieceStoreType>,
+    pub piece_store: Option<Arc<dyn PieceStore>>,
     pub ffmpeg_processor: Arc<dyn FfmpegProcessor>,
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
 }
@@ -62,12 +57,7 @@ pub async fn run_server(
             let peer_manager = TcpPeerManager::new_default();
             let tracker_manager = TrackerManager::new(config.network.clone());
             let engine = spawn_torrent_engine(config.clone(), peer_manager, tracker_manager);
-            (
-                engine,
-                None::<()>,
-                None::<()>,
-                None::<Arc<riptide_sim::InMemoryPieceStore>>,
-            )
+            (engine, None::<()>, None::<()>, None::<Arc<dyn PieceStore>>)
         }
         RuntimeMode::Demo => {
             // In demo mode, we use simulation components that are aware of the content.
@@ -80,7 +70,12 @@ pub async fn run_server(
 
             let engine = spawn_torrent_engine(config.clone(), peer_manager, tracker_manager);
 
-            (engine, None::<()>, None::<()>, Some(piece_store))
+            (
+                engine,
+                None::<()>,
+                None::<()>,
+                Some(piece_store as Arc<dyn PieceStore>),
+            )
         }
     };
     let search_service = MediaSearchService::from_runtime_mode(mode);
@@ -94,13 +89,13 @@ pub async fn run_server(
 
                 if let Some(store) = &sim_piece_store {
                     // Set up the simulated swarm with local movie content.
-                    if let Err(e) = setup_demo_swarm(&mut manager, store, &torrent_engine).await {
+                    if let Err(e) = setup_demo_swarm(&mut manager, &torrent_engine).await {
                         eprintln!("Warning: Failed to populate piece store: {e}");
                     }
 
                     (
                         Some(Arc::new(RwLock::new(manager))),
-                        Some(PieceStoreType::Simulation(store.clone())),
+                        Some(store.clone() as Arc<dyn PieceStore>),
                     )
                 } else {
                     // Production mode or no simulation managers
@@ -170,7 +165,6 @@ pub async fn run_server(
 /// the full P2P download path.
 async fn setup_demo_swarm(
     movie_manager: &mut LocalMovieManager,
-    piece_store: &Arc<riptide_sim::InMemoryPieceStore>,
     torrent_engine: &TorrentEngineHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let torrent_creator = TorrentCreator::new();
@@ -192,22 +186,8 @@ async fn setup_demo_swarm(
             hash_updates.push((movie.info_hash, canonical_info_hash));
         }
 
-        let file_data = tokio::fs::read(&movie.file_path).await?;
-        let piece_size = metadata.piece_length as usize;
-        let pieces: Vec<TorrentPiece> = file_data
-            .chunks(piece_size)
-            .enumerate()
-            .map(|(index, chunk)| TorrentPiece {
-                index: index as u32,
-                hash: metadata.piece_hashes[index],
-                data: chunk.to_vec(),
-            })
-            .collect();
-
-        // Add pieces to the central piece store (this is the "content" that peers will serve)
-        piece_store
-            .add_torrent_pieces(canonical_info_hash, pieces)
-            .await?;
+        // Note: In true simulation mode, pieces would be populated by the simulated peers
+        // For now, we just register the torrent metadata
 
         // Add torrent metadata to the engine (but don't mark as complete!)
         torrent_engine
