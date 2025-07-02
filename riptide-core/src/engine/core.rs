@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use rand;
+use tokio::sync::{RwLock, mpsc};
 use tokio::time::{Duration, sleep};
 
 use super::commands::{EngineStats, TorrentSession, TorrentSessionParams};
@@ -33,11 +34,18 @@ pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
     config: RiptideConfig,
     /// Our peer ID for BitTorrent protocol
     peer_id: PeerId,
+    /// Channel for internal piece completion notifications
+    piece_completion_sender: mpsc::UnboundedSender<super::commands::TorrentEngineCommand>,
 }
 
 impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
     /// Creates new torrent engine with provided peer manager and tracker manager.
-    pub fn new(config: RiptideConfig, peer_manager: P, tracker_manager: T) -> Self {
+    pub fn new(
+        config: RiptideConfig,
+        peer_manager: P,
+        tracker_manager: T,
+        piece_completion_sender: mpsc::UnboundedSender<super::commands::TorrentEngineCommand>,
+    ) -> Self {
         Self {
             peer_manager: Arc::new(RwLock::new(peer_manager)),
             tracker_manager: Arc::new(RwLock::new(tracker_manager)),
@@ -45,6 +53,7 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
             parser: BencodeTorrentParser::new(),
             config,
             peer_id: PeerId::generate(),
+            piece_completion_sender,
         }
     }
 
@@ -177,7 +186,8 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
         }
 
         // Spawn download loop for this torrent
-        self.spawn_download_loop(info_hash).await;
+        let piece_count = session.piece_count;
+        self.spawn_download_loop(info_hash, piece_count).await;
 
         Ok(())
     }
@@ -186,32 +196,222 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
     ///
     /// Creates background tasks to handle piece downloading, peer communication,
     /// and progress tracking. The download loop runs until the torrent is
-    /// complete or stopped.
-    async fn spawn_download_loop(&self, info_hash: InfoHash) {
+    /// complete or stopped. Uses realistic BitTorrent protocol simulation
+    /// including peer discovery, piece requests, bandwidth limiting, and peer churn.
+    async fn spawn_download_loop(&self, info_hash: InfoHash, piece_count: u32) {
+        let config = self.config.clone();
+        let piece_sender = self.piece_completion_sender.clone();
         let _peer_manager = self.peer_manager.clone();
-        let _config = self.config.clone();
 
         tokio::spawn(async move {
-            tracing::info!("Starting download loop for torrent {}", info_hash);
+            tracing::info!(
+                "Starting realistic BitTorrent download simulation for torrent {} ({} pieces)",
+                info_hash,
+                piece_count
+            );
 
-            // Simulate download progress over time
-            let mut progress = 0.0f32;
-            let download_duration = Duration::from_secs(60); // Default 1 minute simulation
-            let update_interval = Duration::from_millis(500);
-            let progress_increment =
-                0.5 / (download_duration.as_millis() as f32 / update_interval.as_millis() as f32);
+            // Simulation parameters from config
+            let download_speed_bytes_per_sec = config.simulation.simulated_download_speed;
+            let piece_size = config.torrent.default_piece_size;
+            let max_peers = config.simulation.max_simulated_peers;
+            let packet_loss_rate = config.simulation.packet_loss_rate;
+            let network_latency_ms = config.simulation.network_latency_ms;
 
-            while progress < 1.0 {
-                sleep(update_interval).await;
-                progress += progress_increment;
-                progress = progress.min(1.0);
+            // BitTorrent protocol simulation state
+            let mut connected_peers = 0usize;
+            let mut piece_requests = Vec::new();
+            let mut completed_pieces = std::collections::HashSet::new();
+            let mut peer_connection_times: HashMap<std::net::SocketAddr, std::time::Instant> =
+                HashMap::new();
+            let mut piece_rarity = vec![max_peers; piece_count as usize]; // How many peers have each piece
 
-                tracing::debug!("Torrent {} progress: {:.1}%", info_hash, progress * 100.0);
+            // Optimized timing for testing while maintaining realistic behavior ratios
+            let base_piece_time =
+                (piece_size as f64 / download_speed_bytes_per_sec as f64).max(0.05); // Min 50ms per piece
+            let update_interval = Duration::from_millis(25); // Fast updates for testing
+            let peer_discovery_interval = Duration::from_millis(500); // Fast peer discovery for testing
+            let mut last_peer_discovery = std::time::Instant::now();
 
-                if progress >= 1.0 {
-                    tracing::info!("Torrent {} download completed", info_hash);
-                    break;
+            tracing::info!(
+                "BitTorrent simulation: {} pieces, {} max peers, {:.1} MB/s target speed",
+                piece_count,
+                max_peers,
+                download_speed_bytes_per_sec as f64 / 1_048_576.0
+            );
+
+            // Phase 1: Peer discovery simulation
+            tracing::info!("Phase 1: Discovering peers for torrent {}", info_hash);
+            for i in 0..std::cmp::min(max_peers, 10) {
+                let peer_addr: std::net::SocketAddr =
+                    format!("192.168.1.{}:6881", 100 + i).parse().unwrap();
+                let connect_delay = Duration::from_millis(network_latency_ms + (i as u64 * 10)); // Faster connection delays
+
+                sleep(connect_delay).await;
+
+                // Simulate peer connection
+                if rand::random::<f64>() > packet_loss_rate {
+                    connected_peers += 1;
+                    peer_connection_times.insert(peer_addr, std::time::Instant::now());
+
+                    tracing::debug!(
+                        "Connected to peer {} for torrent {} ({}/{} peers)",
+                        peer_addr,
+                        info_hash,
+                        connected_peers,
+                        max_peers
+                    );
+                } else {
+                    tracing::debug!("Failed to connect to peer {} (packet loss)", peer_addr);
                 }
+            }
+
+            // Phase 2: Piece downloading with realistic BitTorrent behavior
+            tracing::info!("Phase 2: Downloading pieces using BitTorrent protocol simulation");
+
+            while completed_pieces.len() < piece_count as usize {
+                sleep(update_interval).await;
+
+                // Periodic peer discovery
+                if last_peer_discovery.elapsed() >= peer_discovery_interval
+                    && connected_peers < max_peers
+                {
+                    if rand::random::<f64>() > 0.3 {
+                        // 70% chance to find new peer
+                        let new_peer_addr: std::net::SocketAddr =
+                            format!("192.168.1.{}:6881", 200 + connected_peers)
+                                .parse()
+                                .unwrap();
+                        connected_peers += 1;
+                        peer_connection_times.insert(new_peer_addr, std::time::Instant::now());
+                        tracing::debug!(
+                            "Discovered new peer {} for torrent {}",
+                            new_peer_addr,
+                            info_hash
+                        );
+                    }
+                    last_peer_discovery = std::time::Instant::now();
+                }
+
+                // Simulate peer churn (disconnections)
+                if rand::random::<f64>() < 0.01 && connected_peers > 2 {
+                    // 1% chance per update to lose a peer
+                    connected_peers = connected_peers.saturating_sub(1);
+                    tracing::debug!(
+                        "Lost peer connection for torrent {} ({} peers remaining)",
+                        info_hash,
+                        connected_peers
+                    );
+                }
+
+                // Find rarest pieces first (realistic BitTorrent strategy)
+                let mut available_pieces: Vec<u32> = (0..piece_count)
+                    .filter(|&i| !completed_pieces.contains(&i))
+                    .collect();
+
+                available_pieces.sort_by_key(|&i| piece_rarity[i as usize]);
+
+                // Request pieces from peers
+                for &piece_index in available_pieces.iter().take(connected_peers) {
+                    if piece_requests.iter().any(|(idx, _)| *idx == piece_index) {
+                        continue; // Already requesting this piece
+                    }
+
+                    // Calculate realistic download time for this piece
+                    let rarity_factor = 1.0
+                        + (max_peers - piece_rarity[piece_index as usize]) as f64
+                            / max_peers as f64;
+                    let latency_factor = 1.0 + network_latency_ms as f64 / 10000.0; // Reduced latency impact
+                    let peer_load_factor = 1.0 + connected_peers as f64 / (max_peers as f64 * 4.0); // Reduced load impact
+
+                    let piece_download_time =
+                        (base_piece_time * rarity_factor * latency_factor * peer_load_factor)
+                            .max(0.02); // Min 20ms
+                    let completion_time =
+                        std::time::Instant::now() + Duration::from_secs_f64(piece_download_time);
+
+                    piece_requests.push((piece_index, completion_time));
+
+                    tracing::debug!(
+                        "Requesting piece {} from peers (ETA: {:.1}s, rarity: {}/{} peers)",
+                        piece_index,
+                        piece_download_time,
+                        piece_rarity[piece_index as usize],
+                        max_peers
+                    );
+                }
+
+                // Process completed piece requests
+                let now = std::time::Instant::now();
+                let mut completed_requests = Vec::new();
+
+                for (i, (piece_index, completion_time)) in piece_requests.iter().enumerate() {
+                    if now >= *completion_time {
+                        // Simulate piece verification and occasional hash failures
+                        if rand::random::<f64>() > 0.02 {
+                            // 98% success rate
+                            completed_pieces.insert(*piece_index);
+                            completed_requests.push(i);
+
+                            // Update piece rarity (other peers now have this piece)
+                            for rarity in piece_rarity.iter_mut() {
+                                if rand::random::<f64>() < 0.1 {
+                                    // 10% chance other peers also got it
+                                    *rarity = (*rarity + 1).min(max_peers);
+                                }
+                            }
+
+                            let progress = completed_pieces.len() as f32 / piece_count as f32;
+
+                            tracing::debug!(
+                                "Torrent {} verified piece {} ({:.1}% complete, {} peers)",
+                                info_hash,
+                                piece_index,
+                                progress * 100.0,
+                                connected_peers
+                            );
+
+                            // Send piece completion back to engine actor
+                            let cmd = super::commands::TorrentEngineCommand::PieceCompleted {
+                                info_hash,
+                                piece_index: *piece_index,
+                            };
+
+                            if let Err(e) = piece_sender.send(cmd) {
+                                tracing::error!("Failed to send piece completion: {}", e);
+                                return;
+                            }
+                        } else {
+                            completed_requests.push(i);
+                            tracing::debug!(
+                                "Piece {} failed verification, will retry",
+                                piece_index
+                            );
+                        }
+                    }
+                }
+
+                // Remove completed requests
+                for &i in completed_requests.iter().rev() {
+                    piece_requests.remove(i);
+                }
+
+                // Simulate bandwidth throttling during peak usage
+                if completed_pieces.len() > piece_count as usize / 2 {
+                    sleep(Duration::from_millis(10)).await; // Slight throttling during endgame
+                }
+            }
+
+            tracing::info!(
+                "BitTorrent download simulation completed for torrent {} (downloaded {} pieces from {} peers)",
+                info_hash,
+                piece_count,
+                connected_peers
+            );
+
+            // Simulate post-download seeding behavior
+            if config.simulation.enabled {
+                tracing::info!("Entering seeding mode for torrent {}", info_hash);
+                sleep(Duration::from_millis(50)).await; // Brief seeding simulation for testing
             }
         });
     }

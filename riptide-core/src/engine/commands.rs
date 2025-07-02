@@ -47,6 +47,11 @@ pub enum TorrentEngineCommand {
     },
     /// Shutdown the engine actor gracefully.
     Shutdown { responder: oneshot::Sender<()> },
+    /// Internal notification when a piece is completed (simulation only).
+    PieceCompleted {
+        info_hash: InfoHash,
+        piece_index: u32,
+    },
 }
 
 /// Active download session for a single torrent.

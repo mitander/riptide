@@ -284,3 +284,66 @@ impl FfmpegProcessor for SimulationFfmpegProcessor {
         self.base_processor.estimate_output_size(input_path).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_simulation_ffmpeg_processor() {
+        let temp_dir = tempdir().unwrap();
+        let input_path = temp_dir.path().join("input.mkv");
+        let output_path = temp_dir.path().join("output.mp4");
+
+        // Create dummy input file
+        std::fs::write(&input_path, vec![0u8; 1024 * 1024]).unwrap(); // 1MB file
+
+        let processor = SimulationFfmpegProcessor::new()
+            .with_speed(10.0) // 10 MB/s for fast test
+            .with_size_ratio(0.9);
+
+        let options = RemuxingOptions::default();
+        let result = processor
+            .remux_to_mp4(&input_path, &output_path, &options)
+            .await
+            .unwrap();
+
+        // Verify output file was created
+        assert!(output_path.exists());
+
+        // Verify simulated size reduction
+        assert_eq!(result.output_size, (1024 * 1024 * 90) / 100); // 90% of input
+
+        // Verify processing time simulation
+        assert!(result.processing_time > 0.0);
+        assert!(result.processing_time < 1.0); // Should be quick for 1MB at 10MB/s
+    }
+
+    #[tokio::test]
+    async fn test_simulation_ffmpeg_unavailable() {
+        let temp_dir = tempdir().unwrap();
+        let input_path = temp_dir.path().join("input.mkv");
+        let output_path = temp_dir.path().join("output.mp4");
+
+        std::fs::write(&input_path, b"dummy content").unwrap();
+
+        let processor = SimulationFfmpegProcessor::new().unavailable();
+        let options = RemuxingOptions::default();
+
+        let result = processor
+            .remux_to_mp4(&input_path, &output_path, &options)
+            .await;
+        assert!(matches!(result, Err(StreamingError::FfmpegError { .. })));
+    }
+
+    #[test]
+    fn test_remuxing_options_defaults() {
+        let options = RemuxingOptions::default();
+        assert_eq!(options.video_codec, "copy");
+        assert_eq!(options.audio_codec, "copy");
+        assert!(options.faststart);
+        assert_eq!(options.timeout_seconds, Some(300));
+    }
+}
