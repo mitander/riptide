@@ -131,25 +131,25 @@ impl HttpTrackerClient {
         &self,
         response_bytes: &[u8],
     ) -> Result<AnnounceResponse, TorrentError> {
-        let parsed = bencode_rs::Value::parse(response_bytes).map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
-                url: format!("Failed to parse tracker response: {e:?}"),
-            }
-        })?;
+        let parsed =
+            bencode_rs::Value::parse(response_bytes).map_err(|e| TorrentError::ProtocolError {
+                message: format!("Failed to parse tracker response: {e:?}"),
+            })?;
 
         if parsed.is_empty() {
-            return Err(TorrentError::TrackerConnectionFailed {
-                url: "Empty tracker response".to_string(),
+            return Err(TorrentError::ProtocolError {
+                message: "Empty tracker response".to_string(),
             });
         }
 
         if let bencode_rs::Value::Dictionary(dict) = &parsed[0] {
-            // Check for failure reason
+            // Check for failure reason - treat as torrent not found if tracker explicitly rejects it
             if let Some(bencode_rs::Value::Bytes(failure_reason)) =
                 dict.get(b"failure reason".as_slice())
             {
-                return Err(TorrentError::TrackerConnectionFailed {
-                    url: format!("Tracker error: {}", String::from_utf8_lossy(failure_reason)),
+                let reason = String::from_utf8_lossy(failure_reason);
+                return Err(TorrentError::TorrentNotFoundOnTracker {
+                    url: format!("Tracker error: {reason}"),
                 });
             }
 
@@ -157,8 +157,8 @@ impl HttpTrackerClient {
             let interval = match dict.get(b"interval".as_slice()) {
                 Some(bencode_rs::Value::Integer(val)) => *val as u32,
                 _ => {
-                    return Err(TorrentError::TrackerConnectionFailed {
-                        url: "Missing interval in tracker response".to_string(),
+                    return Err(TorrentError::ProtocolError {
+                        message: "Missing interval in tracker response".to_string(),
                     });
                 }
             };
@@ -200,8 +200,8 @@ impl HttpTrackerClient {
                 peers,
             })
         } else {
-            Err(TorrentError::TrackerConnectionFailed {
-                url: "Invalid tracker response format".to_string(),
+            Err(TorrentError::ProtocolError {
+                message: "Invalid tracker response format".to_string(),
             })
         }
     }
@@ -211,15 +211,14 @@ impl HttpTrackerClient {
         &self,
         response_bytes: &[u8],
     ) -> Result<ScrapeResponse, TorrentError> {
-        let parsed = bencode_rs::Value::parse(response_bytes).map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
-                url: format!("Failed to parse scrape response: {e:?}"),
-            }
-        })?;
+        let parsed =
+            bencode_rs::Value::parse(response_bytes).map_err(|e| TorrentError::ProtocolError {
+                message: format!("Failed to parse scrape response: {e:?}"),
+            })?;
 
         if parsed.is_empty() {
-            return Err(TorrentError::TrackerConnectionFailed {
-                url: "Empty scrape response".to_string(),
+            return Err(TorrentError::ProtocolError {
+                message: "Empty scrape response".to_string(),
             });
         }
 
@@ -228,8 +227,8 @@ impl HttpTrackerClient {
             if let Some(bencode_rs::Value::Bytes(failure_reason)) =
                 dict.get(b"failure reason".as_slice())
             {
-                return Err(TorrentError::TrackerConnectionFailed {
-                    url: format!("Scrape error: {}", String::from_utf8_lossy(failure_reason)),
+                return Err(TorrentError::ProtocolError {
+                    message: format!("Scrape error: {}", String::from_utf8_lossy(failure_reason)),
                 });
             }
 
@@ -274,8 +273,8 @@ impl HttpTrackerClient {
 
             Ok(ScrapeResponse { files })
         } else {
-            Err(TorrentError::TrackerConnectionFailed {
-                url: "Invalid scrape response format".to_string(),
+            Err(TorrentError::ProtocolError {
+                message: "Invalid scrape response format".to_string(),
             })
         }
     }
@@ -302,18 +301,16 @@ impl TrackerClient for HttpTrackerClient {
         let response = self.client.get(&url).send().await.map_err(|e| {
             tracing::warn!("HTTP request to {} failed: {}", self.announce_url, e);
 
-            // Provide more specific error context
-            let error_msg = if e.is_timeout() {
-                format!("Tracker request timed out: {}", self.announce_url)
-            } else if e.is_connect() {
-                format!("Failed to connect to tracker: {}", self.announce_url)
-            } else if e.is_request() {
-                format!("Invalid request to tracker: {}", self.announce_url)
+            // Use specific error variants for better pattern matching
+            if e.is_timeout() {
+                TorrentError::TrackerTimeout {
+                    url: self.announce_url.clone(),
+                }
             } else {
-                format!("HTTP request failed: {e}")
-            };
-
-            TorrentError::TrackerConnectionFailed { url: error_msg }
+                TorrentError::TrackerConnectionFailed {
+                    url: self.announce_url.clone(),
+                }
+            }
         })?;
 
         let status = response.status();
@@ -323,8 +320,17 @@ impl TrackerClient for HttpTrackerClient {
                 self.announce_url,
                 status
             );
-            return Err(TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP {status} from tracker"),
+            return Err(match status.as_u16() {
+                404 => TorrentError::TorrentNotFoundOnTracker {
+                    url: self.announce_url.clone(),
+                },
+                500..=599 => TorrentError::TrackerServerError {
+                    url: self.announce_url.clone(),
+                    status: status.as_u16(),
+                },
+                _ => TorrentError::TrackerConnectionFailed {
+                    url: self.announce_url.clone(),
+                },
             });
         }
 
@@ -370,24 +376,51 @@ impl TrackerClient for HttpTrackerClient {
         let url = self.build_scrape_url(&request)?;
 
         let response = self.client.get(&url).send().await.map_err(|e| {
-            TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP request failed: {e}"),
+            tracing::warn!("HTTP scrape request to {} failed: {}", self.announce_url, e);
+
+            // Use specific error variants for better categorization
+            if e.is_timeout() {
+                TorrentError::TrackerTimeout {
+                    url: self.announce_url.clone(),
+                }
+            } else {
+                TorrentError::TrackerConnectionFailed {
+                    url: self.announce_url.clone(),
+                }
             }
         })?;
 
-        if !response.status().is_success() {
-            return Err(TorrentError::TrackerConnectionFailed {
-                url: format!("HTTP {} from tracker", response.status()),
+        let status = response.status();
+        if !status.is_success() {
+            tracing::warn!(
+                "Tracker scrape {} returned error status: {}",
+                self.announce_url,
+                status
+            );
+            return Err(match status.as_u16() {
+                404 => TorrentError::TorrentNotFoundOnTracker {
+                    url: self.announce_url.clone(),
+                },
+                500..=599 => TorrentError::TrackerServerError {
+                    url: self.announce_url.clone(),
+                    status: status.as_u16(),
+                },
+                _ => TorrentError::TrackerConnectionFailed {
+                    url: self.announce_url.clone(),
+                },
             });
         }
 
-        let response_bytes =
-            response
-                .bytes()
-                .await
-                .map_err(|e| TorrentError::TrackerConnectionFailed {
-                    url: format!("Failed to read response body: {e}"),
-                })?;
+        let response_bytes = response.bytes().await.map_err(|e| {
+            tracing::warn!(
+                "Failed to read scrape response body from {}: {}",
+                self.announce_url,
+                e
+            );
+            TorrentError::TrackerConnectionFailed {
+                url: format!("Failed to read response body: {e}"),
+            }
+        })?;
 
         self.parse_scrape_response(&response_bytes)
     }
@@ -545,7 +578,7 @@ mod tracker_client_tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            TorrentError::TrackerConnectionFailed { url } if url.contains("Failed to parse tracker response")
+            TorrentError::TorrentNotFoundOnTracker { url } if url.contains("Tracker error")
         ));
     }
 
@@ -579,7 +612,7 @@ mod tracker_client_tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            TorrentError::TrackerConnectionFailed { url } if url.contains("Failed to parse scrape response")
+            TorrentError::ProtocolError { message } if message.contains("Scrape error")
         ));
     }
 }

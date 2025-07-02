@@ -134,6 +134,15 @@ pub enum TorrentError {
     #[error("Tracker connection failed: {url}")]
     TrackerConnectionFailed { url: String },
 
+    #[error("Torrent not found on tracker: {url}")]
+    TorrentNotFoundOnTracker { url: String },
+
+    #[error("Tracker request timed out: {url}")]
+    TrackerTimeout { url: String },
+
+    #[error("Tracker server error: {url}, status: {status}")]
+    TrackerServerError { url: String, status: u16 },
+
     #[error("Piece {index} hash mismatch")]
     PieceHashMismatch { index: PieceIndex },
 

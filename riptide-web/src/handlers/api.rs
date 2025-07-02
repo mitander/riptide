@@ -279,21 +279,34 @@ pub async fn api_download_torrent(
                     "info_hash": info_hash.to_string()
                 }))),
                 Err(e) => {
-                    let error_str = e.to_string();
-                    let error_msg = if error_str.contains("404 Not Found") {
-                        "This torrent is not available on public trackers. Try a different torrent or one with embedded tracker URLs.".to_string()
-                    } else if error_str.contains("No peers available") {
-                        "BitTorrent peer connections not yet implemented. Riptide currently supports torrent search and tracker communication, but full peer-to-peer downloading requires additional development. Consider using this as a torrent search tool for now.".to_string()
-                    } else if error_str.contains("Tracker connection failed")
-                        || error_str.contains("HTTP request failed")
-                    {
-                        "Tracker connection failed. The tracker servers may be offline or unreachable. This is common with older torrents. Try:\n• A different torrent from the same content\n• Torrents from more recent search results\n• Checking your internet connection".to_string()
-                    } else if error_str.contains("Failed to connect to tracker") {
-                        "Unable to reach tracker servers. This could be due to network issues or the trackers being offline.".to_string()
-                    } else if error_str.contains("Tracker request timed out") {
-                        "Tracker request timed out. The tracker servers are responding slowly or may be overloaded.".to_string()
-                    } else {
-                        format!("Download failed: {e}")
+                    use riptide_core::torrent::TorrentError;
+
+                    let error_msg = match &e {
+                        TorrentError::TorrentNotFoundOnTracker { .. } => {
+                            "This torrent is not available on public trackers. Try a different torrent or one with embedded tracker URLs.".to_string()
+                        }
+                        TorrentError::NoPeersAvailable => {
+                            "BitTorrent peer connections not yet implemented. Riptide currently supports torrent search and tracker communication, but full peer-to-peer downloading requires additional development. Consider using this as a torrent search tool for now.".to_string()
+                        }
+                        TorrentError::TrackerConnectionFailed { .. } | TorrentError::TrackerServerError { .. } => {
+                            "Tracker connection failed. The tracker servers may be offline or unreachable. This is common with older torrents. Try:\n• A different torrent from the same content\n• Torrents from more recent search results\n• Checking your internet connection".to_string()
+                        }
+                        TorrentError::TrackerTimeout { .. } => {
+                            "Tracker request timed out. The tracker servers are responding slowly or may be overloaded.".to_string()
+                        }
+                        TorrentError::Http(reqwest_error) => {
+                            // Handle specific HTTP errors that might indicate torrent availability
+                            if let Some(status) = reqwest_error.status() {
+                                match status.as_u16() {
+                                    404 => "This torrent is not available on public trackers. Try a different torrent or one with embedded tracker URLs.".to_string(),
+                                    500..=599 => "Tracker server is experiencing issues. Try again later or use a different torrent.".to_string(),
+                                    _ => format!("HTTP error ({status}): {reqwest_error}")
+                                }
+                            } else {
+                                "Network connection failed. Check your internet connection and try again.".to_string()
+                            }
+                        }
+                        _ => format!("Download failed: {e}")
                     };
 
                     Ok(Json(json!({
