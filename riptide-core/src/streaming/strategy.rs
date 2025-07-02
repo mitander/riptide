@@ -120,11 +120,11 @@ impl ContainerDetector {
         // WebM (EBML + webm doctype)
         if header_bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
             // This is EBML, check if it's WebM specifically
-            if let Some(pos) = header_bytes.windows(4).position(|w| w == b"webm") {
-                if pos < 100 {
-                    // Doctype should be near the beginning
-                    return ContainerFormat::WebM;
-                }
+            if let Some(pos) = header_bytes.windows(4).position(|w| w == b"webm")
+                && pos < 100
+            {
+                // Doctype should be near the beginning
+                return ContainerFormat::WebM;
             }
             // If EBML but not WebM, it's likely MKV
             return ContainerFormat::Mkv;

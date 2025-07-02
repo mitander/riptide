@@ -14,6 +14,7 @@ use axum::response::Response;
 ///
 /// # Examples
 /// ```
+/// use riptide_web::handlers::range::parse_range_header;
 /// let (start, end, length) = parse_range_header("bytes=100-199", 1000);
 /// assert_eq!((start, end, length), (100, 199, 100));
 /// ```

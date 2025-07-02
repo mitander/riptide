@@ -73,6 +73,7 @@ pub struct RemuxingResult {
 
 /// Production FFmpeg implementation using ffmpeg-next crate
 pub struct ProductionFfmpegProcessor {
+    #[allow(dead_code)]
     ffmpeg_path: Option<std::path::PathBuf>,
 }
 
@@ -88,7 +89,7 @@ impl ProductionFfmpegProcessor {
         match ffmpeg_next::init() {
             Ok(()) => Ok(()),
             Err(e) => Err(StreamingError::FfmpegError {
-                reason: format!("FFmpeg initialization failed: {}", e),
+                reason: format!("FFmpeg initialization failed: {e}"),
             }),
         }
     }
