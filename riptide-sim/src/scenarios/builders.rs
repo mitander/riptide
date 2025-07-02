@@ -16,15 +16,7 @@ impl SimulationScenarios {
     /// Fast, reliable peers with low latency. Used as baseline for
     /// performance testing and streaming algorithm validation.
     pub fn ideal_streaming(seed: u64) -> DeterministicSimulation {
-        let config = SimulationConfig {
-            enabled: true,
-            deterministic_seed: Some(seed),
-            network_latency_ms: 10,
-            packet_loss_rate: 0.0,
-            max_simulated_peers: 20,
-            simulated_download_speed: 10_485_760, // 10 MB/s
-            use_mock_data: true,
-        };
+        let config = SimulationConfig::ideal_streaming(seed);
         let mut sim = DeterministicSimulation::new(config)
             .expect("Failed to create ideal streaming simulation");
         let scenario = StreamingScenario::default();
@@ -48,15 +40,7 @@ impl SimulationScenarios {
     /// Simulates poor network conditions with high latency and
     /// limited bandwidth to test streaming resilience.
     pub fn slow_network(seed: u64) -> DeterministicSimulation {
-        let config = SimulationConfig {
-            enabled: true,
-            deterministic_seed: Some(seed),
-            network_latency_ms: 500, // High latency
-            packet_loss_rate: 0.1,   // 10% packet loss
-            max_simulated_peers: 15,
-            simulated_download_speed: 524_288, // 512 KB/s
-            use_mock_data: true,
-        };
+        let config = SimulationConfig::slow_network(seed);
         let mut sim =
             DeterministicSimulation::new(config).expect("Failed to create slow network simulation");
         let scenario = StreamingScenario::default();
@@ -85,15 +69,7 @@ impl SimulationScenarios {
     /// Tests the torrent engine's ability to maintain download progress
     /// when peers frequently join and leave the swarm.
     pub fn peer_churn(seed: u64) -> DeterministicSimulation {
-        let config = SimulationConfig {
-            enabled: true,
-            deterministic_seed: Some(seed),
-            network_latency_ms: 100,
-            packet_loss_rate: 0.02,
-            max_simulated_peers: 25,
-            simulated_download_speed: 2_097_152, // 2 MB/s
-            use_mock_data: true,
-        };
+        let config = SimulationConfig::high_peer_churn(seed);
         let mut sim =
             DeterministicSimulation::new(config).expect("Failed to create peer churn simulation");
         let scenario = StreamingScenario::default();
@@ -123,15 +99,7 @@ impl SimulationScenarios {
     /// Tests error recovery and retry mechanisms when pieces fail
     /// hash validation or arrive corrupted.
     pub fn piece_failures(seed: u64) -> DeterministicSimulation {
-        let config = SimulationConfig {
-            enabled: true,
-            deterministic_seed: Some(seed),
-            network_latency_ms: 75,
-            packet_loss_rate: 0.05,
-            max_simulated_peers: 12,
-            simulated_download_speed: 1_572_864, // 1.5 MB/s
-            use_mock_data: true,
-        };
+        let config = SimulationConfig::mixed_network_quality(seed);
         let mut sim = DeterministicSimulation::new(config)
             .expect("Failed to create piece failures simulation");
         let scenario = StreamingScenario::default();

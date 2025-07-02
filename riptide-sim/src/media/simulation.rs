@@ -47,15 +47,7 @@ impl MediaStreamingSimulation {
         piece_size: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let movie_folder = MediaAnalyzer::analyze_movie_folder(folder_path).await?;
-        let config = riptide_core::config::SimulationConfig {
-            enabled: true,
-            deterministic_seed: Some(seed),
-            network_latency_ms: 50,
-            packet_loss_rate: 0.01,
-            max_simulated_peers: 20,
-            simulated_download_speed: 5_242_880,
-            use_mock_data: true,
-        };
+        let config = riptide_core::config::SimulationConfig::bandwidth_limited(seed);
         let simulation = DeterministicSimulation::new(config)
             .map_err(|e| format!("Failed to create simulation: {e}"))?;
         let piece_to_file_map = Self::build_piece_mapping(&movie_folder, piece_size);

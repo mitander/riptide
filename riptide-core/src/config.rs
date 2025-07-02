@@ -165,6 +165,86 @@ impl SimulationConfig {
             use_mock_data: false,
         }
     }
+
+    /// Creates ideal streaming configuration for fast, reliable scenarios.
+    ///
+    /// Optimized for streaming media with minimal latency and no packet loss.
+    /// Perfect for testing ideal network conditions.
+    pub fn ideal_streaming(seed: u64) -> Self {
+        Self {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 10,
+            packet_loss_rate: 0.0,
+            max_simulated_peers: 20,
+            simulated_download_speed: 10_485_760, // 10 MB/s
+            use_mock_data: true,
+        }
+    }
+
+    /// Creates slow network configuration for testing poor conditions.
+    ///
+    /// High latency, significant packet loss, and limited bandwidth to test
+    /// streaming resilience under adverse network conditions.
+    pub fn slow_network(seed: u64) -> Self {
+        Self {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 500, // High latency
+            packet_loss_rate: 0.1,   // 10% packet loss
+            max_simulated_peers: 15,
+            simulated_download_speed: 524_288, // 512 KB/s
+            use_mock_data: true,
+        }
+    }
+
+    /// Creates high peer churn configuration for testing swarm instability.
+    ///
+    /// Medium latency with more peers to simulate environments where
+    /// peers frequently join and leave the swarm.
+    pub fn high_peer_churn(seed: u64) -> Self {
+        Self {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 100,
+            packet_loss_rate: 0.02,
+            max_simulated_peers: 50,
+            simulated_download_speed: 2_097_152, // 2 MB/s
+            use_mock_data: true,
+        }
+    }
+
+    /// Creates bandwidth limited configuration for testing constrained downloads.
+    ///
+    /// Very low bandwidth with stable connections to test behavior under
+    /// bandwidth constraints typical of mobile or shared connections.
+    pub fn bandwidth_limited(seed: u64) -> Self {
+        Self {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 50,
+            packet_loss_rate: 0.01,
+            max_simulated_peers: 15,
+            simulated_download_speed: 262_144, // 256 KB/s
+            use_mock_data: true,
+        }
+    }
+
+    /// Creates mixed network quality configuration for realistic testing.
+    ///
+    /// Moderate latency and packet loss with variable peer quality to
+    /// simulate real-world mixed network conditions.
+    pub fn mixed_network_quality(seed: u64) -> Self {
+        Self {
+            enabled: true,
+            deterministic_seed: Some(seed),
+            network_latency_ms: 75,
+            packet_loss_rate: 0.05, // 5% packet loss
+            max_simulated_peers: 30,
+            simulated_download_speed: 1_048_576, // 1 MB/s
+            use_mock_data: true,
+        }
+    }
 }
 
 impl RiptideConfig {

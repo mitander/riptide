@@ -26,15 +26,7 @@ use crate::{
 /// - `SimulationError::EventQueueOverflow` - Too many retry events
 /// - `SimulationError::TimeLimitExceeded` - Simulation runs too long
 pub fn severe_network_degradation_scenario() -> Result<SimulationReport, SimulationError> {
-    let config = SimulationConfig {
-        enabled: true,
-        deterministic_seed: Some(1001),
-        network_latency_ms: 50,
-        packet_loss_rate: 0.01,
-        max_simulated_peers: 15,
-        simulated_download_speed: 5_242_880, // 5 MB/s initially
-        use_mock_data: true,
-    };
+    let config = SimulationConfig::bandwidth_limited(1001);
 
     let mut sim = DeterministicSimulation::new(config)?;
 
@@ -87,15 +79,7 @@ pub fn severe_network_degradation_scenario() -> Result<SimulationReport, Simulat
 /// - `SimulationError::EventQueueOverflow` - Too many connection events
 /// - `SimulationError::ResourceLimitExceeded` - Connection limit hit
 pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError> {
-    let config = SimulationConfig {
-        enabled: true,
-        deterministic_seed: Some(1002),
-        network_latency_ms: 100,
-        packet_loss_rate: 0.02,
-        max_simulated_peers: 50,
-        simulated_download_speed: 2_097_152, // 2 MB/s
-        use_mock_data: true,
-    };
+    let config = SimulationConfig::high_peer_churn(1002);
 
     let mut sim = DeterministicSimulation::new(config)?;
 
@@ -146,15 +130,7 @@ pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError
 /// # Errors
 /// - `SimulationError::TooManyInvariantViolations` - Recovery fails
 pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, SimulationError> {
-    let config = SimulationConfig {
-        enabled: true,
-        deterministic_seed: Some(1003),
-        network_latency_ms: 50,
-        packet_loss_rate: 0.01,
-        max_simulated_peers: 20,
-        simulated_download_speed: 10_485_760, // 10 MB/s
-        use_mock_data: true,
-    };
+    let config = SimulationConfig::ideal_streaming(1003);
 
     let mut sim = DeterministicSimulation::new(config)?;
 
@@ -205,12 +181,13 @@ pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, Simulatio
 /// # Errors
 /// - `SimulationError::ResourceLimitExceeded` - Resource exhausted
 pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationError> {
+    // Use custom config for this special high-resource scenario
     let config = SimulationConfig {
         enabled: true,
         deterministic_seed: Some(1004),
         network_latency_ms: 50,
         packet_loss_rate: 0.01,
-        max_simulated_peers: 100,             // Many peers
+        max_simulated_peers: 100, // Many peers for resource exhaustion
         simulated_download_speed: 20_971_520, // 20 MB/s - fast downloads
         use_mock_data: true,
     };
@@ -284,15 +261,7 @@ pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationErro
 /// # Errors
 /// - `SimulationError::InvalidEventScheduling` - Scheduling error
 pub fn total_peer_failure_scenario() -> Result<SimulationReport, SimulationError> {
-    let config = SimulationConfig {
-        enabled: true,
-        deterministic_seed: Some(1005),
-        network_latency_ms: 100,
-        packet_loss_rate: 0.05, // High packet loss
-        max_simulated_peers: 10,
-        simulated_download_speed: 1_048_576, // 1 MB/s
-        use_mock_data: true,
-    };
+    let config = SimulationConfig::mixed_network_quality(1005);
 
     let mut sim = DeterministicSimulation::new(config)?;
     let info_hash = InfoHash::new([0x05; 20]);

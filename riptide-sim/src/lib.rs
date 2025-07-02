@@ -249,15 +249,7 @@ pub fn create_standard_streaming_simulation(
     seed: u64,
     piece_count: u32,
 ) -> Result<DeterministicSimulation> {
-    let config = SimulationConfig {
-        enabled: true,
-        deterministic_seed: Some(seed),
-        network_latency_ms: 50,
-        packet_loss_rate: 0.01,
-        max_simulated_peers: 20,
-        simulated_download_speed: 5_242_880, // 5 MB/s
-        use_mock_data: true,
-    };
+    let config = SimulationConfig::bandwidth_limited(seed);
 
     let mut sim = DeterministicSimulation::new(config)?;
 
