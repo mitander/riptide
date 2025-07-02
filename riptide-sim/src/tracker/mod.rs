@@ -2,10 +2,12 @@
 
 mod builder;
 mod mock;
+mod simulated;
 mod types;
 
 pub use builder::MockTrackerBuilder;
 pub use mock::MockTracker;
+pub use simulated::SimulatedTrackerManager;
 pub use types::{AnnounceResponse, MockTorrentData, TrackerError};
 
 #[cfg(test)]

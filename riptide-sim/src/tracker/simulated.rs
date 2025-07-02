@@ -6,11 +6,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-
-use riptide_core::torrent::{
-    InfoHash, TorrentError, TrackerManagement, AnnounceEvent, AnnounceRequest, AnnounceResponse, 
-    ScrapeRequest, ScrapeResponse, ScrapeStats, TrackerClient,
+use riptide_core::torrent::tracker::{
+    AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, ScrapeStats,
 };
+use riptide_core::torrent::{InfoHash, TorrentError, TrackerClient, TrackerManagement};
 
 /// Simulated tracker client for deterministic testing and development.
 ///
@@ -138,6 +137,7 @@ impl SimulatedTrackerClient {
     ///
     /// Useful for testing scenarios with specific seeder/leecher ratios
     /// or simulating swarm evolution over time.
+    #[allow(dead_code)]
     pub fn set_swarm_stats(
         &self,
         info_hash: InfoHash,
@@ -161,12 +161,14 @@ impl SimulatedTrackerClient {
     ///
     /// Enables testing error handling paths and recovery behavior
     /// without relying on actual network failures.
+    #[allow(dead_code)]
     pub fn simulate_failure(&mut self, failure_message: String) {
         self.response_config.failure_message = Some(failure_message);
         self.response_config.failure_rate = 1.0;
     }
 
     /// Resets tracker to normal operation after simulated failure.
+    #[allow(dead_code)]
     pub fn reset_to_normal(&mut self) {
         self.response_config.failure_message = None;
         self.response_config.failure_rate = 0.0;
@@ -176,6 +178,7 @@ impl SimulatedTrackerClient {
     ///
     /// Useful for verifying announce frequency and retry behavior
     /// in deterministic tests.
+    #[allow(dead_code)]
     pub fn announce_count(&self) -> u32 {
         self.announce_count.load(Ordering::Relaxed)
     }
@@ -380,8 +383,9 @@ impl TrackerManagement for SimulatedTrackerManager {
 
 #[cfg(test)]
 mod simulated_tracker_tests {
+    use riptide_core::torrent::PeerId;
+
     use super::*;
-    use crate::torrent::PeerId;
 
     fn create_test_announce_request(info_hash: InfoHash, event: AnnounceEvent) -> AnnounceRequest {
         AnnounceRequest {

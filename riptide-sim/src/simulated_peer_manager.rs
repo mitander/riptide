@@ -1,5 +1,6 @@
 //! Simulated peer manager for deterministic testing and development
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -391,6 +392,10 @@ impl PeerManager for InMemoryPeerManager {
             peer.status = ConnectionStatus::Disconnected;
         }
         Ok(())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

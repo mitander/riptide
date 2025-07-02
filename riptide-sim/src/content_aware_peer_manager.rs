@@ -3,6 +3,7 @@
 //! Extends basic simulation with actual piece data serving, enabling end-to-end
 //! content distribution testing from real files to reconstructed streams.
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -246,7 +247,7 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
 }
 
 #[async_trait]
-impl<P: PieceStore> PeerManager for ContentAwarePeerManager<P> {
+impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -442,6 +443,10 @@ impl<P: PieceStore> PeerManager for ContentAwarePeerManager<P> {
             peer.status = ConnectionStatus::Disconnected;
         }
         Ok(())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

@@ -1,5 +1,6 @@
 //! Peer management for BitTorrent connections with real and simulated implementations
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -120,6 +121,9 @@ pub trait PeerManager: Send + Sync {
     /// # Errors
     /// - `TorrentError::PeerConnectionError` - Error during shutdown
     async fn shutdown(&mut self) -> Result<(), TorrentError>;
+
+    /// Allows downcasting for simulation-specific methods.
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// Production peer manager using real TCP connections.
@@ -427,6 +431,10 @@ impl PeerManager for TcpPeerManager {
         }
 
         Ok(())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

@@ -94,7 +94,7 @@ pub use scenarios::{
     StressScenario, streaming_edge_cases,
 };
 pub use simulated_peer_manager::{InMemoryPeerConfig, InMemoryPeerManager};
-pub use tracker::{MockTracker, MockTrackerBuilder};
+pub use tracker::{MockTracker, MockTrackerBuilder, SimulatedTrackerManager};
 
 /// Simulation environment for BitTorrent development.
 ///
