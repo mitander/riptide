@@ -50,20 +50,33 @@ impl TrackerManager {
             });
         }
 
-        tracing::debug!("Announcing to {} trackers", tracker_urls.len());
+        tracing::info!(
+            "Announcing to {} trackers for torrent {}",
+            tracker_urls.len(),
+            hex::encode(&request.info_hash.as_bytes()[..8])
+        );
 
         let mut last_error = None;
 
         for tracker_url in tracker_urls {
+            tracing::info!("Connecting to tracker: {}", tracker_url);
+
             // Get or create tracker client
             let tracker_client = self.get_or_create_tracker_client(tracker_url);
 
             match tracker_client.announce(request.clone()).await {
                 Ok(response) => {
+                    tracing::info!(
+                        "Tracker {} responded with {} peers, complete: {}, incomplete: {}",
+                        tracker_url,
+                        response.peers.len(),
+                        response.complete,
+                        response.incomplete
+                    );
                     return Ok(response);
                 }
                 Err(e) => {
-                    tracing::warn!("Tracker {tracker_url} failed: {e}");
+                    tracing::warn!("Tracker {} failed: {}", tracker_url, e);
                     last_error = Some(e);
                 }
             }

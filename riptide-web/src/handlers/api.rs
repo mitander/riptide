@@ -29,9 +29,6 @@ pub struct DownloadRequest {
 }
 
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
-    // Update progress simulation before reading stats
-    state.torrent_engine.simulate_download_progress();
-
     let stats = state.torrent_engine.get_download_stats().await.unwrap();
 
     Json(Stats {
@@ -43,46 +40,41 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 }
 
 pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
-    // Update progress simulation before reading
-    state.torrent_engine.simulate_download_progress();
-
     let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
 
+    // Get movie manager data once outside the loop
+    let movie_titles: HashMap<_, _> = if let Some(ref movie_manager) = state.movie_manager {
+        let manager = movie_manager.read().await;
+        manager
+            .all_movies()
+            .iter()
+            .map(|movie| (movie.info_hash, movie.title.clone()))
+            .collect()
+    } else {
+        HashMap::new()
+    };
+
     let torrents: Vec<serde_json::Value> = sessions.iter().map(|session| {
+        // Check if this torrent has a corresponding local movie for better naming
+        let name = movie_titles.get(&session.info_hash)
+            .cloned()
+            .unwrap_or_else(|| format!("Torrent {}", &session.info_hash.to_string()[..8]));
+
         json!({
-            "name": format!("Torrent {}", &session.info_hash.to_string()[..8]),
+            "name": name,
             "progress": (session.progress * 100.0) as u32,
             "speed": 0, // TODO: Track download speed
-            "size": "Unknown", // TODO: Get from metadata
+            "size": format!("{:.1} GB", (session.piece_count as u64 * session.piece_size as u64) as f64 / 1_073_741_824.0),
             "status": if session.progress >= 1.0 { "completed" } else { "downloading" },
             "info_hash": session.info_hash.to_string(),
-            "pieces": format!("{}/{}", session.completed_pieces.iter().filter(|&&x| x).count(), session.piece_count)
+            "pieces": format!("{}/{}", session.completed_pieces.iter().filter(|&&x| x).count(), session.piece_count),
+            "is_local": false // BitTorrent torrents should use piece-based streaming
         })
     }).collect();
 
-    // Add local movies to torrents list if available
-    let mut display_torrents = torrents;
-
-    // Add local movies to torrents list if available
-    if let Some(ref movie_manager) = state.movie_manager {
-        let manager = movie_manager.read().await;
-        let local_movies: Vec<serde_json::Value> = manager
-            .all_movies()
-            .iter()
-            .map(|movie| {
-                json!({
-                    "name": movie.title,
-                    "progress": 100, // Local movies are always "complete"
-                    "speed": 0,
-                    "size": format!("{:.1} GB", movie.size as f64 / 1_073_741_824.0),
-                    "status": "completed",
-                    "info_hash": movie.info_hash.to_string(),
-                    "is_local": true
-                })
-            })
-            .collect();
-        display_torrents.extend(local_movies);
-    }
+    // In demo mode, local movies are converted to BitTorrent torrents above,
+    // so we don't need to add them separately. This prevents duplication.
+    let display_torrents = torrents;
 
     // Fallback to demo data if no torrents or local movies
     let final_torrents = if display_torrents.is_empty() {

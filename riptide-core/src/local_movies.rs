@@ -174,4 +174,12 @@ impl LocalMovieManager {
             ))
         }
     }
+
+    /// Update movie's info hash (used when canonical content-based hash differs from path-based)
+    pub fn update_movie_info_hash(&mut self, old_hash: InfoHash, new_hash: InfoHash) {
+        if let Some(mut movie) = self.movies.remove(&old_hash) {
+            movie.info_hash = new_hash;
+            self.movies.insert(new_hash, movie);
+        }
+    }
 }

@@ -38,6 +38,10 @@ pub struct TorrentSession {
     pub piece_count: u32,
     /// Size of each piece in bytes
     pub piece_size: u32,
+    /// Total size of torrent content in bytes
+    pub total_size: u64,
+    /// Original filename for MIME type detection
+    pub filename: String,
     /// Pieces we have completed
     pub completed_pieces: Vec<bool>,
     /// Download progress (0.0 to 1.0)
@@ -70,7 +74,15 @@ pub enum TorrentEngineCommand {
     GetDownloadStats {
         responder: oneshot::Sender<EngineStats>,
     },
-    SimulateProgress, // No response needed for this one
+    MarkPiecesCompleted {
+        info_hash: InfoHash,
+        piece_indices: Vec<u32>,
+        responder: oneshot::Sender<Result<(), TorrentError>>,
+    },
+    AddTorrentMetadata {
+        metadata: super::parsing::types::TorrentMetadata,
+        responder: oneshot::Sender<Result<InfoHash, TorrentError>>,
+    },
 }
 
 /// This will be the new public-facing handle to the engine
@@ -138,9 +150,40 @@ impl TorrentEngineHandle {
         rx.await.map_err(|_| TorrentError::EngineResponseDropped)
     }
 
-    pub fn simulate_download_progress(&self) {
-        // Use try_send for fire-and-forget messages
-        let _ = self.sender.try_send(TorrentEngineCommand::SimulateProgress);
+    /// Mark pieces as completed (for demo mode when pieces are pre-populated)
+    pub async fn mark_pieces_completed(
+        &self,
+        info_hash: InfoHash,
+        piece_indices: Vec<u32>,
+    ) -> Result<(), TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::MarkPiecesCompleted {
+            info_hash,
+            piece_indices,
+            responder,
+        };
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineClosed)?;
+        rx.await.map_err(|_| TorrentError::EngineResponseDropped)?
+    }
+
+    /// Add torrent from metadata (for demo mode with TorrentCreator)
+    pub async fn add_torrent_metadata(
+        &self,
+        metadata: super::parsing::types::TorrentMetadata,
+    ) -> Result<InfoHash, TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::AddTorrentMetadata {
+            metadata,
+            responder,
+        };
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineClosed)?;
+        rx.await.map_err(|_| TorrentError::EngineResponseDropped)?
     }
 }
 
@@ -190,8 +233,20 @@ where
                     let stats = engine.get_download_stats().await;
                     let _ = responder.send(stats);
                 }
-                TorrentEngineCommand::SimulateProgress => {
-                    engine.simulate_download_progress();
+                TorrentEngineCommand::MarkPiecesCompleted {
+                    info_hash,
+                    piece_indices,
+                    responder,
+                } => {
+                    let result = engine.mark_pieces_completed(info_hash, piece_indices);
+                    let _ = responder.send(result);
+                }
+                TorrentEngineCommand::AddTorrentMetadata {
+                    metadata,
+                    responder,
+                } => {
+                    let result = engine.add_torrent_metadata(metadata);
+                    let _ = responder.send(result);
                 }
             }
         }
@@ -225,11 +280,14 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
         let magnet = self.parser.parse_magnet_link(magnet_link).await?;
         let info_hash = magnet.info_hash;
 
-        tracing::debug!(
-            "Parsed magnet link: info_hash={info_hash}, display_name={:?}, trackers={:?}",
+        tracing::info!(
+            "Added magnet link: info_hash={info_hash}, display_name={:?}, trackers={:?}",
             magnet.display_name,
             magnet.trackers
         );
+
+        // Extract display name before moving magnet
+        let display_name = magnet.display_name.clone();
 
         // Filter out UDP trackers (we only support HTTP for now) and use fallback if none remain
         let http_trackers: Vec<String> = magnet
@@ -254,6 +312,9 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
             info_hash,
             piece_count: 0, // Unknown until we get metadata from peers
             piece_size: self.config.torrent.default_piece_size,
+            total_size: 0, // Unknown until we get metadata from peers
+            filename: display_name
+                .unwrap_or_else(|| format!("torrent_{}", hex::encode(&info_hash.as_bytes()[..8]))),
             completed_pieces: Vec::new(),
             progress: 0.0,
             started_at: Instant::now(),
@@ -294,6 +355,8 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
             info_hash,
             piece_count: metadata.piece_hashes.len() as u32,
             piece_size: metadata.piece_length,
+            total_size: metadata.total_length,
+            filename: metadata.name.clone(),
             completed_pieces: vec![false; metadata.piece_hashes.len()],
             progress: 0.0,
             started_at: Instant::now(),
@@ -380,6 +443,12 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
         };
 
         // Connect to discovered peers
+        tracing::info!(
+            "Tracker announced {} peers for torrent {}",
+            tracker_response.peers.len(),
+            info_hash
+        );
+
         let mut connected_count = 0;
         for peer_addr in tracker_response
             .peers
@@ -389,10 +458,10 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
             match self.connect_peer(info_hash, *peer_addr).await {
                 Ok(()) => {
                     connected_count += 1;
-                    println!("Connected to peer: {peer_addr}");
+                    tracing::info!("Connected to peer: {}", peer_addr);
                 }
                 Err(e) => {
-                    eprintln!("Failed to connect to peer {peer_addr}: {e}");
+                    tracing::warn!("Failed to connect to peer {}: {}", peer_addr, e);
                 }
             }
         }
@@ -419,41 +488,17 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
         session.is_downloading = true;
         session.started_at = Instant::now();
 
-        println!("Started download for {info_hash} with {connected_count} peers");
+        tracing::info!("Started download for {info_hash} with {connected_count} peers");
+
+        // Log detailed download status
+        tracing::info!(
+            "Download status: piece_count={}, piece_size={}, total_size={}MB, filename={}",
+            session.piece_count,
+            session.piece_size,
+            session.total_size / (1024 * 1024),
+            session.filename
+        );
         Ok(())
-    }
-
-    /// Simulate downloading progress for demo purposes.
-    ///
-    /// In production, this would be replaced by real BitTorrent protocol implementation.
-    /// Downloads pieces sequentially at ~2 pieces per second for streaming optimization.
-    pub fn simulate_download_progress(&mut self) {
-        for session in self.active_torrents.values_mut() {
-            if !session.is_downloading || session.progress >= 1.0 {
-                continue;
-            }
-
-            let elapsed = session.started_at.elapsed();
-            // Download ~2 pieces per second for streaming
-            let pieces_to_complete = (elapsed.as_secs_f32() * 2.0) as usize;
-            let target_pieces = pieces_to_complete.min(session.piece_count as usize);
-
-            // Complete pieces sequentially (better for streaming)
-            for i in 0..target_pieces {
-                if i < session.completed_pieces.len() {
-                    session.completed_pieces[i] = true;
-                }
-            }
-
-            // Update progress
-            let completed_count = session.completed_pieces.iter().filter(|&&x| x).count();
-            session.progress = completed_count as f32 / session.piece_count as f32;
-
-            // Stop downloading when complete
-            if session.progress >= 1.0 {
-                session.is_downloading = false;
-            }
-        }
     }
 
     /// Get torrent session information
@@ -466,6 +511,80 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
             .ok_or(TorrentError::TorrentNotFound { info_hash })
     }
 
+    /// Mark pieces as completed (for demo mode when pieces are pre-populated)
+    pub fn mark_pieces_completed(
+        &mut self,
+        info_hash: InfoHash,
+        piece_indices: Vec<u32>,
+    ) -> Result<(), TorrentError> {
+        let session = self
+            .active_torrents
+            .get_mut(&info_hash)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
+
+        // Mark the specified pieces as completed
+        let mut newly_completed = 0;
+        for piece_index in piece_indices {
+            if let Some(completed) = session.completed_pieces.get_mut(piece_index as usize)
+                && !*completed
+            {
+                *completed = true;
+                newly_completed += 1;
+            }
+        }
+
+        // Update progress
+        let completed_count = session.completed_pieces.iter().filter(|&&x| x).count();
+        let old_progress = session.progress;
+        session.progress = completed_count as f32 / session.piece_count as f32;
+
+        // Log progress updates
+        if newly_completed > 0 {
+            tracing::info!(
+                "Download progress: {info_hash} - {:.1}% complete ({}/{} pieces) +{} new pieces",
+                session.progress * 100.0,
+                completed_count,
+                session.piece_count,
+                newly_completed
+            );
+
+            if session.progress >= 1.0 && old_progress < 1.0 {
+                tracing::info!(
+                    "Download completed: {info_hash} - {} ({}MB)",
+                    session.filename,
+                    session.total_size / (1024 * 1024)
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Add torrent from metadata (for demo mode with TorrentCreator)
+    pub fn add_torrent_metadata(
+        &mut self,
+        metadata: super::parsing::types::TorrentMetadata,
+    ) -> Result<InfoHash, TorrentError> {
+        let info_hash = metadata.info_hash;
+
+        // Create session with complete metadata
+        let session = TorrentSession {
+            info_hash,
+            piece_count: metadata.piece_hashes.len() as u32,
+            piece_size: metadata.piece_length,
+            total_size: metadata.total_length,
+            filename: metadata.name.clone(),
+            completed_pieces: vec![false; metadata.piece_hashes.len()],
+            progress: 0.0,
+            started_at: Instant::now(),
+            is_downloading: false,
+            tracker_urls: metadata.announce_urls,
+        };
+
+        self.active_torrents.insert(info_hash, session);
+        Ok(info_hash)
+    }
+
     /// Connect to discovered peer for torrent
     ///
     /// # Errors
@@ -475,10 +594,22 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
         info_hash: InfoHash,
         address: std::net::SocketAddr,
     ) -> Result<(), TorrentError> {
+        tracing::info!("Connecting to peer {} for torrent {}", address, info_hash);
+
         let mut peer_manager = self.peer_manager.write().await;
-        peer_manager
+        match peer_manager
             .connect_peer(address, info_hash, self.peer_id)
             .await
+        {
+            Ok(()) => {
+                tracing::info!("Successfully connected to peer {}", address);
+                Ok(())
+            }
+            Err(e) => {
+                tracing::warn!("Failed to connect to peer {}: {}", address, e);
+                Err(e)
+            }
+        }
     }
 
     /// All active torrent sessions
@@ -532,11 +663,19 @@ impl<P: PeerManager, T: TrackerManagement> TorrentEngine<P, T> {
 
 impl TorrentSession {
     /// Creates new torrent session
-    pub fn new(info_hash: InfoHash, piece_count: u32, piece_size: u32) -> Self {
+    pub fn new(
+        info_hash: InfoHash,
+        piece_count: u32,
+        piece_size: u32,
+        total_size: u64,
+        filename: String,
+    ) -> Self {
         Self {
             info_hash,
             piece_count,
             piece_size,
+            total_size,
+            filename,
             completed_pieces: vec![false; piece_count as usize],
             progress: 0.0,
             started_at: Instant::now(),
@@ -585,7 +724,7 @@ pub struct EngineStats {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    // use std::net::{IpAddr, Ipv4Addr, SocketAddr}; // TODO: Add when implementing network tests
 
     use super::*;
     use crate::torrent::test_data::create_test_info_hash;
@@ -700,7 +839,8 @@ mod tests {
     #[test]
     fn test_torrent_session_progress() {
         let info_hash = create_test_info_hash();
-        let mut session = TorrentSession::new(info_hash, 4, 32768);
+        let mut session =
+            TorrentSession::new(info_hash, 4, 32768, 131072, "test_file.mp4".to_string());
 
         assert_eq!(session.progress, 0.0);
         assert!(!session.is_complete());

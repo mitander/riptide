@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Json, Response};
-use riptide_core::streaming::PieceBasedStreamReader;
+use riptide_core::streaming::{ContainerFormat, PieceBasedStreamReader, RemuxingOptions};
 use riptide_core::torrent::InfoHash;
 use serde::Deserialize;
 use serde_json::json;
@@ -14,16 +14,43 @@ use serde_json::json;
 use crate::handlers::range::{
     build_range_response, extract_range_header, parse_range_header, validate_range_bounds,
 };
-use crate::server::{AppState, PieceStoreType};
+use crate::server::{AppState, ConvertedFile, PieceStoreType};
+
+/// Detect container format from filename extension
+fn detect_container_format(filename: &str) -> ContainerFormat {
+    let extension = std::path::Path::new(filename)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_lowercase());
+
+    match extension.as_deref() {
+        Some("mp4") | Some("m4v") => ContainerFormat::Mp4,
+        Some("webm") => ContainerFormat::WebM,
+        Some("mkv") => ContainerFormat::Mkv,
+        Some("avi") => ContainerFormat::Avi,
+        Some("mov") => ContainerFormat::Mov,
+        _ => ContainerFormat::Unknown,
+    }
+}
+
+/// Determine output MIME type for browser streaming
+fn determine_content_type(filename: &str) -> String {
+    let format = detect_container_format(filename);
+
+    // For non-browser-compatible formats, we'll serve as MP4 after remuxing
+    if format.is_browser_compatible() {
+        format.mime_type().to_string()
+    } else {
+        // Non-compatible formats (MKV, AVI, etc.) will be remuxed to MP4
+        "video/mp4".to_string()
+    }
+}
 
 pub async fn stream_torrent(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response<Body>, StatusCode> {
-    // Update download progress first
-    state.torrent_engine.simulate_download_progress();
-
     let info_hash = match InfoHash::from_hex(&info_hash_str) {
         Ok(hash) => hash,
         Err(_) => return Err(StatusCode::BAD_REQUEST),
@@ -35,56 +62,285 @@ pub async fn stream_torrent(
         Err(_) => return Err(StatusCode::NOT_FOUND),
     };
 
-    // For demo, create fake video data based on completed pieces
-    let total_size = session.piece_count as u64 * session.piece_size as u64;
+    // Calculate available size based on completed pieces
+    let total_size = session.total_size;
     let completed_pieces = session.completed_pieces.iter().filter(|&&x| x).count() as u64;
-    let available_size = completed_pieces * session.piece_size as u64;
+    let available_size = if completed_pieces == session.piece_count as u64 {
+        total_size
+    } else {
+        completed_pieces * session.piece_size as u64
+    };
+
+    tracing::info!(
+        "Streaming info: piece_count={}, piece_size={}, total_size={}, completed_pieces={}, available_size={}",
+        session.piece_count,
+        session.piece_size,
+        total_size,
+        completed_pieces,
+        available_size
+    );
 
     // Handle range requests for video streaming
+    // For non-Range requests on large files, serve initial chunk to trigger browser Range requests
     let (start, end, _content_length) = if let Some(range_str) = extract_range_header(&headers) {
         parse_range_header(&range_str, available_size)
     } else {
-        (0, available_size.saturating_sub(1), available_size)
+        // For non-Range requests, serve first 1MB to allow browser to analyze file
+        let chunk_size = 1024 * 1024; // 1MB
+        let safe_end = chunk_size.min(available_size.saturating_sub(1));
+        (0, safe_end, safe_end + 1)
     };
 
     // Validate range bounds and get safe values
     let (start, safe_end, safe_length) = validate_range_bounds(start, end, available_size)?;
 
-    // Use BitTorrent piece-based streaming if available
-    let video_data = if let Some(ref piece_store) = state.piece_store {
-        match piece_store {
-            PieceStoreType::Simulation(sim_store) => {
-                // Create piece reader with session piece size
-                let piece_reader =
-                    PieceBasedStreamReader::new(Arc::clone(sim_store), session.piece_size as u32);
+    // Check if container format needs remuxing and handle conversion
+    let (video_data, actual_file_size) =
+        get_video_data_with_conversion(&state, info_hash, &session, start, safe_length).await?;
 
-                // Read the requested range using piece reconstruction
-                piece_reader
-                    .read_range(info_hash, start..start + safe_length)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-            }
-        }
-    } else if let Some(ref movie_manager) = state.movie_manager {
-        // Use local file reading
-        let manager = movie_manager.read().await;
-        manager
-            .read_file_segment(info_hash, start, safe_length)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    } else {
-        // No data source available - this is a configuration error
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    };
+    // Determine MIME type from filename
+    let content_type = determine_content_type(&session.filename);
 
     build_range_response(
         &headers,
         video_data,
-        "video/mp4",
+        &content_type,
         start,
         safe_end,
-        total_size,
+        actual_file_size,
     )
+}
+
+/// Get video data with automatic conversion for non-browser-compatible formats
+/// Returns (data, actual_file_size) where actual_file_size is the size of the served file
+async fn get_video_data_with_conversion(
+    state: &AppState,
+    info_hash: InfoHash,
+    session: &riptide_core::torrent::engine::TorrentSession,
+    start: u64,
+    length: u64,
+) -> Result<(Vec<u8>, u64), StatusCode> {
+    let container_format = detect_container_format(&session.filename);
+
+    if container_format.is_browser_compatible() {
+        // Direct streaming for MP4, WebM, etc. - no conversion needed
+        let data = read_original_data(state, info_hash, session, start, length).await?;
+        Ok((data, session.total_size))
+    } else {
+        // Format needs conversion (MKV -> MP4, etc.)
+        tracing::info!(
+            "Container format {:?} needs conversion for browser compatibility",
+            container_format
+        );
+
+        // Check cache first
+        {
+            let cache = state.conversion_cache.read().await;
+            if let Some(converted) = cache.get(&info_hash) {
+                tracing::info!("Using cached converted file for {}", info_hash);
+                let data = read_converted_data(&converted.output_path, start, length).await?;
+                return Ok((data, converted.size));
+            }
+        }
+
+        // Not in cache - need to convert
+        tracing::info!(
+            "Converting {} from {:?} to MP4",
+            session.filename,
+            container_format
+        );
+        let converted_path = convert_file_to_mp4(state, info_hash, session).await?;
+
+        // Get the converted file size from cache
+        let cache = state.conversion_cache.read().await;
+        let converted_size = cache
+            .get(&info_hash)
+            .map(|c| c.size)
+            .unwrap_or(session.total_size);
+
+        // Read from converted file
+        let data = read_converted_data(&converted_path, start, length).await?;
+        Ok((data, converted_size))
+    }
+}
+
+/// Read data from original source (piece store or local file)
+async fn read_original_data(
+    state: &AppState,
+    info_hash: InfoHash,
+    session: &riptide_core::torrent::engine::TorrentSession,
+    start: u64,
+    length: u64,
+) -> Result<Vec<u8>, StatusCode> {
+    if let Some(ref piece_store) = state.piece_store {
+        match piece_store {
+            PieceStoreType::Simulation(sim_store) => {
+                let piece_reader =
+                    PieceBasedStreamReader::new(Arc::clone(sim_store), session.piece_size);
+
+                piece_reader
+                    .read_range(info_hash, start..start + length)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to read from piece store: {:?}", e);
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    })
+            }
+        }
+    } else if let Some(ref movie_manager) = state.movie_manager {
+        let manager = movie_manager.read().await;
+        manager
+            .read_file_segment(info_hash, start, length)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    } else {
+        Err(StatusCode::INTERNAL_SERVER_ERROR)
+    }
+}
+
+/// Convert file to MP4 and cache the result
+async fn convert_file_to_mp4(
+    state: &AppState,
+    info_hash: InfoHash,
+    session: &riptide_core::torrent::engine::TorrentSession,
+) -> Result<std::path::PathBuf, StatusCode> {
+    // First, we need to reconstruct the original file for FFmpeg
+    let temp_input = reconstruct_original_file(state, info_hash, session).await?;
+
+    // Create output path
+    let temp_dir = std::env::temp_dir();
+    let output_path = temp_dir.join(format!("{info_hash}_converted.mp4"));
+
+    // Configure remuxing options (container-only, no re-encoding)
+    let config = RemuxingOptions::default();
+
+    // Perform conversion
+    match state
+        .ffmpeg_processor
+        .remux_to_mp4(&temp_input, &output_path, &config)
+        .await
+    {
+        Ok(result) => {
+            tracing::info!(
+                "Successfully converted {} to MP4 in {:.2}s (output size: {} bytes)",
+                session.filename,
+                result.processing_time,
+                result.output_size
+            );
+
+            // Cache the result
+            let converted = ConvertedFile {
+                output_path: output_path.clone(),
+                size: result.output_size,
+                created_at: std::time::Instant::now(),
+            };
+
+            {
+                let mut cache = state.conversion_cache.write().await;
+                cache.insert(info_hash, converted);
+            }
+
+            // Clean up temporary input file
+            let _ = tokio::fs::remove_file(&temp_input).await;
+
+            Ok(output_path)
+        }
+        Err(e) => {
+            tracing::error!("Failed to convert {}: {:?}", session.filename, e);
+            // Clean up temporary input file
+            let _ = tokio::fs::remove_file(&temp_input).await;
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Reconstruct the original file from pieces for FFmpeg processing
+async fn reconstruct_original_file(
+    state: &AppState,
+    info_hash: InfoHash,
+    session: &riptide_core::torrent::engine::TorrentSession,
+) -> Result<std::path::PathBuf, StatusCode> {
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join(format!(
+        "{}_original{}",
+        info_hash,
+        std::path::Path::new(&session.filename)
+            .extension()
+            .map(|ext| format!(".{}", ext.to_string_lossy()))
+            .unwrap_or_default()
+    ));
+
+    // Read entire file from piece store
+    let total_data = if let Some(ref piece_store) = state.piece_store {
+        match piece_store {
+            PieceStoreType::Simulation(sim_store) => {
+                let piece_reader =
+                    PieceBasedStreamReader::new(Arc::clone(sim_store), session.piece_size);
+
+                piece_reader
+                    .read_range(info_hash, 0..session.total_size)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to read full file from piece store: {:?}", e);
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    })?
+            }
+        }
+    } else if let Some(ref movie_manager) = state.movie_manager {
+        let manager = movie_manager.read().await;
+        manager
+            .read_file_segment(info_hash, 0, session.total_size)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    } else {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
+    // Write to temporary file
+    tokio::fs::write(&temp_path, total_data)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to write temporary file: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(temp_path)
+}
+
+/// Read data from converted MP4 file
+async fn read_converted_data(
+    file_path: &std::path::Path,
+    start: u64,
+    length: u64,
+) -> Result<Vec<u8>, StatusCode> {
+    let file = tokio::fs::File::open(file_path).await.map_err(|e| {
+        tracing::error!("Failed to open converted file {:?}: {:?}", file_path, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    let mut file = file;
+
+    // Seek to start position
+    file.seek(std::io::SeekFrom::Start(start))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to seek in converted file: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Read the requested length (use read instead of read_exact to handle EOF gracefully)
+    let mut buffer = vec![0u8; length as usize];
+    let bytes_read = file.read(&mut buffer).await.map_err(|e| {
+        tracing::error!("Failed to read from converted file: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if bytes_read != length as usize {
+        buffer.truncate(bytes_read);
+    }
+
+    Ok(buffer)
 }
 
 pub async fn api_local_movies(State(state): State<AppState>) -> Json<serde_json::Value> {

@@ -11,7 +11,10 @@ use super::strategy::{
 use crate::torrent::{InfoHash, PieceStore};
 
 /// Manager that selects appropriate streaming strategy based on container format
-pub struct StreamingStrategyManager<P: PieceStore, F: FfmpegProcessor = super::ffmpeg::SimulationFfmpegProcessor> {
+pub struct StreamingStrategyManager<
+    P: PieceStore,
+    F: FfmpegProcessor = super::ffmpeg::SimulationFfmpegProcessor,
+> {
     piece_store: Arc<P>,
     remuxed_streaming: Option<RemuxedStreaming<P, F>>,
 }
@@ -266,7 +269,8 @@ mod tests {
         let mut piece_store = MockPieceStore::new();
         piece_store.add_pieces(info_hash, pieces);
 
-        let manager = StreamingStrategyManager::new(Arc::new(piece_store));
+        let manager: StreamingStrategyManager<_, super::ffmpeg::SimulationFfmpegProcessor> =
+            StreamingStrategyManager::new(Arc::new(piece_store));
 
         // Test format detection
         let format = manager.detect_container_format(info_hash).await.unwrap();

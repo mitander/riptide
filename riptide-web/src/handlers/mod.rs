@@ -16,6 +16,4 @@ pub use pages::{
 pub use range::{
     build_range_response, extract_range_header, parse_range_header, validate_range_bounds,
 };
-pub use streaming::{
-    AddLocalMovieQuery, api_add_local_movie, api_local_movies, stream_local_movie, stream_torrent,
-};
+pub use streaming::stream_torrent;

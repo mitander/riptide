@@ -85,11 +85,18 @@ impl ProductionFfmpegProcessor {
 
     /// Verify FFmpeg installation and codecs
     fn verify_installation(&self) -> StreamingResult<()> {
-        // Check if ffmpeg-next can initialize
-        match ffmpeg_next::init() {
-            Ok(()) => Ok(()),
-            Err(e) => Err(StreamingError::FfmpegError {
-                reason: format!("FFmpeg initialization failed: {e}"),
+        // Check if ffmpeg binary is available by running version command
+        let result = std::process::Command::new("ffmpeg")
+            .arg("-version")
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(_) => Err(StreamingError::FfmpegError {
+                reason: "FFmpeg binary found but returned error".to_string(),
+            }),
+            Err(_) => Err(StreamingError::FfmpegError {
+                reason: "FFmpeg binary not found in PATH".to_string(),
             }),
         }
     }
@@ -99,16 +106,71 @@ impl ProductionFfmpegProcessor {
 impl FfmpegProcessor for ProductionFfmpegProcessor {
     async fn remux_to_mp4(
         &self,
-        _input_path: &Path,
-        _output_path: &Path,
-        _config: &RemuxingOptions,
+        input_path: &Path,
+        output_path: &Path,
+        config: &RemuxingOptions,
     ) -> StreamingResult<RemuxingResult> {
-        // TODO: Implement proper FFmpeg remuxing
-        // For now, return an error since the FFmpeg API integration needs more work
-        Err(StreamingError::FfmpegError {
-            reason:
-                "Production FFmpeg implementation not yet complete - use simulation for testing"
-                    .to_string(),
+        let start_time = std::time::Instant::now();
+
+        // Build FFmpeg command for container remuxing
+        let mut cmd = tokio::process::Command::new("ffmpeg");
+        cmd.arg("-y") // Overwrite output file
+            .arg("-i")
+            .arg(input_path)
+            .arg("-c:v")
+            .arg(&config.video_codec)
+            .arg("-c:a")
+            .arg(&config.audio_codec);
+
+        // Add streaming optimization
+        if config.faststart {
+            cmd.arg("-movflags").arg("faststart");
+        }
+
+        cmd.arg(output_path);
+
+        // Execute FFmpeg command
+        tracing::info!("Executing FFmpeg command: {:?}", cmd);
+
+        let output = cmd
+            .output()
+            .await
+            .map_err(|e| StreamingError::FfmpegError {
+                reason: format!("Failed to execute ffmpeg: {e}"),
+            })?;
+
+        // Log FFmpeg output for debugging
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        if !stdout.is_empty() {
+            tracing::info!("FFmpeg stdout: {}", stdout);
+        }
+        if !stderr.is_empty() {
+            tracing::info!("FFmpeg stderr: {}", stderr);
+        }
+
+        if !output.status.success() {
+            return Err(StreamingError::FfmpegError {
+                reason: format!("FFmpeg failed with exit code {}: {stderr}", output.status),
+            });
+        }
+
+        // Get output file size
+        let output_size = std::fs::metadata(output_path)
+            .map_err(|e| StreamingError::IoError {
+                operation: "get output file size".to_string(),
+                path: output_path.to_string_lossy().to_string(),
+                source: e,
+            })?
+            .len();
+
+        let processing_time = start_time.elapsed().as_secs_f64();
+
+        Ok(RemuxingResult {
+            output_size,
+            processing_time,
+            streams_reencoded: config.video_codec != "copy" || config.audio_codec != "copy",
         })
     }
 
@@ -123,24 +185,27 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
 }
 
 /// Simulation FFmpeg implementation for testing
+///
+/// Uses real FFmpeg with accelerated processing for consistent output quality.
+/// Simulates faster processing speeds while maintaining compatibility with browsers.
 pub struct SimulationFfmpegProcessor {
-    /// Simulated processing time per megabyte
+    /// Base FFmpeg processor for real conversion
+    base_processor: ProductionFfmpegProcessor,
+
+    /// Simulated processing time per megabyte (for timing simulation)
     processing_speed_mb_per_sec: f64,
 
     /// Whether to simulate FFmpeg as available
     is_available: bool,
-
-    /// Simulated size change ratio (output/input)
-    size_change_ratio: f64,
 }
 
 impl SimulationFfmpegProcessor {
     /// Create new simulation processor
     pub fn new() -> Self {
         Self {
-            processing_speed_mb_per_sec: 50.0, // Simulate 50 MB/s processing
+            base_processor: ProductionFfmpegProcessor::new(None),
+            processing_speed_mb_per_sec: 100.0, // Simulate 100 MB/s (faster than real)
             is_available: true,
-            size_change_ratio: 0.98, // Simulate slight size reduction
         }
     }
 
@@ -153,12 +218,6 @@ impl SimulationFfmpegProcessor {
     /// Simulate FFmpeg being unavailable
     pub fn unavailable(mut self) -> Self {
         self.is_available = false;
-        self
-    }
-
-    /// Configure size change ratio
-    pub fn with_size_ratio(mut self, ratio: f64) -> Self {
-        self.size_change_ratio = ratio;
         self
     }
 }
@@ -175,7 +234,7 @@ impl FfmpegProcessor for SimulationFfmpegProcessor {
         &self,
         input_path: &Path,
         output_path: &Path,
-        _config: &RemuxingOptions,
+        config: &RemuxingOptions,
     ) -> StreamingResult<RemuxingResult> {
         if !self.is_available {
             return Err(StreamingError::FfmpegError {
@@ -183,7 +242,15 @@ impl FfmpegProcessor for SimulationFfmpegProcessor {
             });
         }
 
-        // Get input file size
+        // Use real FFmpeg conversion through base processor
+        let start_time = std::time::Instant::now();
+        let result = self
+            .base_processor
+            .remux_to_mp4(input_path, output_path, config)
+            .await?;
+        let actual_processing_time = start_time.elapsed().as_secs_f64();
+
+        // Calculate simulated processing time based on file size
         let input_size = std::fs::metadata(input_path)
             .map_err(|e| StreamingError::IoError {
                 operation: "get input file size".to_string(),
@@ -192,79 +259,29 @@ impl FfmpegProcessor for SimulationFfmpegProcessor {
             })?
             .len();
 
-        // Simulate processing time based on file size
         let input_mb = input_size as f64 / (1024.0 * 1024.0);
-        let processing_time = input_mb / self.processing_speed_mb_per_sec;
+        let simulated_processing_time = input_mb / self.processing_speed_mb_per_sec;
 
-        // Simulate processing delay
-        tokio::time::sleep(tokio::time::Duration::from_secs_f64(processing_time)).await;
+        // If actual processing was faster than simulation target, add delay
+        if actual_processing_time < simulated_processing_time {
+            let delay = simulated_processing_time - actual_processing_time;
+            tokio::time::sleep(tokio::time::Duration::from_secs_f64(delay)).await;
+        }
 
-        // Calculate output size
-        let output_size = (input_size as f64 * self.size_change_ratio) as u64;
-
-        // Create a dummy output file with the simulated size
-        let mut output_file =
-            std::fs::File::create(output_path).map_err(|e| StreamingError::IoError {
-                operation: "create simulated output file".to_string(),
-                path: output_path.to_string_lossy().to_string(),
-                source: e,
-            })?;
-
-        // Write dummy MP4 header for realistic simulation
-        use std::io::Write;
-
-        // Minimal MP4 header
-        let mp4_header = [
-            0x00, 0x00, 0x00, 0x20, // box size
-            b'f', b't', b'y', b'p', // box type 'ftyp'
-            b'm', b'p', b'4', b'1', // brand 'mp41'
-            0x00, 0x00, 0x00, 0x00, // minor version
-            b'm', b'p', b'4', b'1', // compatible brand
-            b'i', b's', b'o', b'm', // compatible brand
-        ];
-
-        output_file
-            .write_all(&mp4_header)
-            .map_err(|e| StreamingError::IoError {
-                operation: "write simulated MP4 header".to_string(),
-                path: output_path.to_string_lossy().to_string(),
-                source: e,
-            })?;
-
-        // Pad file to simulated size
-        let remaining_size = output_size.saturating_sub(mp4_header.len() as u64);
-        let padding = vec![0u8; remaining_size as usize];
-        output_file
-            .write_all(&padding)
-            .map_err(|e| StreamingError::IoError {
-                operation: "write simulated file padding".to_string(),
-                path: output_path.to_string_lossy().to_string(),
-                source: e,
-            })?;
-
-        output_file
-            .sync_all()
-            .map_err(|e| StreamingError::IoError {
-                operation: "sync simulated output file".to_string(),
-                path: output_path.to_string_lossy().to_string(),
-                source: e,
-            })?;
-
+        // Return result with simulated timing
         Ok(RemuxingResult {
-            output_size,
-            processing_time,
-            streams_reencoded: false, // Simulate copy operation
+            output_size: result.output_size,
+            processing_time: simulated_processing_time.max(actual_processing_time),
+            streams_reencoded: result.streams_reencoded,
         })
     }
 
     fn is_available(&self) -> bool {
-        self.is_available
+        self.is_available && self.base_processor.is_available()
     }
 
     async fn estimate_output_size(&self, input_path: &Path) -> Option<u64> {
-        std::fs::metadata(input_path)
-            .ok()
-            .map(|m| (m.len() as f64 * self.size_change_ratio) as u64)
+        self.base_processor.estimate_output_size(input_path).await
     }
 }
 
