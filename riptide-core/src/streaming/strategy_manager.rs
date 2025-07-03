@@ -197,6 +197,7 @@ mod tests {
 
     use tempfile::tempdir;
 
+    use super::super::ffmpeg::SimulationFfmpegProcessor;
     use super::*;
     use crate::torrent::{InfoHash, PieceIndex, TorrentError, TorrentPiece};
 
@@ -269,7 +270,7 @@ mod tests {
         let mut piece_store = MockPieceStore::new();
         piece_store.add_pieces(info_hash, pieces);
 
-        let manager: StreamingStrategyManager<_, super::ffmpeg::SimulationFfmpegProcessor> =
+        let manager: StreamingStrategyManager<_, SimulationFfmpegProcessor> =
             StreamingStrategyManager::new(Arc::new(piece_store));
 
         // Test format detection
@@ -317,8 +318,12 @@ mod tests {
             ..Default::default()
         };
 
-        let manager =
-            StreamingStrategyManager::with_remuxing(Arc::new(piece_store), config).unwrap();
+        let manager = StreamingStrategyManager::with_remuxing(
+            Arc::new(piece_store),
+            SimulationFfmpegProcessor::new(),
+            config,
+        )
+        .unwrap();
 
         // Test streaming capability
         let capability = manager.get_streaming_capability(info_hash).await.unwrap();
@@ -358,7 +363,8 @@ mod tests {
         let mut piece_store = MockPieceStore::new();
         piece_store.add_pieces(info_hash, pieces);
 
-        let manager = StreamingStrategyManager::new(Arc::new(piece_store));
+        let manager: StreamingStrategyManager<_, SimulationFfmpegProcessor> =
+            StreamingStrategyManager::new(Arc::new(piece_store));
 
         // Test streaming capability
         let capability = manager.get_streaming_capability(info_hash).await.unwrap();
@@ -403,8 +409,12 @@ mod tests {
             ..Default::default()
         };
 
-        let manager =
-            StreamingStrategyManager::with_remuxing(Arc::new(piece_store), config).unwrap();
+        let manager = StreamingStrategyManager::with_remuxing(
+            Arc::new(piece_store),
+            SimulationFfmpegProcessor::new(),
+            config,
+        )
+        .unwrap();
 
         // Test streaming capability - should be false due to missing pieces
         let capability = manager.get_streaming_capability(info_hash).await.unwrap();

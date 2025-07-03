@@ -83,12 +83,18 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
 
         // For magnet links, we don't have piece information yet
         // Create a placeholder session that will be updated when metadata is received
+        // Use display name from magnet link if available, otherwise create a readable fallback
+        let filename = parsed
+            .display_name
+            .clone()
+            .unwrap_or_else(|| format!("Torrent_{}", &info_hash.to_string()[..16]));
+
         let session = TorrentSession::new(TorrentSessionParams {
             info_hash,
             piece_count: 1, // Placeholder - will be updated
             piece_size: self.config.torrent.default_piece_size,
             total_size: 0, // Placeholder - will be updated
-            filename: format!("magnet_{}", &info_hash.to_string()[..8]),
+            filename,
             tracker_urls,
         });
 

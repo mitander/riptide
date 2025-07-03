@@ -1,6 +1,6 @@
 //! API handlers for torrent management and search
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -58,7 +58,7 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
         // Check if this torrent has a corresponding local movie for better naming
         let name = movie_titles.get(&session.info_hash)
             .cloned()
-            .unwrap_or_else(|| format!("Torrent {}", &session.info_hash.to_string()[..8]));
+            .unwrap_or_else(|| session.filename.clone());
 
         json!({
             "name": name,
@@ -176,31 +176,14 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
     let mut library_items = Vec::new();
     let mut total_size = 0u64;
 
-    // Add completed torrents to library
-    for session in sessions.iter() {
-        if session.progress >= 1.0 {
-            // 100% complete
-            let estimated_size = session.piece_count as u64 * session.piece_size as u64;
-            library_items.push(json!({
-                "id": session.info_hash.to_string(),
-                "title": format!("Downloaded: {}", &session.info_hash.to_string()[..16]),
-                "type": "Movie",
-                "year": null,
-                "size": format!("{:.1} GB", estimated_size as f64 / 1_073_741_824.0),
-                "added_date": "2025-06-29", // TODO: Use actual completion date
-                "poster_url": null,
-                "rating": null,
-                "info_hash": session.info_hash.to_string(),
-                "is_torrent": true
-            }));
-            total_size += estimated_size;
-        }
-    }
+    // Collect info_hashes from local movies to avoid duplicates
+    let mut local_info_hashes = HashSet::new();
 
-    // Add local movies to library
+    // Add local movies to library first (they have better metadata)
     if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         for movie in manager.all_movies() {
+            local_info_hashes.insert(movie.info_hash);
             library_items.push(json!({
                 "id": movie.info_hash.to_string(),
                 "title": movie.title,
@@ -214,6 +197,27 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
                 "is_local": true
             }));
             total_size += movie.size;
+        }
+    }
+
+    // Add completed torrents that don't already exist as local movies
+    for session in sessions.iter() {
+        if session.progress >= 1.0 && !local_info_hashes.contains(&session.info_hash) {
+            // 100% complete and not already in library as local movie
+            let estimated_size = session.piece_count as u64 * session.piece_size as u64;
+            library_items.push(json!({
+                "id": session.info_hash.to_string(),
+                "title": session.filename.clone(),
+                "type": "Movie",
+                "year": null,
+                "size": format!("{:.1} GB", estimated_size as f64 / 1_073_741_824.0),
+                "added_date": "2025-06-29", // TODO: Use actual completion date
+                "poster_url": null,
+                "rating": null,
+                "info_hash": session.info_hash.to_string(),
+                "is_torrent": true
+            }));
+            total_size += estimated_size;
         }
     }
 

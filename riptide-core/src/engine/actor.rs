@@ -725,4 +725,38 @@ mod tests {
 
         handle.shutdown().await.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_magnet_link_display_name_parsing() {
+        let config = RiptideConfig::default();
+        let peer_manager = crate::torrent::MockPeerManager::new();
+        let tracker_manager = crate::torrent::MockTrackerManager::new();
+        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+
+        // Test magnet link with display name
+        let magnet_with_name = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Wallace+And+Gromit+Vengeance+Most+Fowl+2024+720p+WEB-DL+x264+BONE&tr=http://tracker.example.com/announce";
+
+        let info_hash = handle.add_magnet(magnet_with_name).await.unwrap();
+        let session = handle.get_session(info_hash).await.unwrap();
+
+        // Verify the display name was parsed and used as filename
+        assert_eq!(
+            session.filename,
+            "Wallace And Gromit Vengeance Most Fowl 2024 720p WEB-DL x264 BONE"
+        );
+
+        // Test magnet link without display name
+        let magnet_without_name = "magnet:?xt=urn:btih:fedcba9876543210fedcba9876543210fedcba98&tr=http://tracker.example.com/announce";
+
+        let info_hash2 = handle.add_magnet(magnet_without_name).await.unwrap();
+        let session2 = handle.get_session(info_hash2).await.unwrap();
+
+        // Verify fallback name includes more of the hash for readability
+        assert!(session2.filename.starts_with("Torrent_fedcba9876543210"));
+
+        println!("✓ Magnet with display name: '{}'", session.filename);
+        println!("✓ Magnet fallback name: '{}'", session2.filename);
+
+        handle.shutdown().await.unwrap();
+    }
 }

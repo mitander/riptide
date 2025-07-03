@@ -207,14 +207,12 @@ mod tests {
     // Mock piece store for testing
     struct MockPieceStore {
         pieces: HashMap<InfoHash, HashMap<u32, Vec<u8>>>,
-        piece_size: u32,
     }
 
     impl MockPieceStore {
-        fn new(piece_size: u32) -> Self {
+        fn new() -> Self {
             Self {
                 pieces: HashMap::new(),
-                piece_size,
             }
         }
 
@@ -262,7 +260,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_full_file_single_piece() {
-        let mut store = MockPieceStore::new(1024);
+        let mut store = MockPieceStore::new();
         let info_hash = create_test_info_hash();
         let test_data = b"Hello, World! This is a test file.".to_vec();
 
@@ -279,7 +277,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_partial_range_single_piece() {
-        let mut store = MockPieceStore::new(1024);
+        let mut store = MockPieceStore::new();
         let info_hash = create_test_info_hash();
         let test_data = b"Hello, World! This is a test file.".to_vec();
 
@@ -293,12 +291,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_across_multiple_pieces() {
-        let mut store = MockPieceStore::new(10); // Small pieces for testing
+        let mut store = MockPieceStore::new(); // Small pieces for testing
         let info_hash = create_test_info_hash();
 
         // Create test data spanning 3 pieces
         store.add_piece(info_hash, 0, b"0123456789".to_vec()); // Full piece
-        store.add_piece(info_hash, 1, b"abcdefghij".to_vec()); // Full piece  
+        store.add_piece(info_hash, 1, b"abcdefghij".to_vec()); // Full piece
         store.add_piece(info_hash, 2, b"ABCDE".to_vec()); // Partial last piece
 
         let reader = PieceBasedStreamReader::new(Arc::new(store), 10);
@@ -310,7 +308,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_range() {
-        let store = MockPieceStore::new(1024);
+        let store = MockPieceStore::new();
         let reader = PieceBasedStreamReader::new(Arc::new(store), 1024);
         let info_hash = create_test_info_hash();
 
@@ -320,7 +318,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_range_exceeds_file() {
-        let mut store = MockPieceStore::new(1024);
+        let mut store = MockPieceStore::new();
         let info_hash = create_test_info_hash();
         let test_data = b"Small file".to_vec();
 
@@ -337,7 +335,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_size_calculation() {
-        let mut store = MockPieceStore::new(10);
+        let mut store = MockPieceStore::new();
         let info_hash = create_test_info_hash();
 
         store.add_piece(info_hash, 0, b"0123456789".to_vec()); // Full piece

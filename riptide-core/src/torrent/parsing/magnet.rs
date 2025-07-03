@@ -22,7 +22,13 @@ impl MagnetParser {
 
         Ok(MagnetLink {
             info_hash,
-            display_name: magnet.display_name().map(|s| s.to_string()),
+            display_name: magnet.display_name().map(|s| {
+                // First replace '+' with spaces (form encoding), then URL decode
+                let with_spaces = s.replace('+', " ");
+                urlencoding::decode(&with_spaces)
+                    .map(|decoded| decoded.to_string())
+                    .unwrap_or_else(|_| with_spaces)
+            }),
             trackers: magnet.trackers().to_vec(),
         })
     }

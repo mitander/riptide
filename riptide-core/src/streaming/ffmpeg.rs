@@ -300,9 +300,7 @@ mod tests {
         // Create dummy input file
         std::fs::write(&input_path, vec![0u8; 1024 * 1024]).unwrap(); // 1MB file
 
-        let processor = SimulationFfmpegProcessor::new()
-            .with_speed(10.0) // 10 MB/s for fast test
-            .with_size_ratio(0.9);
+        let processor = SimulationFfmpegProcessor::new().with_speed(10.0); // 10 MB/s for fast test
 
         let options = RemuxingOptions::default();
         let result = processor
