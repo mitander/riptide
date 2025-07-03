@@ -212,7 +212,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             event: AnnounceEvent::Started,
         };
 
-        // Start real BitTorrent download process
+        // Start BitTorrent download process
         let download_context = DownloadContext {
             info_hash,
             tracker_manager,
@@ -224,16 +224,16 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             piece_sender,
         };
 
-        self.spawn_real_download_loop(download_context).await;
+        self.spawn_download_task(download_context).await;
 
         Ok(())
     }
 
-    /// Spawns real BitTorrent download loop using tracker responses and peer connections.
+    /// Spawns BitTorrent download task using tracker responses and peer connections.
     ///
     /// Announces to trackers, discovers peers, and downloads pieces using the BitTorrent
-    /// wire protocol. This replaces the simulation with actual peer-to-peer downloading.
-    async fn spawn_real_download_loop(&self, download_context: DownloadContext<T, P>) {
+    /// wire protocol in a background task.
+    async fn spawn_download_task(&self, download_context: DownloadContext<T, P>) {
         tokio::spawn(async move {
             let info_hash = download_context.info_hash;
             let piece_count = download_context.piece_count;
@@ -246,7 +246,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
             let download_result = tokio::time::timeout(
                 Duration::from_millis(REAL_DOWNLOAD_TIMEOUT_MS),
-                Self::attempt_real_download(download_context),
+                Self::download_torrent_pieces(download_context),
             )
             .await;
 
@@ -264,11 +264,11 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         });
     }
 
-    async fn attempt_real_download(
+    async fn download_torrent_pieces(
         download_context: DownloadContext<T, P>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::info!(
-            "Starting real download for torrent {}",
+            "Starting download for torrent {}",
             download_context.info_hash
         );
         let peers = Self::discover_peers(
@@ -295,7 +295,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             piece_sender: download_context.piece_sender,
         };
 
-        let result = Self::download_all_pieces(download_params).await;
+        let result = Self::download_pieces(download_params).await;
         if let Err(e) = &result {
             tracing::error!(
                 "Download all pieces failed for torrent {}: {}",
@@ -365,7 +365,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         ))
     }
 
-    async fn download_all_pieces(
+    async fn download_pieces(
         params: DownloadParams<P>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::info!(
