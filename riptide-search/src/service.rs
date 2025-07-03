@@ -7,7 +7,7 @@ use crate::errors::MediaSearchError;
 use crate::metadata::ImdbMetadataService;
 #[cfg(test)]
 use crate::providers::MockProvider;
-use crate::providers::{DemoProvider, MagnetoProvider, TorrentSearchProvider};
+use crate::providers::{DevelopmentProvider, MagnetoProvider, TorrentSearchProvider};
 use crate::types::{MediaSearchResult, TorrentResult};
 
 /// Media search service providing torrent discovery and metadata.
@@ -15,13 +15,13 @@ use crate::types::{MediaSearchResult, TorrentResult};
 pub struct MediaSearchService {
     provider: Box<dyn TorrentSearchProvider>,
     metadata_service: ImdbMetadataService,
-    is_demo: bool,
+    is_development: bool,
 }
 
 impl Clone for MediaSearchService {
     fn clone(&self) -> Self {
-        if self.is_demo {
-            Self::new_demo()
+        if self.is_development {
+            Self::new_development()
         } else {
             Self::new()
         }
@@ -36,30 +36,30 @@ impl MediaSearchService {
         Self {
             provider: Box::new(MagnetoProvider::new()),
             metadata_service: ImdbMetadataService::new(),
-            is_demo: false,
+            is_development: false,
         }
     }
 
-    /// Creates new media search service with demo data for offline development.
+    /// Creates new media search service with development data for offline development.
     ///
-    /// Uses rich demo data for UI development and testing without external API calls.
-    /// Demo data includes multiple quality options and realistic metadata.
+    /// Uses rich development data for UI development and testing without external API calls.
+    /// Development data includes multiple quality options and realistic metadata.
     /// Same interface as production but works completely offline.
-    pub fn new_demo() -> Self {
+    pub fn new_development() -> Self {
         Self {
-            provider: Box::new(DemoProvider::new()),
+            provider: Box::new(DevelopmentProvider::new()),
             metadata_service: ImdbMetadataService::new(),
-            is_demo: true,
+            is_development: true,
         }
     }
 
     /// Creates new media search service based on runtime mode.
     ///
-    /// Uses runtime mode to choose between demo and production providers.
+    /// Uses runtime mode to choose between development and production providers.
     /// Production mode uses fallback provider for reliability.
     pub fn from_runtime_mode(mode: riptide_core::RuntimeMode) -> Self {
-        if mode.is_demo() {
-            Self::new_demo()
+        if mode.is_development() {
+            Self::new_development()
         } else {
             let omdb_api_key = std::env::var("OMDB_API_KEY").ok();
 
@@ -69,7 +69,7 @@ impl MediaSearchService {
             Self {
                 provider,
                 metadata_service,
-                is_demo: false,
+                is_development: false,
             }
         }
     }
@@ -80,7 +80,7 @@ impl MediaSearchService {
         Self {
             provider: Box::new(MockProvider::new()),
             metadata_service: ImdbMetadataService::new(),
-            is_demo: true,
+            is_development: true,
         }
     }
 
@@ -218,8 +218,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_demo_provider_search() {
-        let service = MediaSearchService::new_demo();
+    async fn test_development_provider_search() {
+        let service = MediaSearchService::new_development();
         let results = service.search_movies("Test Movie").await.unwrap();
 
         assert!(!results.is_empty());

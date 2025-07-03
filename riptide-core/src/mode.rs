@@ -4,20 +4,20 @@ use serde::{Deserialize, Serialize};
 
 /// Runtime mode for Riptide services.
 ///
-/// Controls whether to use real external services or demo/mock data.
+/// Controls whether to use real external services or simulated development data.
 /// This allows offline development while maintaining the same interfaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimeMode {
     /// Production mode - uses real external APIs and services
     Production,
-    /// Demo mode - uses offline test data for development
-    Demo,
+    /// Development mode - uses simulated components for offline development
+    Development,
 }
 
 impl RuntimeMode {
-    /// Check if running in demo mode.
-    pub fn is_demo(self) -> bool {
-        matches!(self, Self::Demo)
+    /// Check if running in development mode.
+    pub fn is_development(self) -> bool {
+        matches!(self, Self::Development)
     }
 
     /// Check if running in production mode.
@@ -28,8 +28,8 @@ impl RuntimeMode {
 
 impl Default for RuntimeMode {
     fn default() -> Self {
-        // Default to demo mode for development convenience
-        Self::Demo
+        // Default to development mode for development convenience
+        Self::Development
     }
 }
 
@@ -37,7 +37,7 @@ impl std::fmt::Display for RuntimeMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Production => write!(f, "PRODUCTION"),
-            Self::Demo => write!(f, "DEMO"),
+            Self::Development => write!(f, "DEVELOPMENT"),
         }
     }
 }
@@ -48,9 +48,9 @@ impl std::str::FromStr for RuntimeMode {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "production" | "prod" => Ok(Self::Production),
-            "demo" | "dev" | "development" => Ok(Self::Demo),
+            "development" | "dev" => Ok(Self::Development),
             _ => Err(format!(
-                "Invalid runtime mode: '{s}'. Valid options are: production, demo"
+                "Invalid runtime mode: '{s}'. Valid options are: production, development"
             )),
         }
     }

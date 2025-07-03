@@ -50,7 +50,7 @@ pub async fn run_server(
     mode: RuntimeMode,
     movies_dir: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // For demo mode, we need to keep references to simulation managers for setup
+    // For development mode, we need to keep references to simulation managers for setup
     let (torrent_engine, sim_memory_store, _sim_tracker_manager, sim_piece_store) = match mode {
         RuntimeMode::Production => {
             let peer_manager = TcpPeerManager::new_default();
@@ -63,8 +63,8 @@ pub async fn run_server(
                 None::<Arc<dyn PieceStore>>,
             )
         }
-        RuntimeMode::Demo => {
-            // In demo mode, we use simulation components that are aware of the content.
+        RuntimeMode::Development => {
+            // In development mode, we use simulation components that are aware of the content.
             let piece_store = Arc::new(riptide_sim::InMemoryPieceStore::new());
             let peer_manager = riptide_sim::ContentAwarePeerManager::new(
                 riptide_sim::InMemoryPeerConfig::default(),
@@ -84,7 +84,7 @@ pub async fn run_server(
     };
     let search_service = MediaSearchService::from_runtime_mode(mode);
 
-    // Initialize movie manager and piece store for demo mode.
+    // Initialize movie manager and piece store for development mode.
     let (movie_manager, piece_store) = if let Some(dir) = movies_dir.as_ref() {
         let mut manager = FileLibraryManager::new();
         match manager.scan_directory(dir).await {
@@ -94,7 +94,8 @@ pub async fn run_server(
                 if let Some(memory_store) = &sim_memory_store {
                     // Set up the simulated swarm with local movie content.
                     if let Err(e) =
-                        setup_demo_swarm(&mut manager, &torrent_engine, memory_store.clone()).await
+                        setup_development_swarm(&mut manager, &torrent_engine, memory_store.clone())
+                            .await
                     {
                         eprintln!("Warning: Failed to populate piece store: {e}");
                     }
@@ -120,7 +121,7 @@ pub async fn run_server(
     // Initialize FFmpeg processor based on runtime mode.
     let ffmpeg_processor: Arc<dyn FfmpegProcessor> = match mode {
         RuntimeMode::Production => Arc::new(ProductionFfmpegProcessor::new(None)),
-        RuntimeMode::Demo => Arc::new(SimulationFfmpegProcessor::new()),
+        RuntimeMode::Development => Arc::new(SimulationFfmpegProcessor::new()),
     };
 
     // Create conversion cache.
@@ -159,7 +160,7 @@ pub async fn run_server(
     Ok(())
 }
 
-/// Sets up a simulated BitTorrent swarm for demo mode.
+/// Sets up a simulated BitTorrent swarm for development mode.
 ///
 /// This function performs the following steps:
 /// 1. Converts local movie files into torrents and populates an in-memory piece store.
@@ -169,7 +170,7 @@ pub async fn run_server(
 /// This creates a realistic, closed-loop simulation where the `TorrentEngine` must
 /// discover and download pieces from the simulated swarm to stream content, exercising
 /// the full P2P download path.
-async fn setup_demo_swarm(
+async fn setup_development_swarm(
     library_manager: &mut FileLibraryManager,
     torrent_engine: &TorrentEngineHandle,
     piece_store: Arc<riptide_sim::InMemoryPieceStore>,
@@ -196,7 +197,7 @@ async fn setup_demo_swarm(
             match sim_creator
                 .create_with_pieces(
                     &movie_path,
-                    vec!["http://demo-tracker.riptide.local/announce".to_string()],
+                    vec!["http://development-tracker.riptide.local/announce".to_string()],
                 )
                 .await
             {
@@ -249,6 +250,6 @@ async fn setup_demo_swarm(
     // the movie manager from background tasks. In a future version, we should
     // use channels to communicate back the canonical info hashes.
 
-    println!("Demo mode: {movie_count} movies queued for background conversion");
+    println!("Development mode: {movie_count} movies queued for background conversion");
     Ok(())
 }

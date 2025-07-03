@@ -85,9 +85,13 @@ pub enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
 
-        /// Use demo data for development and testing
+        /// Runtime mode (production or development)
+        #[arg(long, default_value = "development")]
+        mode: riptide_core::RuntimeMode,
+
+        /// Directory containing movie files for simulation (development mode only)
         #[arg(long)]
-        demo: bool,
+        movies_dir: Option<PathBuf>,
     },
 }
 
@@ -116,6 +120,6 @@ pub async fn run_cli() -> crate::Result<()> {
         Commands::List => commands::list_torrents().await,
         #[cfg(feature = "simulation")]
         Commands::Simulate { peers, torrent } => commands::run_simulation(peers, torrent).await,
-        Commands::Server { port, host, demo } => commands::start_server(host, port, demo).await,
+        Commands::Server { port, host, mode, movies_dir } => commands::start_server(host, port, mode, movies_dir).await,
     }
 }

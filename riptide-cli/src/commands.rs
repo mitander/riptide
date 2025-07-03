@@ -48,9 +48,9 @@ pub enum Commands {
         #[arg(short, long, default_value = "3000")]
         port: u16,
         /// Runtime mode
-        #[arg(long, default_value = "demo")]
+        #[arg(long, default_value = "development")]
         mode: RuntimeMode,
-        /// Directory containing movie files for simulation (demo mode only)
+        /// Directory containing movie files for simulation (development mode only)
         #[arg(long)]
         movies_dir: Option<PathBuf>,
     },
@@ -326,7 +326,7 @@ pub async fn start_simple_server() -> Result<()> {
 
     let config = RiptideConfig::default();
 
-    riptide_web::run_server(config, RuntimeMode::Demo, None) // Default to demo mode
+    riptide_web::run_server(config, RuntimeMode::Development, None) // Default to development mode
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -351,8 +351,8 @@ pub async fn start_server(
     println!(
         "Running in {} mode - using {} data sources",
         mode,
-        if mode.is_demo() {
-            "offline test"
+        if mode.is_development() {
+            "offline development"
         } else {
             "real API"
         }

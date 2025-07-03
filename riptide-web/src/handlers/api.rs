@@ -72,22 +72,22 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
         })
     }).collect();
 
-    // In demo mode, local movies are converted to BitTorrent torrents above,
+    // In development mode, local movies are converted to BitTorrent torrents above,
     // so we don't need to add them separately. This prevents duplication.
     let display_torrents = torrents;
 
-    // Fallback to demo data if no torrents or local movies
+    // Fallback to development data if no torrents or local movies
     let final_torrents = if display_torrents.is_empty() {
         vec![
             json!({
-                "name": "Demo.Movie.2024.1080p.BluRay.x264",
+                "name": "Development.Movie.2024.1080p.BluRay.x264",
                 "progress": 45,
                 "speed": 2500,
                 "size": "1.5 GB",
                 "status": "downloading"
             }),
             json!({
-                "name": "Demo.Series.S01E01.720p.WEB-DL.x264",
+                "name": "Development.Series.S01E01.720p.WEB-DL.x264",
                 "progress": 78,
                 "speed": 1800,
                 "size": "850 MB",
@@ -221,7 +221,7 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
         }
     }
 
-    // Add demo items if no real content
+    // Add development items if no real content
     if library_items.is_empty() {
         library_items = vec![
             json!({

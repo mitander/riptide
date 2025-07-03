@@ -1,4 +1,4 @@
-//! Demo provider implementation for development and testing.
+//! Development provider implementation for development and testing.
 
 use async_trait::async_trait;
 
@@ -6,37 +6,37 @@ use super::TorrentSearchProvider;
 use crate::errors::MediaSearchError;
 use crate::types::{MediaSearchResult, MediaType, TorrentResult, VideoQuality};
 
-/// Demo provider for development and testing.
+/// Development provider for development and testing.
 ///
-/// Returns realistic demo data for UI development without external API calls.
+/// Returns realistic development data for UI development without external API calls.
 /// Includes multiple quality options, realistic file sizes, and seeder counts.
 #[derive(Debug)]
-pub struct DemoProvider;
+pub struct DevelopmentProvider;
 
-impl Default for DemoProvider {
+impl Default for DevelopmentProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DemoProvider {
+impl DevelopmentProvider {
     pub fn new() -> Self {
         Self
     }
 }
 
 #[async_trait]
-impl TorrentSearchProvider for DemoProvider {
+impl TorrentSearchProvider for DevelopmentProvider {
     async fn search_torrents(
         &self,
         query: &str,
         category: &str,
     ) -> Result<Vec<MediaSearchResult>, MediaSearchError> {
-        // TEMPORARY: Using demo data while we implement a working API
+        // TEMPORARY: Using development data while we implement a working API
         // This allows the complete search UI workflow to be tested and demonstrated
         let mock_torrents = vec![
             TorrentResult {
-                name: format!("{}.2024.1080p.BluRay.x264-DEMO", query.replace(' ', ".")),
+                name: format!("{}.2024.1080p.BluRay.x264-DEV", query.replace(' ', ".")),
                 magnet_link: format!(
                     "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678&dn={}",
                     urlencoding::encode(query)
@@ -45,11 +45,11 @@ impl TorrentSearchProvider for DemoProvider {
                 seeders: 150,
                 leechers: 25,
                 quality: VideoQuality::BluRay1080p,
-                source: "Demo".to_string(),
+                source: "Development".to_string(),
                 added_date: chrono::Utc::now(),
             },
             TorrentResult {
-                name: format!("{}.2024.720p.WEB-DL.x264-DEMO", query.replace(' ', ".")),
+                name: format!("{}.2024.720p.WEB-DL.x264-DEV", query.replace(' ', ".")),
                 magnet_link: format!(
                     "magnet:?xt=urn:btih:abcdef1234567890abcdef1234567890abcdef12&dn={}",
                     urlencoding::encode(query)
@@ -58,14 +58,11 @@ impl TorrentSearchProvider for DemoProvider {
                 seeders: 95,
                 leechers: 15,
                 quality: VideoQuality::BluRay720p,
-                source: "Demo".to_string(),
+                source: "Development".to_string(),
                 added_date: chrono::Utc::now(),
             },
             TorrentResult {
-                name: format!(
-                    "{}.2024.2160p.UHD.BluRay.x265-DEMO",
-                    query.replace(' ', ".")
-                ),
+                name: format!("{}.2024.2160p.UHD.BluRay.x265-DEV", query.replace(' ', ".")),
                 magnet_link: format!(
                     "magnet:?xt=urn:btih:fedcba0987654321fedcba0987654321fedcba09&dn={}",
                     urlencoding::encode(query)
@@ -74,12 +71,12 @@ impl TorrentSearchProvider for DemoProvider {
                 seeders: 45,
                 leechers: 8,
                 quality: VideoQuality::BluRay4K,
-                source: "Demo".to_string(),
+                source: "Development".to_string(),
                 added_date: chrono::Utc::now(),
             },
         ];
 
-        // Create realistic demo data based on common movie titles
+        // Create realistic development data based on common movie titles
         let (poster_url, plot, genre, rating, year, imdb_id) = match query.to_lowercase().as_str() {
             q if q.contains("interstellar") => (
                 Some("https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_SX300.jpg".to_string()),
