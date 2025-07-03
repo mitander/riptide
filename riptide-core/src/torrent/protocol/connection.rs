@@ -15,7 +15,7 @@ use crate::torrent::TorrentError;
 ///
 /// Production TCP-based implementation of BEP 3 wire protocol.
 /// Handles connection management, message serialization, and protocol state.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BitTorrentPeerProtocol {
     state: PeerState,
     peer_address: Option<SocketAddr>,

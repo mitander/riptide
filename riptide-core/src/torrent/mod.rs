@@ -2,11 +2,12 @@
 
 pub mod creation;
 pub mod downloader;
-
+pub mod enhanced_peer_connection;
 pub mod enhanced_peer_manager;
 pub mod parsing;
 pub mod peer_connection;
 pub mod peer_manager;
+pub mod peer_state;
 pub mod piece_picker;
 pub mod piece_store;
 pub mod protocol;
@@ -18,11 +19,13 @@ use std::fmt;
 
 pub use creation::{DEFAULT_PIECE_SIZE, SimulationTorrentCreator, TorrentCreator, TorrentPiece};
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
+pub use enhanced_peer_connection::{EnhancedPeerConnection, PeerConnectionStats};
 pub use enhanced_peer_manager::{
     EnhancedPeerManager, EnhancedPeerManagerStats, PieceRequestParams, PieceResult, Priority,
 };
 pub use parsing::{BencodeTorrentParser, MagnetLink, TorrentFile, TorrentMetadata, TorrentParser};
 pub use peer_manager::{ConnectionStatus, PeerInfo, PeerManager, PeerMessageEvent, TcpPeerManager};
+pub use peer_state::{PeerBitfield, PeerConnectionState, PendingPieceRequest};
 pub use piece_picker::{PiecePicker, StreamingPiecePicker};
 pub use piece_store::PieceStore;
 pub use protocol::{
