@@ -15,11 +15,17 @@ use crate::torrent::{
     InfoHash, PeerId, PeerInfo, PeerManager, PeerMessage, PeerMessageEvent, TorrentError,
 };
 
+// Test timing constants
+const MOCK_NETWORK_DELAY_MS: u64 = 50;
+const MOCK_WAIT_PERIOD_MS: u64 = 100;
+
 /// Mock peer manager for testing.
 #[derive(Debug, Clone)]
 pub struct MockPeerManager {
     connected_peers: Arc<RwLock<HashMap<InfoHash, Vec<SocketAddr>>>>,
     should_fail_connection: bool,
+    pending_requests: Arc<RwLock<Vec<(SocketAddr, PeerMessage)>>>,
+    simulate_piece_data: bool,
 }
 
 impl MockPeerManager {
@@ -28,6 +34,8 @@ impl MockPeerManager {
         Self {
             connected_peers: Arc::new(RwLock::new(HashMap::new())),
             should_fail_connection: false,
+            pending_requests: Arc::new(RwLock::new(Vec::new())),
+            simulate_piece_data: true,
         }
     }
 
@@ -36,6 +44,8 @@ impl MockPeerManager {
         Self {
             connected_peers: Arc::new(RwLock::new(HashMap::new())),
             should_fail_connection: true,
+            pending_requests: Arc::new(RwLock::new(Vec::new())),
+            simulate_piece_data: false,
         }
     }
 
@@ -43,6 +53,11 @@ impl MockPeerManager {
     pub async fn add_mock_peer(&self, info_hash: InfoHash, peer_address: SocketAddr) {
         let mut peers = self.connected_peers.write().await;
         peers.entry(info_hash).or_default().push(peer_address);
+    }
+
+    /// Enables piece data simulation for testing piece downloading.
+    pub fn enable_piece_data_simulation(&mut self) {
+        self.simulate_piece_data = true;
     }
 }
 
@@ -77,18 +92,67 @@ impl PeerManager for MockPeerManager {
 
     async fn send_message(
         &mut self,
-        _peer_address: SocketAddr,
-        _message: PeerMessage,
+        peer_address: SocketAddr,
+        message: PeerMessage,
     ) -> Result<(), TorrentError> {
-        // Mock implementation - always succeeds
+        if !self.simulate_piece_data {
+            return Ok(()); // Just succeed without responses
+        }
+
+        // Store the request for later response generation
+        let mut requests = self.pending_requests.write().await;
+        requests.push((peer_address, message));
         Ok(())
     }
 
     async fn receive_message(&mut self) -> Result<PeerMessageEvent, TorrentError> {
-        // Mock implementation - return a dummy event
-        Err(TorrentError::PeerConnectionError {
-            reason: "No messages available in mock".to_string(),
-        })
+        if !self.simulate_piece_data {
+            return Err(TorrentError::PeerConnectionError {
+                reason: "No messages available in mock".to_string(),
+            });
+        }
+
+        // Check for pending requests and generate responses
+        let mut requests = self.pending_requests.write().await;
+        if let Some((peer_address, message)) = requests.pop() {
+            // Simulate realistic network delay for piece responses
+            tokio::time::sleep(std::time::Duration::from_millis(MOCK_NETWORK_DELAY_MS)).await;
+
+            match message {
+                PeerMessage::Request {
+                    piece_index,
+                    offset,
+                    length,
+                } => {
+                    // Generate deterministic mock piece data that will pass hash verification
+                    let mock_data = vec![piece_index.as_u32() as u8; length as usize];
+
+                    Ok(PeerMessageEvent {
+                        peer_address,
+                        message: PeerMessage::Piece {
+                            piece_index,
+                            offset,
+                            data: bytes::Bytes::from(mock_data),
+                        },
+                        received_at: std::time::Instant::now(),
+                    })
+                }
+                _ => {
+                    // For other messages, just return a keep-alive
+                    Ok(PeerMessageEvent {
+                        peer_address,
+                        message: PeerMessage::KeepAlive,
+                        received_at: std::time::Instant::now(),
+                    })
+                }
+            }
+        } else {
+            // No pending requests - simulate realistic waiting period
+            tokio::time::sleep(std::time::Duration::from_millis(MOCK_WAIT_PERIOD_MS)).await;
+            Err(TorrentError::PeerConnectionError {
+                reason: "No pending requests available".to_string(),
+            })
+        }
     }
 
     async fn connected_peers(&self) -> Vec<PeerInfo> {

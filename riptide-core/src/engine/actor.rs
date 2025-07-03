@@ -167,9 +167,25 @@ where
 
 #[cfg(test)]
 mod tests {
+    use sha1::{Digest, Sha1};
+
     use super::*;
     use crate::config::RiptideConfig;
     use crate::torrent::{InfoHash, TorrentError};
+
+    /// Generates proper SHA1 hashes for test torrent metadata.
+    fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {
+        (0..piece_count)
+            .map(|i| {
+                let mut hasher = Sha1::new();
+                hasher.update(vec![i as u8; piece_size as usize]);
+                let result = hasher.finalize();
+                let mut hash = [0u8; 20];
+                hash.copy_from_slice(&result);
+                hash
+            })
+            .collect()
+    }
 
     #[tokio::test]
     async fn test_actor_spawn_and_basic_operations() {
@@ -244,22 +260,33 @@ mod tests {
         config.simulation.packet_loss_rate = 0.0; // No packet loss for reliable testing
         config.torrent.default_piece_size = 262_144; // 256 KB pieces
 
-        let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        peer_manager.enable_piece_data_simulation();
+        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+
+        // Set up mock peers for the tracker manager
+        let mock_peers = vec![
+            "127.0.0.1:8080".parse().unwrap(),
+            "127.0.0.1:8081".parse().unwrap(),
+            "127.0.0.1:8082".parse().unwrap(),
+        ];
+        tracker_manager.set_mock_peers(mock_peers);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
-        // Create test torrent metadata
+        // Create test torrent metadata with proper hashes
         let piece_count = 10;
         let piece_size = 262_144u32;
         let total_size = piece_count as u64 * piece_size as u64;
+
+        let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
         let metadata = TorrentMetadata {
             info_hash: crate::torrent::InfoHash::new([1u8; 20]),
             name: "test_movie.mp4".to_string(),
             total_length: total_size,
             piece_length: piece_size,
-            piece_hashes: vec![[0u8; 20]; piece_count],
+            piece_hashes,
             files: vec![crate::torrent::parsing::types::TorrentFile {
                 path: vec!["test_movie.mp4".to_string()],
                 length: total_size,
@@ -389,12 +416,14 @@ mod tests {
         let piece_size = 131_072u32;
         let total_size = piece_count as u64 * piece_size as u64;
 
+        let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
+
         let metadata = TorrentMetadata {
             info_hash: crate::torrent::InfoHash::new([2u8; 20]),
             name: "comprehensive_test.mkv".to_string(),
             total_length: total_size,
             piece_length: piece_size,
-            piece_hashes: vec![[0u8; 20]; piece_count],
+            piece_hashes,
             files: vec![crate::torrent::parsing::types::TorrentFile {
                 path: vec!["comprehensive_test.mkv".to_string()],
                 length: total_size,
@@ -567,12 +596,14 @@ mod tests {
         let piece_size = 262_144u32;
         let total_size = piece_count as u64 * piece_size as u64;
 
+        let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
+
         let metadata = TorrentMetadata {
             info_hash: crate::torrent::InfoHash::new([3u8; 20]),
             name: "streaming_test.mp4".to_string(),
             total_length: total_size,
             piece_length: piece_size,
-            piece_hashes: vec![[0u8; 20]; piece_count],
+            piece_hashes,
             files: vec![crate::torrent::parsing::types::TorrentFile {
                 path: vec!["streaming_test.mp4".to_string()],
                 length: total_size,
