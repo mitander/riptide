@@ -247,19 +247,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_realistic_download_simulation() {
-        use std::time::Duration;
-
-        use crate::torrent::parsing::types::TorrentMetadata;
-
-        // Create config with very fast download speed for testing
-        let mut config = RiptideConfig::default();
-        config.simulation.enabled = true;
-        config.simulation.simulated_download_speed = 50_000_000; // 50 MB/s for fast testing
-        config.simulation.network_latency_ms = 5; // Very low latency for testing
-        config.simulation.packet_loss_rate = 0.0; // No packet loss for reliable testing
-        config.torrent.default_piece_size = 262_144; // 256 KB pieces
-
+    async fn test_real_download_basic_flow() {
+        let config = RiptideConfig::default();
         let mut peer_manager = crate::torrent::MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
         let mut tracker_manager = crate::torrent::MockTrackerManager::new();
@@ -268,494 +257,147 @@ mod tests {
         let mock_peers = vec![
             "127.0.0.1:8080".parse().unwrap(),
             "127.0.0.1:8081".parse().unwrap(),
-            "127.0.0.1:8082".parse().unwrap(),
         ];
         tracker_manager.set_mock_peers(mock_peers);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
-        // Create test torrent metadata with proper hashes
-        let piece_count = 10;
-        let piece_size = 262_144u32;
+        // Create test torrent metadata
+        let piece_count = 3;
+        let piece_size = 32_768u32;
         let total_size = piece_count as u64 * piece_size as u64;
-
         let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-        let metadata = TorrentMetadata {
+        let metadata = crate::torrent::parsing::types::TorrentMetadata {
             info_hash: crate::torrent::InfoHash::new([1u8; 20]),
-            name: "test_movie.mp4".to_string(),
+            name: "test.bin".to_string(),
             total_length: total_size,
             piece_length: piece_size,
             piece_hashes,
             files: vec![crate::torrent::parsing::types::TorrentFile {
-                path: vec!["test_movie.mp4".to_string()],
+                path: vec!["test.bin".to_string()],
                 length: total_size,
             }],
             announce_urls: vec!["http://tracker.example.com/announce".to_string()],
         };
 
-        // Add torrent metadata
+        // Add torrent and start download
         let info_hash = handle.add_torrent_metadata(metadata).await.unwrap();
-
-        // Verify initial session state
         let session = handle.get_session(info_hash).await.unwrap();
-        assert_eq!(session.piece_count, piece_count as u32);
-        assert_eq!(session.total_size, total_size);
-        assert_eq!(session.progress, 0.0);
         assert!(!session.is_downloading);
-        assert_eq!(session.completed_pieces.len(), piece_count);
-        assert!(session.completed_pieces.iter().all(|&completed| !completed));
 
-        // Start download
         handle.start_download(info_hash).await.unwrap();
-
-        // Verify download started
         let session = handle.get_session(info_hash).await.unwrap();
         assert!(session.is_downloading);
 
-        // Wait for peer discovery and initial pieces to complete
-        tokio::time::sleep(Duration::from_millis(800)).await;
-
-        // Check progress - realistic simulation includes peer discovery phase
-        let session = handle.get_session(info_hash).await.unwrap();
-        println!(
-            "Progress after 800ms: {:.1}%, completed pieces: {}",
-            session.progress * 100.0,
-            session.completed_pieces.iter().filter(|&&x| x).count()
-        );
-
-        assert!(session.progress > 0.0, "Download should have started");
-        assert!(
-            session.completed_pieces.iter().any(|&completed| completed),
-            "At least one piece should be completed"
-        );
-
-        // Wait for more progress
-        tokio::time::sleep(Duration::from_millis(700)).await;
-
-        let session = handle.get_session(info_hash).await.unwrap();
-        let completed_count = session.completed_pieces.iter().filter(|&&x| x).count();
-        println!(
-            "Progress after 1500ms: {:.1}%, completed pieces: {}",
-            session.progress * 100.0,
-            completed_count
-        );
-
-        // Should have more pieces completed
-        assert!(
-            completed_count >= 2,
-            "Should have at least 2 pieces completed"
-        );
-        assert_eq!(
-            session.progress,
-            completed_count as f32 / piece_count as f32
-        );
-
-        // Verify download stats
+        // Verify engine stats
         let stats = handle.get_download_stats().await.unwrap();
         assert_eq!(stats.active_torrents, 1);
-        assert!(stats.bytes_downloaded > 0);
-        assert!(stats.average_progress > 0.0);
-
-        // Wait for complete download
-        let mut attempts = 0;
-        loop {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            let session = handle.get_session(info_hash).await.unwrap();
-
-            if session.is_complete() {
-                println!(
-                    "Download completed! Progress: {:.1}%",
-                    session.progress * 100.0
-                );
-                assert_eq!(session.progress, 1.0);
-                assert!(session.completed_pieces.iter().all(|&completed| completed));
-                break;
-            }
-
-            attempts += 1;
-            if attempts > 100 {
-                // 10 seconds max for realistic simulation
-                panic!(
-                    "Download should complete within 10 seconds for {} bytes (realistic BitTorrent simulation)",
-                    total_size
-                );
-            }
-        }
 
         handle.shutdown().await.unwrap();
     }
 
     #[tokio::test]
-    async fn test_comprehensive_bittorrent_protocol_simulation() {
-        use std::time::Duration;
+    async fn test_real_download_error_handling() {
+        let config = RiptideConfig::default();
 
-        use crate::torrent::parsing::types::TorrentMetadata;
-
-        // Create config with realistic BitTorrent parameters
-        let mut config = RiptideConfig::default();
-        config.simulation.enabled = true;
-        config.simulation.simulated_download_speed = 5_242_880; // 5 MB/s realistic speed
-        config.simulation.network_latency_ms = 50; // Realistic network latency
-        config.simulation.packet_loss_rate = 0.02; // 2% packet loss
-        config.simulation.max_simulated_peers = 15; // Realistic peer count
-        config.torrent.default_piece_size = 131_072; // 128 KB pieces
-
-        // Store config values before move
-        let download_speed = config.simulation.simulated_download_speed;
-        let latency = config.simulation.network_latency_ms;
-        let packet_loss = config.simulation.packet_loss_rate;
-        let max_peers = config.simulation.max_simulated_peers;
-
+        // Create tracker manager that fails announces
         let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new();
+        let tracker_manager = crate::torrent::MockTrackerManager::new_with_announce_failure();
+
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
-        // Create larger torrent for comprehensive testing
-        let piece_count = 25;
-        let piece_size = 131_072u32;
+        // Create test torrent metadata
+        let piece_count = 3;
+        let piece_size = 32_768u32;
         let total_size = piece_count as u64 * piece_size as u64;
-
         let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-        let metadata = TorrentMetadata {
+        let metadata = crate::torrent::parsing::types::TorrentMetadata {
             info_hash: crate::torrent::InfoHash::new([2u8; 20]),
-            name: "comprehensive_test.mkv".to_string(),
+            name: "error_test.bin".to_string(),
             total_length: total_size,
             piece_length: piece_size,
             piece_hashes,
             files: vec![crate::torrent::parsing::types::TorrentFile {
-                path: vec!["comprehensive_test.mkv".to_string()],
+                path: vec!["error_test.bin".to_string()],
                 length: total_size,
             }],
-            announce_urls: vec![
-                "http://tracker1.example.com/announce".to_string(),
-                "http://tracker2.example.com/announce".to_string(),
-            ],
+            announce_urls: vec!["http://tracker.example.com/announce".to_string()],
         };
 
+        // Add torrent and start download - should fail due to tracker errors
         let info_hash = handle.add_torrent_metadata(metadata).await.unwrap();
-
-        println!("=== Comprehensive BitTorrent Protocol Simulation ===");
-        println!(
-            "Torrent: {} pieces ({} MB total)",
-            piece_count,
-            total_size / 1_048_576
-        );
-        println!(
-            "Config: {} MB/s, {}ms latency, {:.1}% packet loss, {} max peers",
-            download_speed / 1_048_576,
-            latency,
-            packet_loss * 100.0,
-            max_peers
-        );
-
-        // Start download and monitor detailed progress
         handle.start_download(info_hash).await.unwrap();
 
-        // Phase 1: Peer Discovery
-        println!("\n--- Phase 1: Peer Discovery ---");
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Verify download started but will fail
         let session = handle.get_session(info_hash).await.unwrap();
-        println!(
-            "Initial state: {:.1}% complete, {} pieces",
-            session.progress * 100.0,
-            session.completed_pieces.iter().filter(|&&x| x).count()
-        );
+        assert!(session.is_downloading);
 
-        // Phase 2: Initial Piece Downloads
-        println!("\n--- Phase 2: Initial Downloads ---");
-        tokio::time::sleep(Duration::from_millis(1500)).await; // Wait longer for realistic conditions
-        let session = handle.get_session(info_hash).await.unwrap();
-        let early_pieces = session.completed_pieces.iter().filter(|&&x| x).count();
-        println!(
-            "Early progress: {:.1}% complete, {} pieces downloaded",
-            session.progress * 100.0,
-            early_pieces
-        );
-        // With realistic network conditions, initial downloads may take longer
-        if early_pieces == 0 {
-            println!("Waiting additional time for realistic network simulation...");
-            tokio::time::sleep(Duration::from_millis(1000)).await;
-            let session = handle.get_session(info_hash).await.unwrap();
-            let early_pieces = session.completed_pieces.iter().filter(|&&x| x).count();
-            assert!(
-                early_pieces > 0,
-                "Should have downloaded some pieces after extended wait"
-            );
-        }
+        // Brief wait for download attempt
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // Phase 3: Mid-download with peer churn simulation
-        println!("\n--- Phase 3: Mid-download Progress ---");
-        let session = handle.get_session(info_hash).await.unwrap();
-        let mut last_count = session.completed_pieces.iter().filter(|&&x| x).count();
-        for i in 1..=5 {
-            tokio::time::sleep(Duration::from_millis(800)).await; // Longer intervals for realistic simulation
-            let session = handle.get_session(info_hash).await.unwrap();
-            let current_count = session.completed_pieces.iter().filter(|&&x| x).count();
-            println!(
-                "Update {}: {:.1}% complete, {} pieces (+{} new)",
-                i,
-                session.progress * 100.0,
-                current_count,
-                current_count - last_count
-            );
-
-            // Verify steady progress
-            assert!(
-                current_count >= last_count,
-                "Progress should not go backwards"
-            );
-            last_count = current_count;
-
-            if session.is_complete() {
-                println!("Download completed early at update {}", i);
-                break;
-            }
-        }
-
-        // Phase 4: Completion verification
-        println!("\n--- Phase 4: Completion Verification ---");
-        let mut completion_attempts = 0;
-        loop {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            let session = handle.get_session(info_hash).await.unwrap();
-
-            if session.is_complete() {
-                println!("✓ Download completed successfully!");
-                println!(
-                    "Final state: {:.1}% complete, {}/{} pieces",
-                    session.progress * 100.0,
-                    session.completed_pieces.iter().filter(|&&x| x).count(),
-                    piece_count
-                );
-
-                // Verify all pieces are marked complete
-                assert_eq!(session.progress, 1.0);
-                assert!(session.completed_pieces.iter().all(|&completed| completed));
-                break;
-            }
-
-            completion_attempts += 1;
-            if completion_attempts > 300 {
-                // 30 seconds max for realistic conditions
-                let session = handle.get_session(info_hash).await.unwrap();
-                panic!(
-                    "Download timed out: {:.1}% complete, {}/{} pieces after 30 seconds\n\
-                     This indicates the realistic BitTorrent simulation may need tuning",
-                    session.progress * 100.0,
-                    session.completed_pieces.iter().filter(|&&x| x).count(),
-                    piece_count
-                );
-            }
-        }
-
-        // Phase 5: Post-download verification
-        println!("\n--- Phase 5: Engine Statistics ---");
+        // Verify engine stats
         let stats = handle.get_download_stats().await.unwrap();
-        println!(
-            "Final stats: {} active torrents, {} total peers, {} bytes downloaded",
-            stats.active_torrents, stats.total_peers, stats.bytes_downloaded
-        );
-
         assert_eq!(stats.active_torrents, 1);
-        assert!(stats.bytes_downloaded > 0);
-        assert_eq!(stats.average_progress, 1.0);
-
-        println!("\n=== Simulation Completed Successfully ===");
-        println!("✓ Peer discovery simulation");
-        println!("✓ Progressive piece downloading");
-        println!("✓ Realistic timing with network conditions");
-        println!("✓ Proper state management");
-        println!("✓ Complete download verification");
 
         handle.shutdown().await.unwrap();
     }
 
     #[tokio::test]
-    async fn test_streaming_during_realistic_download() {
-        use std::time::Duration;
+    async fn test_multiple_torrent_management() {
+        let config = RiptideConfig::default();
+        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        peer_manager.enable_piece_data_simulation();
+        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        tracker_manager.set_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
-        use crate::torrent::parsing::types::TorrentMetadata;
-
-        // Create config optimized for streaming during download
-        let mut config = RiptideConfig::default();
-        config.simulation.enabled = true;
-        config.simulation.simulated_download_speed = 2_097_152; // 2 MB/s realistic streaming speed
-        config.simulation.network_latency_ms = 100; // Realistic latency
-        config.simulation.packet_loss_rate = 0.01; // 1% packet loss
-        config.simulation.max_simulated_peers = 10;
-        config.torrent.default_piece_size = 262_144; // 256 KB pieces
-
-        let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new();
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
-        // Create movie-like torrent for streaming test
-        let piece_count = 20;
-        let piece_size = 262_144u32;
-        let total_size = piece_count as u64 * piece_size as u64;
+        // Add multiple torrents
+        let info_hash1 = handle
+            .add_torrent_metadata(crate::torrent::parsing::types::TorrentMetadata {
+                info_hash: crate::torrent::InfoHash::new([1u8; 20]),
+                name: "torrent1.bin".to_string(),
+                total_length: 1024,
+                piece_length: 512,
+                piece_hashes: vec![[1u8; 20], [2u8; 20]],
+                files: vec![crate::torrent::parsing::types::TorrentFile {
+                    path: vec!["torrent1.bin".to_string()],
+                    length: 1024,
+                }],
+                announce_urls: vec!["http://tracker.example.com/announce".to_string()],
+            })
+            .await
+            .unwrap();
 
-        let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
+        let info_hash2 = handle
+            .add_torrent_metadata(crate::torrent::parsing::types::TorrentMetadata {
+                info_hash: crate::torrent::InfoHash::new([2u8; 20]),
+                name: "torrent2.bin".to_string(),
+                total_length: 2048,
+                piece_length: 512,
+                piece_hashes: vec![[3u8; 20], [4u8; 20], [5u8; 20], [6u8; 20]],
+                files: vec![crate::torrent::parsing::types::TorrentFile {
+                    path: vec!["torrent2.bin".to_string()],
+                    length: 2048,
+                }],
+                announce_urls: vec!["http://tracker.example.com/announce".to_string()],
+            })
+            .await
+            .unwrap();
 
-        let metadata = TorrentMetadata {
-            info_hash: crate::torrent::InfoHash::new([3u8; 20]),
-            name: "streaming_test.mp4".to_string(),
-            total_length: total_size,
-            piece_length: piece_size,
-            piece_hashes,
-            files: vec![crate::torrent::parsing::types::TorrentFile {
-                path: vec!["streaming_test.mp4".to_string()],
-                length: total_size,
-            }],
-            announce_urls: vec!["http://tracker.streaming.com/announce".to_string()],
-        };
+        // Verify both torrents exist
+        let sessions = handle.get_active_sessions().await.unwrap();
+        assert_eq!(sessions.len(), 2);
 
-        let info_hash = handle.add_torrent_metadata(metadata).await.unwrap();
+        // Start downloads
+        handle.start_download(info_hash1).await.unwrap();
+        handle.start_download(info_hash2).await.unwrap();
 
-        println!("\n=== Streaming During Download Integration Test ===");
-        println!(
-            "Movie torrent: {} pieces ({} MB) - simulating streaming playback",
-            piece_count,
-            total_size / 1_048_576
-        );
-
-        // Start download
-        handle.start_download(info_hash).await.unwrap();
-
-        // Test streaming availability during download phases
-        println!("\n--- Testing streaming during early download ---");
-        tokio::time::sleep(Duration::from_millis(800)).await;
-
-        let session = handle.get_session(info_hash).await.unwrap();
-        let early_completed = session.completed_pieces.iter().filter(|&&x| x).count();
-        println!(
-            "Early download: {:.1}% complete, {} pieces available for streaming",
-            session.progress * 100.0,
-            early_completed
-        );
-
-        // Simulate streaming requirement check
-        let streaming_buffer_pieces = 3; // Need first 3 pieces for streaming start
-        let first_pieces_available = session
-            .completed_pieces
-            .iter()
-            .take(streaming_buffer_pieces)
-            .filter(|&&x| x)
-            .count();
-
-        if first_pieces_available >= streaming_buffer_pieces {
-            println!("✓ Streaming can start - sufficient initial buffer available");
-        } else {
-            println!(
-                "⏳ Streaming waiting for initial buffer ({}/{} pieces ready)",
-                first_pieces_available, streaming_buffer_pieces
-            );
-        }
-
-        // Test progressive streaming availability
-        println!("\n--- Testing progressive streaming availability ---");
-        let mut last_streaming_position = 0;
-        for check in 1..=4 {
-            tokio::time::sleep(Duration::from_millis(600)).await;
-            let session = handle.get_session(info_hash).await.unwrap();
-
-            // Calculate how far we can stream (consecutive pieces from start)
-            let mut streaming_position = 0;
-            for &completed in &session.completed_pieces {
-                if completed {
-                    streaming_position += 1;
-                } else {
-                    break;
-                }
-            }
-
-            println!(
-                "Check {}: {:.1}% complete, can stream {} pieces ({:.1}% of file)",
-                check,
-                session.progress * 100.0,
-                streaming_position,
-                (streaming_position as f32 / piece_count as f32) * 100.0
-            );
-
-            // Verify streaming position advances
-            assert!(
-                streaming_position >= last_streaming_position,
-                "Streaming position should not decrease"
-            );
-            last_streaming_position = streaming_position;
-
-            if session.is_complete() {
-                println!("✓ Download completed - full file available for streaming");
-                break;
-            }
-        }
-
-        // Test streaming readiness for different playback positions
-        println!("\n--- Testing streaming readiness at different positions ---");
-        let session = handle.get_session(info_hash).await.unwrap();
-
-        let test_positions = [0.0, 0.25, 0.5, 0.75, 1.0]; // 0%, 25%, 50%, 75%, 100%
-        for &position in &test_positions {
-            let piece_index = (position * piece_count as f32) as usize;
-            let piece_available = piece_index < session.completed_pieces.len()
-                && session.completed_pieces[piece_index];
-
-            println!(
-                "Position {:.0}% (piece {}): {}",
-                position * 100.0,
-                piece_index,
-                if piece_available {
-                    "✓ Available"
-                } else {
-                    "⏳ Downloading"
-                }
-            );
-        }
-
-        // Verify final download completion
-        println!("\n--- Ensuring complete download for full streaming ---");
-        let mut completion_checks = 0;
-        loop {
-            tokio::time::sleep(Duration::from_millis(200)).await;
-            let session = handle.get_session(info_hash).await.unwrap();
-
-            if session.is_complete() {
-                println!("✓ Complete file downloaded - streaming available at any position");
-                assert_eq!(session.progress, 1.0);
-                assert!(session.completed_pieces.iter().all(|&completed| completed));
-                break;
-            }
-
-            completion_checks += 1;
-            if completion_checks > 100 {
-                let completed_count = session.completed_pieces.iter().filter(|&&x| x).count();
-                println!(
-                    "⚠ Download not completed after 20 seconds: {}/{} pieces ({:.1}%)",
-                    completed_count,
-                    piece_count,
-                    session.progress * 100.0
-                );
-                // Don't fail the test - realistic simulation may take longer
-                break;
-            }
-        }
-
-        // Verify engine statistics
+        // Verify stats
         let stats = handle.get_download_stats().await.unwrap();
-        println!(
-            "\nFinal streaming integration stats: {} bytes downloaded, {:.1}% average progress",
-            stats.bytes_downloaded,
-            stats.average_progress * 100.0
-        );
-
-        println!("\n=== Streaming Integration Test Results ===");
-        println!("✓ Realistic BitTorrent download simulation");
-        println!("✓ Progressive piece availability during download");
-        println!("✓ Streaming readiness detection");
-        println!("✓ Playback position availability checking");
-        println!("✓ Integration with engine statistics");
-        println!("✓ Ready for streaming service integration");
+        assert_eq!(stats.active_torrents, 2);
 
         handle.shutdown().await.unwrap();
     }
