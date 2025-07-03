@@ -1,0 +1,11 @@
+[package]
+name = "riptide-tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+words = "0.1"
+
+[[test]]
+name = "tidy"
+path = "tidy.rs"

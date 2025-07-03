@@ -23,6 +23,9 @@ pub mod encoding {
     }
 
     /// Decode URL-encoded bytes
+    ///
+    /// # Errors
+    /// - Returns error for invalid URL encoding or malformed hex sequences
     pub fn url_decode_bytes(encoded: &str) -> Result<Vec<u8>, String> {
         let mut bytes = Vec::new();
         let mut chars = encoded.chars().peekable();

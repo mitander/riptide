@@ -26,6 +26,7 @@ impl HttpResponse {
         Self { status_code, body }
     }
 
+    /// Returns true if the HTTP status code indicates success (2xx).
     pub fn is_success(&self) -> bool {
         self.status_code >= 200 && self.status_code < 300
     }

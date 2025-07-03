@@ -366,6 +366,7 @@ pub async fn api_local_movies(State(state): State<AppState>) -> Json<serde_json:
     }
 }
 
+/// Query parameters for adding a local movie to the library.
 #[derive(Deserialize)]
 pub struct AddLocalMovieQuery {
     pub info_hash: String,

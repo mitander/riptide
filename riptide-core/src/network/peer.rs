@@ -211,6 +211,7 @@ impl SimulationPeerLayer {
         }
     }
 
+    /// Sets the connection success rate for simulation (0.0 to 1.0).
     pub fn set_success_rate(&mut self, rate: f32) {
         self.success_rate = rate.clamp(0.0, 1.0);
     }

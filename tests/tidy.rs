@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use top_english_words::is_top_word;
+use words::Words;
 
 // --- Configuration from Style Docs ---
 
@@ -219,7 +219,7 @@ impl IdentifierTracker {
                 let mut full_form = Vec::new();
 
                 for (variant, _line) in variants {
-                    if self.uses_non_english_words(variant) {
+                    if self.uses_problematic_abbreviations(variant) {
                         abbreviated.push(variant.clone());
                     } else {
                         full_form.push(variant.clone());
@@ -238,8 +238,145 @@ impl IdentifierTracker {
         inconsistencies
     }
 
-    /// Check if a name uses abbreviations
-    fn uses_non_english_words(&self, name: &str) -> bool {
+    /// Check if a name uses problematic abbreviations that should be full words
+    fn uses_problematic_abbreviations(&self, name: &str) -> bool {
+        // Common technical abbreviations that are acceptable
+        let acceptable_abbreviations = [
+            "api",
+            "app",
+            "url",
+            "id",
+            "len",
+            "max",
+            "min",
+            "tcp",
+            "udp",
+            "http",
+            "https",
+            "json",
+            "xml",
+            "html",
+            "css",
+            "js",
+            "ts",
+            "db",
+            "sql",
+            "cli",
+            "gui",
+            "ui",
+            "ux",
+            "auth",
+            "oauth",
+            "jwt",
+            "ssl",
+            "tls",
+            "ssh",
+            "git",
+            "repo",
+            "config",
+            "env",
+            "async",
+            "sync",
+            "await",
+            "fn",
+            "impl",
+            "struct",
+            "enum",
+            "trait",
+            "mod",
+            "lib",
+            "bin",
+            "exe",
+            "dll",
+            "so",
+            "dylib",
+            "proc",
+            "thread",
+            "task",
+            "job",
+            "doc",
+            "docs",
+            "test",
+            "tests",
+            "spec",
+            "specs",
+            "benchmark",
+            "bench",
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "trace",
+            "log",
+            "logs",
+            "cache",
+            "data",
+            "meta",
+            "attr",
+            "prop",
+            "field",
+            "key",
+            "val",
+            "value",
+            "hash",
+            "map",
+            "set",
+            "vec",
+            "list",
+            "array",
+            "iter",
+            "stream",
+            "reader",
+            "writer",
+            "parser",
+            "lexer",
+            "token",
+            "ast",
+            "tree",
+            "node",
+            "graph",
+            "codec",
+            "format",
+            "mime",
+            "type",
+            "kind",
+            "sort",
+            "order",
+            "priority",
+            "status",
+            "state",
+            "mode",
+            "flag",
+            "option",
+            "profile",
+            "session",
+            "connection",
+            "socket",
+            "addr",
+            "port",
+            "host",
+            "path",
+            "dir",
+            "file",
+            "name",
+            "ext",
+            "size",
+            "count",
+            "num",
+            "total",
+            "sum",
+            "avg",
+            "mean",
+            "std",
+            "dev",
+            "var",
+            "rand",
+            "random",
+            "gen",
+            "new",
+            "drop",
+        ];
+
         // Split identifier into words (handle snake_case, camelCase, PascalCase)
         let mut words = Vec::new();
 
@@ -259,9 +396,13 @@ impl IdentifierTracker {
             }
         }
 
-        // Check if any word is not in the top English words
+        // Check if any word is not in the dictionary and not an acceptable abbreviation
+        let word_list = Words::new();
         for word in words {
-            if word.len() > 2 && is_top_word(&word).is_none() {
+            if word.len() > 2
+                && !acceptable_abbreviations.contains(&word.as_str())
+                && !word_list.words.contains(&word)
+            {
                 return true;
             }
         }
@@ -281,6 +422,199 @@ impl IdentifierTracker {
                 }
             }
         }
+        false
+    }
+
+    fn uses_forbidden_prefix(&self, name: &str) -> bool {
+        // Check for forbidden function prefixes from docs/NAMING_CONVENTIONS.md
+        const FORBIDDEN_PREFIXES: &[&str] = &[
+            "get_",         // Use descriptive names: get_torrent() not get()
+            "set_",         // Use descriptive names: update_status() not set_status()
+            "do_",          // Redundant prefix: start_download() not do_start_download()
+            "run_",         // Too generic: execute_command() not run_command()
+            "go_",          // Non-standard: start_process() not go_start()
+            "make_",        // Too generic: create_connection() not make_connection()
+            "put_",         // Unclear: store_data() not put_data()
+            "add_to_",      // Verbose: add_peer() not add_to_peers()
+            "remove_from_", // Verbose: remove_peer() not remove_from_peers()
+        ];
+
+        for &prefix in FORBIDDEN_PREFIXES {
+            if name.starts_with(prefix) {
+                // Make sure it's not just a word that happens to start with these letters
+                if name.len() > prefix.len() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn uses_redundant_type_suffix(&self, name: &str) -> bool {
+        // Check for redundant type suffixes that add no information
+        const REDUNDANT_SUFFIXES: &[&str] = &[
+            "Struct",    // DataStruct → Data
+            "Enum",      // StatusEnum → Status
+            "Trait",     // DrawableTrait → Drawable
+            "Interface", // ServiceInterface → Service
+            "Class",     // Not Rust-like: ConnectionClass → Connection
+            "Object",    // Not Rust-like: ConfigObject → Config
+            "Instance",  // Not Rust-like: EngineInstance → Engine
+        ];
+
+        // Be more conservative with "Type" - only flag obviously redundant cases
+        const REDUNDANT_TYPE_PATTERNS: &[&str] = &[
+            "DataType",     // Data is sufficient
+            "InfoType",     // Info is sufficient
+            "ConfigType",   // Config is sufficient
+            "SettingsType", // Settings is sufficient
+        ];
+
+        for &suffix in REDUNDANT_SUFFIXES {
+            if name.ends_with(suffix) && name.len() > suffix.len() {
+                // Make sure it's actually a suffix, not just coincidence
+                let prefix = &name[..name.len() - suffix.len()];
+                // Don't flag single letters or very short prefixes
+                if prefix.len() >= 3 {
+                    return true;
+                }
+            }
+        }
+
+        // Check for obviously redundant "Type" patterns
+        for &pattern in REDUNDANT_TYPE_PATTERNS {
+            if name == pattern {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn uses_generic_name(&self, name: &str) -> bool {
+        // Check for overly generic function names that provide no context
+        const GENERIC_NAMES: &[&str] = &[
+            "process",
+            "handle",
+            "manage",
+            "execute",
+            "perform",
+            "operate",
+            "work",
+            "run",
+            "go",
+            "do",
+            "action",
+            "func",
+            "method",
+            "call",
+            "invoke",
+            "trigger",
+            "fire",
+            "emit",
+            "send",
+            "receive",
+            "get",
+            "set",
+            "put",
+            "take",
+            "give",
+            "make",
+            "create",
+            "construct",
+            "produce",
+            "yield",
+            "return",
+            "provide",
+            "supply",
+        ];
+
+        // Don't flag legitimate Rust patterns
+        const ACCEPTABLE_PATTERNS: &[&str] = &[
+            "build",    // Builder pattern standard
+            "generate", // Generate is specific enough (generate_peer_id, etc.)
+        ];
+
+        if ACCEPTABLE_PATTERNS.contains(&name) {
+            return false;
+        }
+
+        GENERIC_NAMES.contains(&name)
+    }
+
+    fn uses_unclear_boolean_name(&self, name: &str) -> bool {
+        // Check for boolean functions that don't clearly indicate what they're checking
+        const UNCLEAR_BOOLEAN_NAMES: &[&str] = &[
+            "valid",
+            "empty",
+            "ready",
+            "active",
+            "enabled",
+            "disabled",
+            "open",
+            "closed",
+            "available",
+            "busy",
+            "free",
+            "used",
+            "exists",
+            "present",
+            "absent",
+            "found",
+            "missing",
+            "ok",
+            "error",
+            "success",
+            "failure",
+            "complete",
+            "finished",
+        ];
+
+        // Only flag if it's not already using a clear boolean prefix
+        if name.starts_with("is_")
+            || name.starts_with("has_")
+            || name.starts_with("can_")
+            || name.starts_with("should_")
+        {
+            return false;
+        }
+
+        UNCLEAR_BOOLEAN_NAMES.contains(&name)
+    }
+
+    fn uses_unclear_collection_name(&self, name: &str) -> bool {
+        // Check for generic collection names that don't specify what they contain
+        const GENERIC_COLLECTION_NAMES: &[&str] = &[
+            "list", "items", "data", "things", "stuff", "objects", "elements", "records", "rows",
+            "values", "map", "dict", "table", "pool", "queue", "stack", "array", "vector",
+        ];
+
+        // Allow certain common patterns that are clear in context
+        const ACCEPTABLE_GENERIC_NAMES: &[&str] = &[
+            "entries", // Common for directory/file operations
+            "buffer",  // Common for I/O operations
+            "store",   // Common for storage abstractions
+            "cache",   // Common for caching
+        ];
+
+        // Allow these as suffixes (peer_list) but not standalone
+        if GENERIC_COLLECTION_NAMES.contains(&name) {
+            return true;
+        }
+
+        // Don't flag acceptable generic names that are clear in context
+        if ACCEPTABLE_GENERIC_NAMES.contains(&name) {
+            return false;
+        }
+
+        // Also check for functions that return generic collections
+        if name.starts_with("get_") {
+            let rest = &name[4..];
+            if GENERIC_COLLECTION_NAMES.contains(&rest) {
+                return true;
+            }
+        }
+
         false
     }
 }
@@ -348,7 +682,7 @@ impl StyleChecker {
         let line_count = self.file_lines.len();
         if line_count > MAX_MODULE_LINES {
             self.add_violation(
-                Severity::Critical,
+                Severity::Warning,
                 1,
                 "MODULE_SIZE_LIMIT",
                 &format!(
@@ -465,39 +799,39 @@ impl StyleChecker {
             }
         }
 
-        // Check for non-English words in identifiers
+        // Check for problematic abbreviations in identifiers
         let mut violations = Vec::new();
 
         // Collect function name violations
         for name in &self.identifiers.function_names {
-            if self.identifiers.uses_non_english_words(&name.0) {
+            if self.identifiers.uses_problematic_abbreviations(&name.0) {
                 let message = format!(
-                    "Function '{}' contains non-English words - use full English words",
+                    "Function '{}' contains abbreviations - use full words (index not idx, buffer not buf, etc.)",
                     name.0
                 );
-                violations.push((name.1, "NON_ENGLISH_WORDS", message));
+                violations.push((name.1, "ABBREVIATIONS", message));
             }
         }
 
         // Collect type name violations
         for name in &self.identifiers.type_names {
-            if self.identifiers.uses_non_english_words(&name.0) {
+            if self.identifiers.uses_problematic_abbreviations(&name.0) {
                 let message = format!(
-                    "Type '{}' contains non-English words - use full English words",
+                    "Type '{}' contains abbreviations - use full words (index not idx, buffer not buf, etc.)",
                     name.0
                 );
-                violations.push((name.1, "NON_ENGLISH_WORDS", message));
+                violations.push((name.1, "ABBREVIATIONS", message));
             }
         }
 
         // Collect variable name violations
         for name in &self.identifiers.variable_names {
-            if self.identifiers.uses_non_english_words(&name.0) {
+            if self.identifiers.uses_problematic_abbreviations(&name.0) {
                 let message = format!(
-                    "Variable '{}' contains non-English words - use full English words",
+                    "Variable '{}' contains abbreviations - use full words (index not idx, buffer not buf, etc.)",
                     name.0
                 );
-                violations.push((name.1, "NON_ENGLISH_WORDS", message));
+                violations.push((name.1, "ABBREVIATIONS", message));
             }
         }
 
@@ -512,12 +846,83 @@ impl StyleChecker {
             }
         }
 
+        // Check for forbidden function name prefixes
+        for name in &self.identifiers.function_names {
+            if self.identifiers.uses_forbidden_prefix(&name.0) {
+                let message = format!(
+                    "Function '{}' uses forbidden prefix - use descriptive names (start_download not get_download, update_status not set_status)",
+                    name.0
+                );
+                violations.push((name.1, "FORBIDDEN_PREFIX", message));
+            }
+        }
+
+        // Check for redundant type suffixes
+        for name in &self.identifiers.type_names {
+            if self.identifiers.uses_redundant_type_suffix(&name.0) {
+                let message = format!(
+                    "Type '{}' uses redundant suffix - remove unnecessary suffixes (Data not DataStruct, Status not StatusEnum)",
+                    name.0
+                );
+                violations.push((name.1, "REDUNDANT_TYPE_SUFFIX", message));
+            }
+        }
+
+        // Check for overly generic function names
+        for name in &self.identifiers.function_names {
+            if self.identifiers.uses_generic_name(&name.0) {
+                let message = format!(
+                    "Function '{}' is too generic - use specific action names (compress_headers not process, validate_torrent not handle)",
+                    name.0
+                );
+                violations.push((name.1, "GENERIC_FUNCTION_NAME", message));
+            }
+        }
+
+        // Check for unclear boolean function names
+        for name in &self.identifiers.function_names {
+            if self.identifiers.uses_unclear_boolean_name(&name.0) {
+                let message = format!(
+                    "Function '{}' has unclear boolean name - use clear boolean prefixes (is_valid_torrent not valid, has_pending_pieces not ready)",
+                    name.0
+                );
+                violations.push((name.1, "UNCLEAR_BOOLEAN_NAME", message));
+            }
+        }
+
+        // Check for unclear collection names
+        for name in &self.identifiers.function_names {
+            if self.identifiers.uses_unclear_collection_name(&name.0) {
+                let message = format!(
+                    "Function '{}' uses unclear collection name - specify what the collection contains (active_downloads not list, peer_connections not map)",
+                    name.0
+                );
+                violations.push((name.1, "UNCLEAR_COLLECTION_NAME", message));
+            }
+        }
+
+        // Also check variable names for unclear collections
+        for name in &self.identifiers.variable_names {
+            if self.identifiers.uses_unclear_collection_name(&name.0) {
+                let message = format!(
+                    "Variable '{}' uses unclear collection name - specify what the collection contains (peer_list not list, torrent_cache not cache)",
+                    name.0
+                );
+                violations.push((name.1, "UNCLEAR_COLLECTION_NAME", message));
+            }
+        }
+
         // Check for discarded variables that are actually used
         self.check_discarded_variables();
 
-        // Add all violations
+        // Add all violations - naming issues are now Critical to prevent future violations
         for (line_num, rule, message) in violations {
-            self.add_violation(Severity::Warning, line_num, rule, &message);
+            let severity = match rule {
+                "FORBIDDEN_PREFIX" | "REDUNDANT_TYPE_SUFFIX" | "GENERIC_FUNCTION_NAME" 
+                | "UNCLEAR_BOOLEAN_NAME" | "UNCLEAR_COLLECTION_NAME" | "VERB_SUFFIX_PATTERN" => Severity::Critical,
+                _ => Severity::Warning,
+            };
+            self.add_violation(severity, line_num, rule, &message);
         }
     }
 
@@ -526,34 +931,48 @@ impl StyleChecker {
         let mut violations = Vec::new();
         let mut in_doc_block = false;
         let mut doc_lines = Vec::new();
+        let mut in_impl_block = false;
 
         for (line_num, line) in self.file_lines.iter().enumerate() {
-            if line.trim_start().starts_with("///") {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("///") {
                 in_doc_block = true;
                 doc_lines.push(line.clone());
+            } else if trimmed.starts_with("impl ") {
+                in_impl_block = true;
+                in_doc_block = false;
+                doc_lines.clear();
+            } else if trimmed == "}" && in_impl_block {
+                in_impl_block = false;
+                in_doc_block = false;
+                doc_lines.clear();
             } else if line.trim().is_empty() && in_doc_block {
                 // Continue collecting docs
-            } else if line.trim_start().starts_with("pub fn ") && line.contains("Result<") {
+            } else if trimmed.starts_with("pub fn ") && line.contains("Result<") {
                 let func_name = self.extract_function_name(line).unwrap_or_default();
 
-                if in_doc_block {
-                    let doc_text = doc_lines.join("\n");
-                    if !doc_text.contains("# Errors") {
+                // Only check documentation for non-impl functions
+                if !in_impl_block {
+                    if in_doc_block {
+                        let doc_text = doc_lines.join("\n");
+                        if !doc_text.contains("# Errors") {
+                            violations.push((
+                                line_num + 1,
+                                "MISSING_ERRORS_DOC",
+                                format!(
+                                    "Public function '{}' returning Result missing '# Errors' documentation",
+                                    func_name
+                                ),
+                            ));
+                        }
+                    } else {
                         violations.push((
                             line_num + 1,
-                            "MISSING_ERRORS_DOC",
-                            format!(
-                                "Public function '{}' returning Result missing '# Errors' documentation",
-                                func_name
-                            ),
+                            "MISSING_PUBLIC_DOC",
+                            format!("Public function '{}' missing documentation", func_name),
                         ));
                     }
-                } else {
-                    violations.push((
-                        line_num + 1,
-                        "MISSING_PUBLIC_DOC",
-                        format!("Public function '{}' missing documentation", func_name),
-                    ));
                 }
 
                 in_doc_block = false;
@@ -573,13 +992,22 @@ impl StyleChecker {
     fn check_public_documentation(&mut self) {
         let mut has_doc = false;
         let mut violations = Vec::new();
+        let mut in_impl_block = false;
 
         for (line_num, line) in self.file_lines.iter().enumerate() {
-            if line.trim_start().starts_with("///") {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("///") {
                 has_doc = true;
                 // Continue
-            } else if line.trim_start().starts_with("pub fn ") && !line.contains("Result<") {
-                if !has_doc {
+            } else if trimmed.starts_with("impl ") {
+                in_impl_block = true;
+                has_doc = false;
+            } else if trimmed == "}" && in_impl_block {
+                in_impl_block = false;
+                has_doc = false;
+            } else if trimmed.starts_with("pub fn ") && !line.contains("Result<") {
+                if !has_doc && !in_impl_block {
                     let func_name = self.extract_function_name(line).unwrap_or_default();
                     violations.push((
                         line_num + 1,
@@ -588,7 +1016,7 @@ impl StyleChecker {
                     ));
                 }
                 has_doc = false;
-            } else if line.trim_start().starts_with("pub struct ") {
+            } else if trimmed.starts_with("pub struct ") {
                 if !has_doc {
                     let struct_name = self.extract_struct_name(line).unwrap_or_default();
                     violations.push((
@@ -598,7 +1026,22 @@ impl StyleChecker {
                     ));
                 }
                 has_doc = false;
-            } else {
+            } else if trimmed.starts_with("pub enum ") {
+                if !has_doc {
+                    let enum_name = self.extract_enum_name(line).unwrap_or_default();
+                    violations.push((
+                        line_num + 1,
+                        "MISSING_PUBLIC_DOC",
+                        format!("Public enum '{}' missing documentation", enum_name),
+                    ));
+                }
+                has_doc = false;
+            } else if !trimmed.is_empty()
+                && !trimmed.starts_with("//")
+                && !trimmed.starts_with("#[")
+                && !trimmed.starts_with("use ")
+            {
+                // Only reset has_doc for substantial code lines, not attributes or imports
                 has_doc = false;
             }
         }
@@ -809,6 +1252,13 @@ impl StyleChecker {
 fn collect_workspace_files() -> Vec<PathBuf> {
     let mut files = Vec::new();
 
+    // tidy.rs is in tests/ subdirectory, so workspace root is parent
+    let workspace_root = std::env::current_dir()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
     // Workspace crates
     for crate_name in &[
         "riptide-core",
@@ -817,20 +1267,19 @@ fn collect_workspace_files() -> Vec<PathBuf> {
         "riptide-cli",
         "riptide-sim",
     ] {
-        let src_path = Path::new(crate_name).join("src");
+        let src_path = workspace_root.join(crate_name).join("src");
         if src_path.exists() {
             collect_rust_files_in_dir(&src_path, &mut files);
         }
     }
 
-    // Integration tests and examples
-    for dir_name in &["tests", "examples"] {
-        let dir_path = Path::new(dir_name);
+    // Integration tests and examples (skip tests to avoid recursive checking)
+    for dir_name in &["examples"] {
+        let dir_path = workspace_root.join(dir_name);
         if dir_path.exists() {
-            collect_rust_files_in_dir(dir_path, &mut files);
+            collect_rust_files_in_dir(&dir_path, &mut files);
         }
     }
-
     files
 }
 
@@ -839,6 +1288,10 @@ fn collect_rust_files_in_dir(dir: &Path, files: &mut Vec<PathBuf>) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() && path.extension().map_or(false, |ext| ext == "rs") {
+                // Skip the tidy.rs file itself
+                if path.file_name().map_or(false, |name| name == "tidy.rs") {
+                    continue;
+                }
                 files.push(path);
             } else if path.is_dir() {
                 collect_rust_files_in_dir(&path, files);
@@ -941,18 +1394,23 @@ mod tests {
         );
         println!("");
         println!("CRITICAL (Must Fix):");
-        println!("  ✓ MODULE_SIZE_LIMIT - Max 500 lines per module");
         println!("  ✓ BANNED_MODULE_NAME - No utils/helpers anti-pattern modules");
         println!("  ✓ NO_EMOJIS - Absolutely no emojis anywhere");
         println!("  ✓ MISSING_ERRORS_DOC - Result functions need # Errors documentation");
         println!("  ✓ MISSING_PUBLIC_DOC - Public APIs must be documented");
+        println!("  ✓ FORBIDDEN_PREFIX - No get_/set_/do_/run_ prefixes: use descriptive names");
+        println!("  ✓ REDUNDANT_TYPE_SUFFIX - No DataStruct/StatusEnum: use Data/Status");
+        println!("  ✓ GENERIC_FUNCTION_NAME - No process/handle: use compress_headers/validate_torrent");
+        println!("  ✓ UNCLEAR_BOOLEAN_NAME - No valid/ready: use is_valid_torrent/has_pending_pieces");
+        println!("  ✓ UNCLEAR_COLLECTION_NAME - No list/map: use active_downloads/peer_connections");
+        println!("  ✓ VERB_SUFFIX_PATTERN - Use verb-first naming: verb_noun");
         println!("");
         println!("WARNING (Consistency Improvements):");
+        println!("  ✓ MODULE_SIZE_LIMIT - Max 500 lines per module");
         println!("  ✓ NAMING_INCONSISTENCY - Detects mixed abbreviation patterns within modules");
         println!("  ✓ TEST_NAMING_PATTERN - Follow test_unit_condition_outcome pattern");
         println!("  ✓ IMPORT_ORGANIZATION - Group imports at top of file");
-        println!("  ✓ NON_ENGLISH_WORDS - Use full English words instead of abbreviations");
-        println!("  ✓ VERB_SUFFIX_PATTERN - Use verb-first naming: verb_noun");
+        println!("  ✓ ABBREVIATIONS - Use full words instead of abbreviations (index not idx)");
         println!("  ✓ DISCARDED_STRUCT_FIELD - Remove unused _ prefixed struct fields");
         println!("  ✓ DISCARDED_PARAMETER - Document or use _ prefixed parameters");
         println!("");

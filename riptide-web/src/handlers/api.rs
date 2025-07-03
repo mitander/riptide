@@ -10,6 +10,7 @@ use serde_json::json;
 
 use crate::server::AppState;
 
+/// Engine statistics for JSON API responses.
 #[derive(Serialize)]
 pub struct Stats {
     pub total_torrents: u32,
@@ -18,11 +19,13 @@ pub struct Stats {
     pub download_speed: f64,
 }
 
+/// Query parameters for adding a torrent via magnet link.
 #[derive(Deserialize)]
 pub struct AddTorrentQuery {
     pub magnet: String,
 }
 
+/// Request body for initiating a torrent download.
 #[derive(Deserialize)]
 pub struct DownloadRequest {
     pub magnet_link: String,

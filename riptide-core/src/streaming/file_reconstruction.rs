@@ -112,6 +112,9 @@ impl<P: PieceStore> FileReconstructor<P> {
     }
 
     /// Check if all pieces are available for reconstruction
+    ///
+    /// # Errors
+    /// - `StreamingError::PieceStorageError` - Failed to access piece storage
     pub fn can_reconstruct(&self, info_hash: InfoHash) -> StreamingResult<bool> {
         let piece_count = self.piece_store.piece_count(info_hash).map_err(|e| {
             StreamingError::PieceStorageError {
@@ -130,6 +133,9 @@ impl<P: PieceStore> FileReconstructor<P> {
     }
 
     /// Get list of missing pieces
+    ///
+    /// # Errors
+    /// - `StreamingError::PieceStorageError` - Failed to access piece storage
     pub fn missing_pieces(&self, info_hash: InfoHash) -> StreamingResult<Vec<u32>> {
         let piece_count = self.piece_store.piece_count(info_hash).map_err(|e| {
             StreamingError::PieceStorageError {

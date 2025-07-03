@@ -10,6 +10,7 @@ use crate::templates::{
     video_player_content,
 };
 
+/// Download statistics for template rendering.
 #[derive(Default)]
 pub struct DownloadStats {
     pub active_torrents: u32,
@@ -46,6 +47,7 @@ pub async fn library_page(State(_state): State<AppState>) -> Html<String> {
     Html(base_template("Library", "library", &content))
 }
 
+/// Query parameters for video player page.
 #[derive(Deserialize)]
 pub struct VideoPlayerQuery {
     pub local: Option<bool>,

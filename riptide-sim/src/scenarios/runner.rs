@@ -138,14 +138,17 @@ impl ScenarioResults {
         }
     }
 
+    /// Add a scenario result with the given name.
     pub fn add_result(&mut self, name: String, result: ScenarioResult) {
         self.results.insert(name, result);
     }
 
+    /// Get a scenario result by name.
     pub fn get_result(&self, name: &str) -> Option<&ScenarioResult> {
         self.results.get(name)
     }
 
+    /// Get all scenario results.
     pub fn results(&self) -> &HashMap<String, ScenarioResult> {
         &self.results
     }
