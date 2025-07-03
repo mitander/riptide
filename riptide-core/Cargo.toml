@@ -49,3 +49,4 @@ cargo-husky = { version = "1", default-features = false, features = ["user-hooks
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
 proptest = { workspace = true }
+top-english-words = { workspace = true }

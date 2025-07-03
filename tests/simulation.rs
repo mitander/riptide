@@ -1,7 +1,7 @@
 //! Integration tests for simulation environment
 
-use riptide::simulation::SimulationEnvironment;
-use riptide::torrent::InfoHash;
+use riptide_sim::SimulationEnvironment;
+use riptide_core::torrent::InfoHash;
 
 #[tokio::test]
 async fn test_simulation_environment_for_streaming() {
