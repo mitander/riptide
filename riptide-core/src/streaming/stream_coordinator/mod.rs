@@ -93,12 +93,12 @@ mod tests {
             .await
             .unwrap();
 
-        let data = coordinator
+        let read_data = coordinator
             .read_range(*info_hash.as_bytes(), 0, 1024)
             .await
             .unwrap();
 
-        assert_eq!(data.len(), 1024);
+        assert_eq!(read_data.len(), 1024);
     }
 
     #[tokio::test]

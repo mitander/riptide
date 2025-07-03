@@ -115,7 +115,7 @@ where
             responder,
         } => {
             let result = engine
-                .get_session(info_hash)
+                .session(info_hash)
                 .cloned()
                 .ok_or_else(|| crate::torrent::TorrentError::TorrentNotFound { info_hash });
             let _ = responder.send(result);

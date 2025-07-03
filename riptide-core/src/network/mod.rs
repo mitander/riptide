@@ -50,8 +50,8 @@ pub trait NetworkLayer: Send + Sync {
     /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
     async fn http_post(&self, url: &str, body: &[u8]) -> Result<HttpResponse, TorrentError>;
 
-    /// Sets timeout for HTTP requests
-    fn set_timeout(&mut self, timeout: Duration);
+    /// Configure timeout for HTTP requests
+    fn configure_http_timeout(&mut self, timeout: Duration);
 
     /// Returns current timeout setting
     fn timeout(&self) -> Duration;
@@ -128,7 +128,7 @@ impl NetworkLayer for ProductionNetworkLayer {
         Ok(HttpResponse::new(status, response_body))
     }
 
-    fn set_timeout(&mut self, timeout: Duration) {
+    fn configure_http_timeout(&mut self, timeout: Duration) {
         self.timeout = timeout;
         self.client = reqwest::Client::builder()
             .timeout(timeout)

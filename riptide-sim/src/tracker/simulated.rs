@@ -138,7 +138,7 @@ impl SimulatedTrackerClient {
     /// Useful for testing scenarios with specific seeder/leecher ratios
     /// or simulating swarm evolution over time.
     #[allow(dead_code)]
-    pub fn set_swarm_stats(
+    pub fn configure_swarm_stats(
         &self,
         info_hash: InfoHash,
         complete: u32,
@@ -466,7 +466,7 @@ mod simulated_tracker_tests {
         let info_hash = InfoHash::new([4u8; 20]);
 
         // Set initial swarm statistics
-        client.set_swarm_stats(info_hash, 5, 10, 20);
+        client.configure_swarm_stats(info_hash, 5, 10, 20);
 
         // Announce started event
         let request = create_test_announce_request(info_hash, AnnounceEvent::Started);
@@ -490,8 +490,8 @@ mod simulated_tracker_tests {
         let info_hash2 = InfoHash::new([6u8; 20]);
 
         // Set up swarm statistics
-        client.set_swarm_stats(info_hash1, 15, 25, 100);
-        client.set_swarm_stats(info_hash2, 8, 12, 50);
+        client.configure_swarm_stats(info_hash1, 15, 25, 100);
+        client.configure_swarm_stats(info_hash2, 8, 12, 50);
 
         let scrape_request = ScrapeRequest {
             info_hashes: vec![info_hash1, info_hash2],

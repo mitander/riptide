@@ -133,10 +133,10 @@ mod tests {
     #[test]
     fn test_handshake_deserialization_invalid_length() {
         // Create data with protocol length that exceeds actual data
-        let mut data = vec![0u8; 100];
-        data[0] = 200; // Invalid protocol length
+        let mut handshake_data = vec![0u8; 100];
+        handshake_data[0] = 200; // Invalid protocol length
 
-        let result = HandshakeCodec::deserialize_handshake(&data);
+        let result = HandshakeCodec::deserialize_handshake(&handshake_data);
 
         assert!(result.is_err());
         if let Err(TorrentError::ProtocolError { message }) = result {
@@ -188,11 +188,11 @@ mod tests {
     #[test]
     fn test_handshake_minimal_valid_size() {
         // Create minimal valid handshake (1-char protocol)
-        let mut data = vec![0u8; 50]; // 1 + 1 + 8 + 20 + 20 = 50
-        data[0] = 1; // Protocol length of 1
-        data[1] = b'X'; // Single character protocol
+        let mut handshake_data = vec![0u8; 50]; // 1 + 1 + 8 + 20 + 20 = 50
+        handshake_data[0] = 1; // Protocol length of 1
+        handshake_data[1] = b'X'; // Single character protocol
 
-        let result = HandshakeCodec::deserialize_handshake(&data);
+        let result = HandshakeCodec::deserialize_handshake(&handshake_data);
         assert!(result.is_ok());
 
         let handshake = result.unwrap();
@@ -202,10 +202,10 @@ mod tests {
     #[test]
     fn test_handshake_empty_protocol() {
         // Test with empty protocol string
-        let mut data = vec![0u8; 49]; // 1 + 0 + 8 + 20 + 20 = 49
-        data[0] = 0; // Protocol length of 0
+        let mut handshake_data = vec![0u8; 49]; // 1 + 0 + 8 + 20 + 20 = 49
+        handshake_data[0] = 0; // Protocol length of 0
 
-        let result = HandshakeCodec::deserialize_handshake(&data);
+        let result = HandshakeCodec::deserialize_handshake(&handshake_data);
         assert!(result.is_ok());
 
         let handshake = result.unwrap();

@@ -146,7 +146,7 @@ impl SimulationMetrics {
     }
 
     /// Records a peer disconnect.
-    pub fn record_peer_disconnect(&mut self) {
+    pub fn increment_peer_disconnects(&mut self) {
         self.peer_disconnects += 1;
     }
 

@@ -96,8 +96,8 @@ impl FileLibraryManager {
         })
     }
 
-    /// Get file by info hash
-    pub fn get_file(&self, info_hash: InfoHash) -> Option<&LibraryFile> {
+    /// Find file by info hash
+    pub fn file_by_hash(&self, info_hash: InfoHash) -> Option<&LibraryFile> {
         self.files.get(&info_hash)
     }
 

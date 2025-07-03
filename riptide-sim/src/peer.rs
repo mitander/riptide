@@ -180,10 +180,10 @@ mod tests {
         let result = peer.send_piece(piece_size).await;
 
         assert!(result.is_ok());
-        let data = result.unwrap();
-        assert_eq!(data.len(), piece_size);
+        let piece_data = result.unwrap();
+        assert_eq!(piece_data.len(), piece_size);
         // Should be all zeros (mock data)
-        assert!(data.iter().all(|&byte| byte == 0));
+        assert!(piece_data.iter().all(|&byte| byte == 0));
     }
 
     #[tokio::test]
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn test_peer_error_display() {
+    fn test_peer_error_formatting() {
         let connection_error = PeerError::ConnectionLost;
         assert_eq!(connection_error.to_string(), "Peer connection lost");
 

@@ -162,9 +162,9 @@ impl ExponentialMovingAverage {
         self.value = self.alpha * new_value + (1.0 - self.alpha) * self.value;
     }
 
-    /// Get current average value
+    /// Current average value
     #[cfg(test)]
-    pub fn get(&self) -> f64 {
+    pub fn current_average(&self) -> f64 {
         self.value
     }
 }

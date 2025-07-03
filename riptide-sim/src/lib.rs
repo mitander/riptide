@@ -285,6 +285,6 @@ mod tests {
     #[test]
     fn test_standard_streaming_simulation() {
         let sim = create_standard_streaming_simulation(12345, 100).unwrap();
-        assert_eq!(sim.seed(), 12345);
+        assert_eq!(sim.simulation_seed(), 12345);
     }
 }

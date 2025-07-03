@@ -62,7 +62,7 @@ impl TrackerManager {
             tracing::info!("Connecting to tracker: {}", tracker_url);
 
             // Get or create tracker client
-            let tracker_client = self.get_or_create_tracker_client(tracker_url);
+            let tracker_client = self.tracker_client_for_url(tracker_url);
 
             match tracker_client.announce(request.clone()).await {
                 Ok(response) => {
@@ -110,7 +110,7 @@ impl TrackerManager {
         let mut last_error = None;
 
         for tracker_url in tracker_urls {
-            let tracker_client = self.get_or_create_tracker_client(tracker_url);
+            let tracker_client = self.tracker_client_for_url(tracker_url);
 
             match tracker_client.scrape(request.clone()).await {
                 Ok(response) => {
@@ -131,7 +131,7 @@ impl TrackerManager {
     }
 
     /// Gets cached tracker client or creates new one for URL.
-    fn get_or_create_tracker_client(&mut self, tracker_url: &str) -> Arc<HttpTrackerClient> {
+    fn tracker_client_for_url(&mut self, tracker_url: &str) -> Arc<HttpTrackerClient> {
         if let Some(client) = self.tracker_clients.get(tracker_url) {
             Arc::clone(client)
         } else {
@@ -273,8 +273,8 @@ mod tests {
         let mut manager = TrackerManager::new(config.network);
 
         // Simulate creating tracker clients
-        let _client1 = manager.get_or_create_tracker_client("http://tracker1.example.com");
-        let _client2 = manager.get_or_create_tracker_client("http://tracker2.example.com");
+        let _client1 = manager.tracker_client_for_url("http://tracker1.example.com");
+        let _client2 = manager.tracker_client_for_url("http://tracker2.example.com");
 
         assert_eq!(manager.cached_trackers_count(), 2);
 

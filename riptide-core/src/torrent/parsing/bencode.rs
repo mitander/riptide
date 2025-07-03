@@ -346,103 +346,103 @@ mod tests {
     #[test]
     fn test_find_bencode_dictionary_end_simple() {
         // Simple dictionary: d3:keyi42ee
-        let data = b"d3:keyi42ee";
-        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
-        assert_eq!(end, data.len());
+        let bencode_data = b"d3:keyi42ee";
+        let end = BencodeParser::find_bencode_dictionary_end(bencode_data).unwrap();
+        assert_eq!(end, bencode_data.len());
     }
 
     #[test]
     fn test_find_bencode_dictionary_end_nested() {
         // Nested dictionary: d3:keyd4:namei42eee
-        let data = b"d3:keyd4:namei42eee";
-        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
-        assert_eq!(end, data.len());
+        let bencode_data = b"d3:keyd4:namei42eee";
+        let end = BencodeParser::find_bencode_dictionary_end(bencode_data).unwrap();
+        assert_eq!(end, bencode_data.len());
     }
 
     #[test]
     fn test_find_bencode_dictionary_end_with_strings() {
         // Dictionary with strings: d4:name4:test5:valuei123ee
-        let data = b"d4:name4:test5:valuei123ee";
-        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
-        assert_eq!(end, data.len());
+        let bencode_data = b"d4:name4:test5:valuei123ee";
+        let end = BencodeParser::find_bencode_dictionary_end(bencode_data).unwrap();
+        assert_eq!(end, bencode_data.len());
     }
 
     #[test]
     fn test_find_bencode_dictionary_end_with_list() {
         // Dictionary with list: d4:listl4:testi42eee
-        let data = b"d4:listl4:testi42eee";
-        let end = BencodeParser::find_bencode_dictionary_end(data).unwrap();
-        assert_eq!(end, data.len());
+        let bencode_data = b"d4:listl4:testi42eee";
+        let end = BencodeParser::find_bencode_dictionary_end(bencode_data).unwrap();
+        assert_eq!(end, bencode_data.len());
     }
 
     #[test]
-    fn test_find_bencode_dictionary_end_invalid_start() {
-        let data = b"l4:teste"; // List, not dictionary
-        let result = BencodeParser::find_bencode_dictionary_end(data);
+    fn find_bencode_dictionary_end_invalid_start_test() {
+        let bencode_data = b"l4:teste"; // List, not dictionary
+        let result = BencodeParser::find_bencode_dictionary_end(bencode_data);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_find_bencode_dictionary_end_incomplete() {
-        let data = b"d3:key"; // Incomplete dictionary
-        let result = BencodeParser::find_bencode_dictionary_end(data);
+        let bencode_data = b"d3:key"; // Incomplete dictionary
+        let result = BencodeParser::find_bencode_dictionary_end(bencode_data);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_find_bencode_dictionary_end_invalid_string() {
-        let data = b"d3:key999:"; // Invalid string length
-        let result = BencodeParser::find_bencode_dictionary_end(data);
+        let bencode_data = b"d3:key999:"; // Invalid string length
+        let result = BencodeParser::find_bencode_dictionary_end(bencode_data);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_extract_bytes() {
-        let mut dict = std::collections::HashMap::new();
-        dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"value"));
+        let mut bencode_dict = std::collections::HashMap::new();
+        bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"value"));
 
-        let result = BencodeParser::extract_bytes(&dict, b"test").unwrap();
+        let result = BencodeParser::extract_bytes(&bencode_dict, b"test").unwrap();
         assert_eq!(result, b"value");
     }
 
     #[test]
     fn test_extract_bytes_missing() {
-        let dict = std::collections::HashMap::new();
-        let result = BencodeParser::extract_bytes(&dict, b"missing");
+        let bencode_dict = std::collections::HashMap::new();
+        let result = BencodeParser::extract_bytes(&bencode_dict, b"missing");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_extract_integer() {
-        let mut dict = std::collections::HashMap::new();
-        dict.insert(b"test".as_slice(), bencode_rs::Value::Integer(42));
+        let mut bencode_dict = std::collections::HashMap::new();
+        bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Integer(42));
 
-        let result = BencodeParser::extract_integer(&dict, b"test").unwrap();
+        let result = BencodeParser::extract_integer(&bencode_dict, b"test").unwrap();
         assert_eq!(result, 42);
     }
 
     #[test]
     fn test_extract_integer_missing() {
-        let dict = std::collections::HashMap::new();
-        let result = BencodeParser::extract_integer(&dict, b"missing");
+        let bencode_dict = std::collections::HashMap::new();
+        let result = BencodeParser::extract_integer(&bencode_dict, b"missing");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_extract_bytes_as_string() {
-        let mut dict = std::collections::HashMap::new();
-        dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"hello"));
+        let mut bencode_dict = std::collections::HashMap::new();
+        bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"hello"));
 
-        let result = BencodeParser::extract_bytes_as_string(&dict, b"test").unwrap();
+        let result = BencodeParser::extract_bytes_as_string(&bencode_dict, b"test").unwrap();
         assert_eq!(result, "hello");
     }
 
     #[test]
     fn test_extract_bytes_as_string_invalid_utf8() {
-        let mut dict = std::collections::HashMap::new();
-        dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(&[0xFF, 0xFE]));
+        let mut bencode_dict = std::collections::HashMap::new();
+        bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(&[0xFF, 0xFE]));
 
-        let result = BencodeParser::extract_bytes_as_string(&dict, b"test");
+        let result = BencodeParser::extract_bytes_as_string(&bencode_dict, b"test");
         assert!(result.is_err());
     }
 
@@ -454,15 +454,15 @@ mod tests {
 
     #[test]
     fn test_parse_bencode_data_not_dictionary() {
-        let data = b"l4:teste"; // List instead of dictionary
-        let result = BencodeParser::parse_bencode_data(data);
+        let bencode_list_data = b"l4:teste"; // List instead of dictionary
+        let result = BencodeParser::parse_bencode_data(bencode_list_data);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_bencode_data_missing_info() {
-        let data = b"d8:announce9:test.com:ee"; // Dictionary without info
-        let result = BencodeParser::parse_bencode_data(data);
+        let bencode_data = b"d8:announce9:test.com:ee"; // Dictionary without info
+        let result = BencodeParser::parse_bencode_data(bencode_data);
         assert!(result.is_err());
     }
 
@@ -475,8 +475,8 @@ mod tests {
 
     #[test]
     fn test_parse_bencode_data_minimal_valid() {
-        let data = create_minimal_torrent_data();
-        let result = BencodeParser::parse_bencode_data(&data);
+        let torrent_data = create_minimal_torrent_data();
+        let result = BencodeParser::parse_bencode_data(&torrent_data);
 
         assert!(result.is_ok());
         let metadata = result.unwrap();
@@ -501,23 +501,23 @@ mod tests {
         // Test the multifile parsing logic without complex bencode construction
         // This test focuses on the extract_files_info function
         let file1_dict = {
-            let mut dict = std::collections::HashMap::new();
-            dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(524288));
-            dict.insert(
+            let mut file_dict = std::collections::HashMap::new();
+            file_dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(524288));
+            file_dict.insert(
                 b"path".as_slice(),
                 bencode_rs::Value::List(vec![bencode_rs::Value::Bytes(b"file1.txt")]),
             );
-            bencode_rs::Value::Dictionary(dict)
+            bencode_rs::Value::Dictionary(file_dict)
         };
 
         let file2_dict = {
-            let mut dict = std::collections::HashMap::new();
-            dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(1048576));
-            dict.insert(
+            let mut file_dict = std::collections::HashMap::new();
+            file_dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(1048576));
+            file_dict.insert(
                 b"path".as_slice(),
                 bencode_rs::Value::List(vec![bencode_rs::Value::Bytes(b"file2.dat")]),
             );
-            bencode_rs::Value::Dictionary(dict)
+            bencode_rs::Value::Dictionary(file_dict)
         };
 
         let files_list = vec![file1_dict, file2_dict];
@@ -544,8 +544,8 @@ mod tests {
 
     #[test]
     fn test_extract_announce_urls_no_announce() {
-        let dict = std::collections::HashMap::new();
-        let result = BencodeParser::extract_announce_urls(&dict);
+        let bencode_dict = std::collections::HashMap::new();
+        let result = BencodeParser::extract_announce_urls(&bencode_dict);
         assert!(result.is_err());
     }
 
@@ -557,8 +557,8 @@ mod tests {
 
     #[test]
     fn test_parse_bencode_data_with_announce_list() {
-        let data = create_torrent_with_announce_list();
-        let result = BencodeParser::parse_bencode_data(&data);
+        let torrent_data = create_torrent_with_announce_list();
+        let result = BencodeParser::parse_bencode_data(&torrent_data);
 
         assert!(result.is_ok());
         let metadata = result.unwrap();
@@ -569,8 +569,8 @@ mod tests {
 
     #[test]
     fn test_calculate_info_hash_missing_info() {
-        let data = b"d8:announce9:test.com:e"; // No info dictionary
-        let result = BencodeParser::parse_bencode_data(data);
+        let bencode_data = b"d8:announce9:test.com:e"; // No info dictionary
+        let result = BencodeParser::parse_bencode_data(bencode_data);
         assert!(result.is_err());
     }
 }

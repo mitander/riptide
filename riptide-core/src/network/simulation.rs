@@ -35,8 +35,8 @@ impl SimulationNetworkLayer {
         self.responses.insert(url.to_string(), response);
     }
 
-    /// Set failure rate (0.0 = never fail, 1.0 = always fail)
-    pub fn set_failure_rate(&mut self, rate: f32) {
+    /// Configure failure rate (0.0 = never fail, 1.0 = always fail)
+    pub fn configure_failure_rate(&mut self, rate: f32) {
         self.failure_rate = rate.clamp(0.0, 1.0);
     }
 
@@ -111,7 +111,7 @@ impl NetworkLayer for SimulationNetworkLayer {
         self.http_get(url).await
     }
 
-    fn set_timeout(&mut self, timeout: Duration) {
+    fn configure_http_timeout(&mut self, timeout: Duration) {
         self.timeout = timeout;
     }
 

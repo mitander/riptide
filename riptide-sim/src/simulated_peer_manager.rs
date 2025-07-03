@@ -194,7 +194,11 @@ impl InMemoryPeerManager {
     }
 
     /// Simulates a peer having a specific piece.
-    pub async fn set_peer_has_piece(&self, peer_address: SocketAddr, piece_index: PieceIndex) {
+    pub async fn configure_peer_has_piece(
+        &self,
+        peer_address: SocketAddr,
+        piece_index: PieceIndex,
+    ) {
         let mut peers = self.peers.write().await;
         if let Some(peer) = peers.get_mut(&peer_address)
             && (piece_index.as_u32() as usize) < peer.has_pieces.len()
@@ -537,7 +541,7 @@ mod simulated_peer_manager_tests {
 
         // Set peer to have piece 0
         manager
-            .set_peer_has_piece(address, PieceIndex::new(0))
+            .configure_peer_has_piece(address, PieceIndex::new(0))
             .await;
 
         // Send piece request

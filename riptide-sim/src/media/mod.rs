@@ -101,7 +101,7 @@ mod tests {
 
         simulation.start_streaming_simulation();
         let result = simulation
-            .run_streaming_simulation(Duration::from_secs(30))
+            .execute_streaming_simulation(Duration::from_secs(30))
             .expect("Streaming simulation should complete successfully");
 
         assert!(result.total_events > 0);

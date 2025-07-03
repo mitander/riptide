@@ -47,8 +47,8 @@ pub trait PeerLayer: Send + Sync {
     /// Returns number of active connections
     async fn connection_count(&self) -> usize;
 
-    /// Sets maximum number of concurrent connections
-    fn set_max_connections(&mut self, max: usize);
+    /// Configure maximum number of concurrent connections  
+    fn configure_max_connections(&mut self, max: usize);
 }
 
 /// Production peer layer using real TCP connections
@@ -190,7 +190,7 @@ impl PeerLayer for ProductionPeerLayer {
         self.connections.len()
     }
 
-    fn set_max_connections(&mut self, max: usize) {
+    fn configure_max_connections(&mut self, max: usize) {
         self.max_connections = max;
     }
 }
@@ -211,8 +211,8 @@ impl SimulationPeerLayer {
         }
     }
 
-    /// Sets the connection success rate for simulation (0.0 to 1.0).
-    pub fn set_success_rate(&mut self, rate: f32) {
+    /// Configure connection success rate for simulation (0.0 to 1.0).
+    pub fn configure_connection_success_rate(&mut self, rate: f32) {
         self.success_rate = rate.clamp(0.0, 1.0);
     }
 }
@@ -266,7 +266,7 @@ impl PeerLayer for SimulationPeerLayer {
         self.connections.len()
     }
 
-    fn set_max_connections(&mut self, max: usize) {
+    fn configure_max_connections(&mut self, max: usize) {
         self.max_connections = max;
     }
 }

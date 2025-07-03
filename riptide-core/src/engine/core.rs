@@ -106,7 +106,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
         // Use fallback trackers if magnet doesn't contain any
         let tracker_urls = if parsed.trackers.is_empty() {
-            self.get_fallback_trackers()
+            self.fallback_trackers()
         } else {
             parsed.trackers
         };
@@ -132,8 +132,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         Ok(info_hash)
     }
 
-    /// Gets fallback tracker URLs from configuration.
-    fn get_fallback_trackers(&self) -> Vec<String> {
+    /// Fallback tracker URLs from configuration.
+    fn fallback_trackers(&self) -> Vec<String> {
         vec![
             "udp://tracker.openbittorrent.com:80/announce".to_string(),
             "udp://tracker.publicbt.com:80/announce".to_string(),
@@ -429,11 +429,11 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         }
     }
 
-    /// Gets the session information for a specific torrent.
+    /// Session information for a specific torrent.
     ///
     /// Returns a reference to the torrent session, or None if the torrent
     /// is not found in the active torrents.
-    pub fn get_session(&self, info_hash: InfoHash) -> Option<&TorrentSession> {
+    pub fn session(&self, info_hash: InfoHash) -> Option<&TorrentSession> {
         self.active_torrents.get(&info_hash)
     }
 

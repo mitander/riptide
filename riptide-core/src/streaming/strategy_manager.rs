@@ -156,7 +156,7 @@ impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
         } else if let Some(ref remuxed) = self.remuxed_streaming {
             if remuxed.supports_format(&format) {
                 // Check if all pieces are available for remuxing
-                if let Ok(file_reconstructor) = self.get_file_reconstructor() {
+                if let Ok(file_reconstructor) = self.create_file_reconstructor() {
                     let can_reconstruct = file_reconstructor.can_reconstruct(info_hash)?;
                     if can_reconstruct {
                         (true, true, Some(std::time::Duration::from_secs(60))) // Estimate
@@ -181,8 +181,8 @@ impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
         })
     }
 
-    /// Get file reconstructor for checking piece availability
-    fn get_file_reconstructor(
+    /// Create file reconstructor for checking piece availability
+    fn create_file_reconstructor(
         &self,
     ) -> StreamingResult<super::file_reconstruction::FileReconstructor<P>> {
         Ok(super::file_reconstruction::FileReconstructor::new(

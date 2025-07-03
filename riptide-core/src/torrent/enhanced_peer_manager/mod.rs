@@ -96,7 +96,7 @@ impl EnhancedPeerManager {
         info_hash: InfoHash,
         peer_addr: SocketAddr,
     ) -> Result<(), TorrentError> {
-        let pool = self
+        let peer_pool = self
             .torrents
             .entry(info_hash)
             .or_insert_with(|| TorrentPeerPool {
@@ -106,7 +106,8 @@ impl EnhancedPeerManager {
                 _last_cleanup: Instant::now(),
             });
 
-        pool.peers
+        peer_pool
+            .peers
             .entry(peer_addr)
             .or_insert_with(|| EnhancedPeerConnection::new(peer_addr));
 
@@ -139,11 +140,11 @@ impl EnhancedPeerManager {
 
     /// Get enhanced statistics
     pub async fn get_enhanced_stats(&self) -> EnhancedPeerManagerStats {
-        self.get_stats()
+        self.statistics()
     }
 
-    /// Get statistics for the peer manager
-    pub fn get_stats(&self) -> EnhancedPeerManagerStats {
+    /// Statistics for the peer manager
+    pub fn statistics(&self) -> EnhancedPeerManagerStats {
         let total_connections = self.torrents.values().map(|pool| pool.peers.len()).sum();
 
         let active_connections = self
@@ -172,8 +173,8 @@ impl TorrentPeerPool {
             .count()
     }
 
-    /// Get peer connection information
-    pub fn get_peer_info(&self, addr: &SocketAddr) -> Option<&EnhancedPeerConnection> {
+    /// Peer connection information by address
+    pub fn peer_connection(&self, addr: &SocketAddr) -> Option<&EnhancedPeerConnection> {
         self.peers.get(addr)
     }
 }

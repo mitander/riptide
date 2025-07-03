@@ -63,7 +63,7 @@ impl EnhancedPeerConnection {
     }
 
     /// Update connection state
-    pub fn set_state(&mut self, new_state: EnhancedConnectionState) {
+    pub fn update_connection_state(&mut self, new_state: EnhancedConnectionState) {
         self.state = new_state;
         if matches!(self.state, EnhancedConnectionState::Connected) {
             self.connected_at = Some(Instant::now());

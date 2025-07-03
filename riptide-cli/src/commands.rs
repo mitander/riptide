@@ -369,7 +369,7 @@ pub async fn start_server(
 mod tests {
     use super::*;
 
-    fn create_test_engine_handle() -> TorrentEngineHandle {
+    fn test_engine_handle_builder() -> TorrentEngineHandle {
         let config = RiptideConfig::default();
         let peer_manager = TcpPeerManager::new_default();
         let tracker_manager = TrackerManager::new(config.network.clone());
@@ -402,7 +402,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_torrent_magnet_link() {
-        let engine = create_test_engine_handle();
+        let engine = test_engine_handle_builder();
         let result = add_torrent(engine, "magnet:?xt=urn:btih:test".to_string(), None).await;
         // Should not panic and return some result (may be error due to invalid magnet)
         // This tests the parsing logic rather than actual torrent functionality
@@ -411,14 +411,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_torrents_empty() {
-        let engine = create_test_engine_handle();
+        let engine = test_engine_handle_builder();
         let result = list_torrents(engine).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_show_status_all() {
-        let engine = create_test_engine_handle();
+        let engine = test_engine_handle_builder();
         let result = show_status(engine, None).await;
         assert!(result.is_ok());
     }

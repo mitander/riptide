@@ -107,8 +107,8 @@ impl PriorityRequestQueue {
         expired
     }
 
-    /// Get requests by priority level
-    pub fn get_by_priority(&self, priority: Priority) -> &VecDeque<PendingRequest> {
+    /// Requests queue for priority level
+    pub fn priority_queue(&self, priority: Priority) -> &VecDeque<PendingRequest> {
         match priority {
             Priority::Critical => &self.critical_queue,
             Priority::High => &self.high_queue,

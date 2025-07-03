@@ -28,12 +28,12 @@ fn test_simulation_reproducibility() {
     let info_hash = InfoHash::new([2; 20]);
     sim1.create_streaming_scenario_full(info_hash, 5, 262144)
         .unwrap();
-    let report1 = sim1.run_for(Duration::from_secs(10)).unwrap();
+    let report1 = sim1.execute_for_duration(Duration::from_secs(10)).unwrap();
 
     let mut sim2 = DeterministicSimulation::new(config).unwrap();
     sim2.create_streaming_scenario_full(info_hash, 5, 262144)
         .unwrap();
-    let report2 = sim2.run_for(Duration::from_secs(10)).unwrap();
+    let report2 = sim2.execute_for_duration(Duration::from_secs(10)).unwrap();
 
     // Results should be identical
     assert_eq!(report1.event_count, report2.event_count);
@@ -86,7 +86,7 @@ fn test_event_priority_ordering() {
     )
     .unwrap();
 
-    let report = sim.run_for(Duration::from_secs(2)).unwrap();
+    let report = sim.execute_for_duration(Duration::from_secs(2)).unwrap();
 
     // All events should be processed
     assert_eq!(report.event_count, 3);
@@ -103,7 +103,7 @@ fn test_resource_limit_enforcement() {
     let mut sim = DeterministicSimulation::new(config).unwrap();
 
     // Set very low connection limit
-    sim.set_resource_limits(ResourceLimits {
+    sim.configure_resource_limits(ResourceLimits {
         max_connections: 2,
         ..Default::default()
     });
@@ -120,7 +120,7 @@ fn test_resource_limit_enforcement() {
         .unwrap();
     }
 
-    let result = sim.run_for(Duration::from_secs(1));
+    let result = sim.execute_for_duration(Duration::from_secs(1));
 
     // Should fail due to resource limits
     match result {
@@ -168,7 +168,7 @@ fn test_invariant_checking() {
     )
     .unwrap();
 
-    let report = sim.run_for(Duration::from_secs(1)).unwrap();
+    let report = sim.execute_for_duration(Duration::from_secs(1)).unwrap();
 
     // Should have invariant violations
     assert!(!report.success);
@@ -193,7 +193,7 @@ fn test_streaming_scenario() {
     sim.create_streaming_scenario(10, Duration::from_secs(2))
         .unwrap();
 
-    let report = sim.run_for(Duration::from_secs(30)).unwrap();
+    let report = sim.execute_for_duration(Duration::from_secs(30)).unwrap();
 
     // Should complete successfully
     assert!(report.success);
@@ -233,7 +233,7 @@ fn test_network_change_events() {
     )
     .unwrap();
 
-    let report = sim.run_for(Duration::from_secs(10)).unwrap();
+    let report = sim.execute_for_duration(Duration::from_secs(10)).unwrap();
 
     assert_eq!(report.metrics.events_by_type["NetworkChange"], 2);
 }
@@ -272,7 +272,7 @@ fn test_piece_failure_handling() {
     )
     .unwrap();
 
-    let report = sim.run_for(Duration::from_secs(2)).unwrap();
+    let report = sim.execute_for_duration(Duration::from_secs(2)).unwrap();
 
     assert_eq!(report.metrics.piece_failures, 1);
     assert!(report.final_state.failed_pieces.contains_key(&piece_index));
@@ -348,7 +348,7 @@ fn test_simulation_report_summary() {
     )
     .unwrap();
 
-    let report = sim.run_for(Duration::from_secs(3)).unwrap();
+    let report = sim.execute_for_duration(Duration::from_secs(3)).unwrap();
     let summary = report.summary();
 
     // Verify summary contains expected information
@@ -371,7 +371,7 @@ fn test_cannot_schedule_past_events() {
     let mut sim = DeterministicSimulation::new(config).unwrap();
 
     // Advance time
-    sim.run_for(Duration::from_secs(10)).unwrap();
+    sim.execute_for_duration(Duration::from_secs(10)).unwrap();
 
     // Try to schedule event in the past
     // Test would verify that scheduling in the past fails - not yet implemented
@@ -411,7 +411,7 @@ fn test_event_history_bounded() {
         .unwrap();
     }
 
-    let report = sim.run_for(Duration::from_secs(20)).unwrap();
+    let report = sim.execute_for_duration(Duration::from_secs(20)).unwrap();
 
     // Event history should be bounded
     assert_eq!(report.event_count, 15_000);

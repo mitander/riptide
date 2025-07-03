@@ -209,13 +209,13 @@ impl MediaStreamingSimulation {
     ///
     /// # Errors
     /// - `SimulationError` - If simulation fails to run
-    pub fn run_streaming_simulation(
+    pub fn execute_streaming_simulation(
         &mut self,
         duration: Duration,
     ) -> Result<StreamingResult, crate::SimulationError> {
-        let start_time = self.simulation.clock().now();
-        let report = self.simulation.run_for(duration)?;
-        let end_time = self.simulation.clock().now();
+        let start_time = self.simulation.deterministic_clock().now();
+        let report = self.simulation.execute_for_duration(duration)?;
+        let end_time = self.simulation.deterministic_clock().now();
 
         // Analyze streaming performance
         // Count piece requests
@@ -326,6 +326,6 @@ impl MediaStreamingSimulation {
 
     /// Returns current simulation clock.
     pub fn clock(&self) -> &super::super::deterministic::DeterministicClock {
-        self.simulation.clock()
+        self.simulation.deterministic_clock()
     }
 }

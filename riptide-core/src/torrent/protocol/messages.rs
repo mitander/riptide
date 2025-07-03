@@ -155,11 +155,11 @@ impl MessageCodec {
                 let piece_index = PieceIndex::new(buffer.get_u32());
                 let offset = buffer.get_u32();
                 let data_len = length - 9;
-                let data = Bytes::copy_from_slice(&buffer[..data_len as usize]);
+                let piece_data = Bytes::copy_from_slice(&buffer[..data_len as usize]);
                 Ok(PeerMessage::Piece {
                     piece_index,
                     offset,
-                    data,
+                    data: piece_data,
                 })
             }
             8 => {

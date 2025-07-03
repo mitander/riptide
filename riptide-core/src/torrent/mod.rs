@@ -205,7 +205,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_info_hash_display() {
+    fn display_info_hash_formatting() {
         let hash = [
             0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
             0xcd, 0xef, 0x01, 0x23, 0x45, 0x67,
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn test_piece_index_display() {
+    fn display_piece_index_formatting() {
         let piece = PieceIndex::new(42);
         assert_eq!(piece.to_string(), "42");
     }

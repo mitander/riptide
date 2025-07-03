@@ -24,22 +24,28 @@ impl ScenarioRunner {
     /// Runs all predefined scenarios and collects results.
     ///
     /// Returns performance metrics and event counts for analysis.
-    pub fn run_all_scenarios(&mut self) -> ScenarioResults {
+    pub fn execute_all_scenarios(&mut self) -> ScenarioResults {
         let mut results = ScenarioResults::new();
 
         // Run each scenario type
-        results.add_result("ideal_streaming".to_string(), self.run_scenario("ideal"));
-        results.add_result("slow_network".to_string(), self.run_scenario("slow"));
-        results.add_result("peer_churn".to_string(), self.run_scenario("churn"));
-        results.add_result("piece_failures".to_string(), self.run_scenario("failures"));
-        results.add_result("mixed_peers".to_string(), self.run_scenario("mixed"));
-        results.add_result("endgame".to_string(), self.run_scenario("endgame"));
+        results.add_result(
+            "ideal_streaming".to_string(),
+            self.execute_scenario("ideal"),
+        );
+        results.add_result("slow_network".to_string(), self.execute_scenario("slow"));
+        results.add_result("peer_churn".to_string(), self.execute_scenario("churn"));
+        results.add_result(
+            "piece_failures".to_string(),
+            self.execute_scenario("failures"),
+        );
+        results.add_result("mixed_peers".to_string(), self.execute_scenario("mixed"));
+        results.add_result("endgame".to_string(), self.execute_scenario("endgame"));
 
         results
     }
 
     /// Runs specific scenario and measures performance.
-    fn run_scenario(&mut self, scenario_type: &str) -> ScenarioResult {
+    fn execute_scenario(&mut self, scenario_type: &str) -> ScenarioResult {
         let mut sim = match scenario_type {
             "ideal" => SimulationScenarios::ideal_streaming(self.seed),
             "slow" => SimulationScenarios::slow_network(self.seed),
@@ -50,11 +56,11 @@ impl ScenarioRunner {
             _ => SimulationScenarios::ideal_streaming(self.seed),
         };
 
-        let start_time = sim.clock().now();
+        let start_time = sim.deterministic_clock().now();
         let report = sim
-            .run_for(Duration::from_secs(300))
+            .execute_for_duration(Duration::from_secs(300))
             .expect("Failed to run simulation for scenario"); // 5 minute simulation
-        let end_time = sim.clock().now();
+        let end_time = sim.deterministic_clock().now();
 
         ScenarioResult {
             duration: end_time.duration_since(start_time),
@@ -144,7 +150,7 @@ impl ScenarioResults {
     }
 
     /// Get a scenario result by name.
-    pub fn get_result(&self, name: &str) -> Option<&ScenarioResult> {
+    pub fn result_for_scenario(&self, name: &str) -> Option<&ScenarioResult> {
         self.results.get(name)
     }
 
@@ -167,12 +173,12 @@ mod tests {
     #[test]
     fn test_scenario_runner() {
         let mut runner = ScenarioRunner::new(98765);
-        let results = runner.run_all_scenarios();
+        let results = runner.execute_all_scenarios();
 
         // Should have results for all scenarios
-        assert!(results.get_result("ideal_streaming").is_some());
-        assert!(results.get_result("slow_network").is_some());
-        assert!(results.get_result("peer_churn").is_some());
+        assert!(results.result_for_scenario("ideal_streaming").is_some());
+        assert!(results.result_for_scenario("slow_network").is_some());
+        assert!(results.result_for_scenario("peer_churn").is_some());
     }
 
     #[test]

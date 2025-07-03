@@ -150,22 +150,22 @@ impl DeterministicSimulation {
     }
 
     /// Returns the seed used for this simulation.
-    pub fn seed(&self) -> u64 {
+    pub fn simulation_seed(&self) -> u64 {
         self.rng.seed()
     }
 
     /// Returns current simulation time.
-    pub fn current_time(&self) -> Instant {
+    pub fn simulation_time(&self) -> Instant {
         self.clock.now()
     }
 
     /// Returns elapsed simulation time.
-    pub fn elapsed(&self) -> Duration {
+    pub fn simulation_elapsed(&self) -> Duration {
         self.clock.elapsed()
     }
 
     /// Sets resource limits for simulation.
-    pub fn set_resource_limits(&mut self, limits: ResourceLimits) {
+    pub fn configure_resource_limits(&mut self, limits: ResourceLimits) {
         self.resource_limits = limits;
     }
 
@@ -187,7 +187,7 @@ impl DeterministicSimulation {
     }
 
     /// Gets reference to the deterministic clock.
-    pub fn clock(&self) -> &DeterministicClock {
+    pub fn deterministic_clock(&self) -> &DeterministicClock {
         &self.clock
     }
 
@@ -226,9 +226,12 @@ impl DeterministicSimulation {
     /// - `SimulationError::TimeLimitExceeded` - Simulation time limit exceeded
     /// - `SimulationError::ResourceLimitExceeded` - Resource limit exceeded
     /// - `SimulationError::TooManyInvariantViolations` - Too many invariant violations
-    pub fn run_for(&mut self, duration: Duration) -> Result<SimulationReport, SimulationError> {
+    pub fn execute_for_duration(
+        &mut self,
+        duration: Duration,
+    ) -> Result<SimulationReport, SimulationError> {
         let target_time = self.clock.now() + duration;
-        self.run_until(target_time)
+        self.execute_until(target_time)
     }
 
     /// Runs simulation until target time.
@@ -237,7 +240,10 @@ impl DeterministicSimulation {
     /// - `SimulationError::TimeLimitExceeded` - Simulation time limit exceeded
     /// - `SimulationError::ResourceLimitExceeded` - Resource limit exceeded
     /// - `SimulationError::TooManyInvariantViolations` - Too many invariant violations
-    pub fn run_until(&mut self, target_time: Instant) -> Result<SimulationReport, SimulationError> {
+    pub fn execute_until(
+        &mut self,
+        target_time: Instant,
+    ) -> Result<SimulationReport, SimulationError> {
         // TODO: Track simulation execution time for performance metrics
         // let start_time = self.clock.now();
 
@@ -285,7 +291,7 @@ impl DeterministicSimulation {
             }
             EventType::PeerDisconnect { peer_id } => {
                 self.state.remove_peer(peer_id);
-                self.metrics.record_peer_disconnect();
+                self.metrics.increment_peer_disconnects();
             }
             EventType::PieceRequest {
                 peer_id,
@@ -386,7 +392,7 @@ impl DeterministicSimulation {
     /// Generates simulation report.
     fn generate_report(&self) -> SimulationReport {
         SimulationReport {
-            seed: self.seed(),
+            seed: self.simulation_seed(),
             duration: self.clock.elapsed(),
             metrics: self.metrics.clone(),
             final_state: self.state.clone(),
@@ -534,8 +540,8 @@ mod tests {
         };
 
         let sim = DeterministicSimulation::new(config).unwrap();
-        assert_eq!(sim.seed(), 42);
-        assert_eq!(sim.elapsed(), Duration::ZERO);
+        assert_eq!(sim.simulation_seed(), 42);
+        assert_eq!(sim.simulation_elapsed(), Duration::ZERO);
     }
 
     #[test]

@@ -73,7 +73,7 @@ impl ContentAwarePeer {
         index < self.available_pieces.len() && self.available_pieces[index]
     }
 
-    fn set_has_piece(&mut self, piece_index: PieceIndex, has_piece: bool) {
+    fn update_piece_availability(&mut self, piece_index: PieceIndex, has_piece: bool) {
         let index = piece_index.as_u32() as usize;
         if index < self.available_pieces.len() {
             self.available_pieces[index] = has_piece;
@@ -205,7 +205,7 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
     ) {
         let mut peers = self.peers.write().await;
         if let Some(peer) = peers.get_mut(&peer_address) {
-            peer.set_has_piece(piece_index, has_piece);
+            peer.update_piece_availability(piece_index, has_piece);
         }
     }
 

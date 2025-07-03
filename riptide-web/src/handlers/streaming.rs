@@ -126,8 +126,8 @@ async fn get_video_data_with_conversion(
 
     if container_format.is_browser_compatible() {
         // Direct streaming for MP4, WebM, etc. - no conversion needed
-        let data = read_original_data(state, info_hash, session, start, length).await?;
-        Ok((data, session.total_size))
+        let video_data = read_original_data(state, info_hash, session, start, length).await?;
+        Ok((video_data, session.total_size))
     } else {
         // Format needs conversion (MKV -> MP4, etc.)
         tracing::debug!(
@@ -140,8 +140,8 @@ async fn get_video_data_with_conversion(
             let cache = state.conversion_cache.read().await;
             if let Some(converted) = cache.get(&info_hash) {
                 tracing::debug!("Using cached converted file for {}", info_hash);
-                let data = read_converted_data(&converted.output_path, start, length).await?;
-                return Ok((data, converted.size));
+                let video_data = read_converted_data(&converted.output_path, start, length).await?;
+                return Ok((video_data, converted.size));
             }
         }
 
@@ -161,8 +161,8 @@ async fn get_video_data_with_conversion(
             .unwrap_or(session.total_size);
 
         // Read from converted file
-        let data = read_converted_data(&converted_path, start, length).await?;
-        Ok((data, converted_size))
+        let video_data = read_converted_data(&converted_path, start, length).await?;
+        Ok((video_data, converted_size))
     }
 }
 
@@ -381,7 +381,7 @@ pub async fn api_add_local_movie(
 
         // Parse the info hash
         if let Ok(info_hash) = InfoHash::from_hex(&params.info_hash) {
-            if let Some(movie) = manager.get_file(info_hash) {
+            if let Some(movie) = manager.file_by_hash(info_hash) {
                 // Add this movie as a simulated torrent
                 // Create a fake magnet link for the movie
                 let magnet = format!(
@@ -449,7 +449,7 @@ pub async fn stream_local_movie(
     };
 
     let manager = movie_manager.read().await;
-    let movie = match manager.get_file(info_hash) {
+    let movie = match manager.file_by_hash(info_hash) {
         Some(movie) => movie,
         None => return Err(StatusCode::NOT_FOUND),
     };

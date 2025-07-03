@@ -16,15 +16,15 @@ use riptide_sim::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Example 1: Basic simulation setup
     println!("=== Example 1: Basic Simulation ===\n");
-    run_basic_simulation()?;
+    demonstrate_basic_simulation()?;
 
     // Example 2: Testing edge cases
     println!("\n=== Example 2: Edge Case Testing ===\n");
-    run_edge_case_tests()?;
+    demonstrate_edge_case_tests()?;
 
     // Example 3: Performance validation
     println!("\n=== Example 3: Performance Validation ===\n");
-    run_performance_tests()?;
+    demonstrate_performance_tests()?;
 
     // Example 4: Bug reproduction
     println!("\n=== Example 4: Bug Reproduction ===\n");
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Demonstrates basic simulation setup and execution.
-fn run_basic_simulation() -> Result<(), SimulationError> {
+fn demonstrate_basic_simulation() -> Result<(), SimulationError> {
     // Configure simulation
     let config = SimulationConfig {
         enabled: true,
@@ -109,7 +109,7 @@ fn run_basic_simulation() -> Result<(), SimulationError> {
 }
 
 /// Demonstrates testing various edge cases.
-fn run_edge_case_tests() -> Result<(), Box<dyn std::error::Error>> {
+fn demonstrate_edge_case_tests() -> Result<(), Box<dyn std::error::Error>> {
     // Test 1: Severe network degradation
     println!("Testing severe network degradation...");
     match streaming_edge_cases::severe_network_degradation_scenario() {
@@ -167,7 +167,7 @@ fn run_edge_case_tests() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Demonstrates performance validation through simulation.
-fn run_performance_tests() -> Result<(), SimulationError> {
+fn demonstrate_performance_tests() -> Result<(), SimulationError> {
     // Test different peer counts
     let peer_counts = vec![5, 10, 20, 50];
     let mut results = Vec::new();
@@ -329,10 +329,10 @@ impl riptide_sim::SimulationInvariant for NoDuplicateRequestsInvariant {
 #[allow(dead_code)]
 fn ab_test_piece_selection_strategies() -> Result<(), SimulationError> {
     // Strategy A: Sequential piece selection
-    let report_a = run_with_strategy(12345, "sequential")?;
+    let report_a = execute_simulation_with_strategy(12345, "sequential")?;
 
     // Strategy B: Rarest-first piece selection
-    let report_b = run_with_strategy(12345, "rarest_first")?;
+    let report_b = execute_simulation_with_strategy(12345, "rarest_first")?;
 
     // Compare results
     println!("A/B Test Results:");
@@ -350,7 +350,7 @@ fn ab_test_piece_selection_strategies() -> Result<(), SimulationError> {
     Ok(())
 }
 
-fn run_with_strategy(seed: u64, _strategy: &str) -> Result<SimulationReport, SimulationError> {
+fn execute_simulation_with_strategy(seed: u64, _strategy: &str) -> Result<SimulationReport, SimulationError> {
     let config = SimulationConfig {
         enabled: true,
         deterministic_seed: Some(seed),

@@ -67,7 +67,7 @@ pub fn severe_network_degradation_scenario() -> Result<SimulationReport, Simulat
         )?;
     }
 
-    sim.run_for(Duration::from_secs(60))
+    sim.execute_for_duration(Duration::from_secs(60))
 }
 
 /// Simulates extreme peer churn during streaming.
@@ -84,7 +84,7 @@ pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError
     let mut sim = DeterministicSimulation::new(config)?;
 
     // Strict connection limit
-    sim.set_resource_limits(ResourceLimits {
+    sim.configure_resource_limits(ResourceLimits {
         max_connections: 25,
         ..Default::default()
     });
@@ -119,7 +119,7 @@ pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError
         }
     }
 
-    sim.run_for(Duration::from_secs(45))
+    sim.execute_for_duration(Duration::from_secs(45))
 }
 
 /// Simulates cascading piece failures.
@@ -170,7 +170,7 @@ pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, Simulatio
         }
     }
 
-    sim.run_for(Duration::from_secs(40))
+    sim.execute_for_duration(Duration::from_secs(40))
 }
 
 /// Simulates resource exhaustion conditions.
@@ -201,7 +201,7 @@ pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationErro
         max_disk_usage: 500 * 1024 * 1024, // 500 MB
         max_cpu_time_us: 500_000,          // 0.5 seconds
     };
-    sim.set_resource_limits(limits.clone());
+    sim.configure_resource_limits(limits.clone());
     sim.add_invariant(Arc::new(ResourceLimitInvariant::new(limits)));
 
     // Start multiple torrents
@@ -250,7 +250,7 @@ pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationErro
         )?;
     }
 
-    sim.run_for(Duration::from_secs(30))
+    sim.execute_for_duration(Duration::from_secs(30))
 }
 
 /// Simulates streaming with all peers eventually failing.
@@ -306,7 +306,7 @@ pub fn total_peer_failure_scenario() -> Result<SimulationReport, SimulationError
         EventPriority::Normal,
     )?;
 
-    sim.run_for(Duration::from_secs(40))
+    sim.execute_for_duration(Duration::from_secs(40))
 }
 
 #[cfg(test)]
