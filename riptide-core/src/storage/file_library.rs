@@ -1,39 +1,39 @@
-//! Local movie file simulation for development testing
+//! File library management for local media content
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::torrent::InfoHash;
 
-/// Local movie file for simulation
+/// Library file entry for local media content
 #[derive(Debug, Clone)]
-pub struct LocalMovie {
-    /// Path to the movie file
+pub struct LibraryFile {
+    /// Path to the media file
     pub file_path: PathBuf,
     /// File size in bytes
     pub size: u64,
-    /// Movie title extracted from filename
+    /// Media title extracted from filename
     pub title: String,
-    /// Simulated info hash for this movie
+    /// Deterministic content identifier for this file
     pub info_hash: InfoHash,
 }
 
-/// Manager for local movie files used in demo mode
+/// Manager for local media file library
 #[derive(Debug, Default)]
-pub struct LocalMovieManager {
-    /// Map from info hash to movie file
-    movies: HashMap<InfoHash, LocalMovie>,
+pub struct FileLibraryManager {
+    /// Map from info hash to media file
+    files: HashMap<InfoHash, LibraryFile>,
 }
 
-impl LocalMovieManager {
-    /// Create new movie manager
+impl FileLibraryManager {
+    /// Create new file library manager
     pub fn new() -> Self {
         Self {
-            movies: HashMap::new(),
+            files: HashMap::new(),
         }
     }
 
-    /// Scan directory for movie files and create simulated torrents
+    /// Scan directory for media files and create library entries
     ///
     /// # Errors
     /// - `std::io::Error` - Failed to read directory or file metadata
@@ -41,7 +41,7 @@ impl LocalMovieManager {
         self.scan_directory_recursive(dir).await
     }
 
-    /// Recursively scan directory for movie files
+    /// Recursively scan directory for media files
     fn scan_directory_recursive<'a>(
         &'a mut self,
         dir: &'a Path,
@@ -84,8 +84,8 @@ impl LocalMovieManager {
                             "mp4" | "mkv" | "avi" | "mov" | "m4v" | "webm" | "flv"
                         ) && let Ok(metadata) = entry.metadata().await
                         {
-                            let movie = self.create_movie_from_file(path, metadata.len()).await;
-                            self.movies.insert(movie.info_hash, movie);
+                            let file = self.create_file_from_path(path, metadata.len()).await;
+                            self.files.insert(file.info_hash, file);
                             count += 1;
                         }
                     }
@@ -96,29 +96,29 @@ impl LocalMovieManager {
         })
     }
 
-    /// Get movie by info hash
-    pub fn get_movie(&self, info_hash: InfoHash) -> Option<&LocalMovie> {
-        self.movies.get(&info_hash)
+    /// Get file by info hash
+    pub fn get_file(&self, info_hash: InfoHash) -> Option<&LibraryFile> {
+        self.files.get(&info_hash)
     }
 
-    /// Get all movies
-    pub fn all_movies(&self) -> Vec<&LocalMovie> {
-        self.movies.values().collect()
+    /// Get all files
+    pub fn all_files(&self) -> Vec<&LibraryFile> {
+        self.files.values().collect()
     }
 
-    /// Create movie entry from file path
-    async fn create_movie_from_file(&self, path: PathBuf, size: u64) -> LocalMovie {
+    /// Create library entry from file path
+    async fn create_file_from_path(&self, path: PathBuf, size: u64) -> LibraryFile {
         // Extract title from filename
         let title = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or("Unknown Movie")
+            .unwrap_or("Unknown File")
             .replace(['.', '_'], " ");
 
         // Generate deterministic info hash from file path
         let info_hash = self.generate_info_hash(&path);
 
-        LocalMovie {
+        LibraryFile {
             file_path: path,
             size,
             title,
@@ -156,30 +156,30 @@ impl LocalMovieManager {
         start: u64,
         length: u64,
     ) -> Result<Vec<u8>, std::io::Error> {
-        if let Some(movie) = self.movies.get(&info_hash) {
+        if let Some(file) = self.files.get(&info_hash) {
             use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-            let mut file = tokio::fs::File::open(&movie.file_path).await?;
-            file.seek(std::io::SeekFrom::Start(start)).await?;
+            let mut file_handle = tokio::fs::File::open(&file.file_path).await?;
+            file_handle.seek(std::io::SeekFrom::Start(start)).await?;
 
             let mut buffer = vec![0u8; length as usize];
-            let bytes_read = file.read(&mut buffer).await?;
+            let bytes_read = file_handle.read(&mut buffer).await?;
             buffer.truncate(bytes_read);
 
             Ok(buffer)
         } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "Movie not found",
+                "File not found",
             ))
         }
     }
 
-    /// Update movie's info hash (used when canonical content-based hash differs from path-based)
-    pub fn update_movie_info_hash(&mut self, old_hash: InfoHash, new_hash: InfoHash) {
-        if let Some(mut movie) = self.movies.remove(&old_hash) {
-            movie.info_hash = new_hash;
-            self.movies.insert(new_hash, movie);
+    /// Update file's info hash (used when canonical content-based hash differs from path-based)
+    pub fn update_file_info_hash(&mut self, old_hash: InfoHash, new_hash: InfoHash) {
+        if let Some(mut file) = self.files.remove(&old_hash) {
+            file.info_hash = new_hash;
+            self.files.insert(new_hash, file);
         }
     }
 }

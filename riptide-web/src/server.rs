@@ -12,7 +12,7 @@ use riptide_core::streaming::{
 use riptide_core::torrent::{
     InfoHash, PieceStore, TcpPeerManager, TorrentEngineHandle, TrackerManager, spawn_torrent_engine,
 };
-use riptide_core::{LocalMovieManager, RuntimeMode};
+use riptide_core::{FileLibraryManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -39,7 +39,7 @@ pub struct ConvertedFile {
 pub struct AppState {
     pub torrent_engine: TorrentEngineHandle,
     pub search_service: MediaSearchService,
-    pub movie_manager: Option<Arc<RwLock<LocalMovieManager>>>,
+    pub movie_manager: Option<Arc<RwLock<FileLibraryManager>>>,
     pub piece_store: Option<Arc<dyn PieceStore>>,
     pub ffmpeg_processor: Arc<dyn FfmpegProcessor>,
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
@@ -86,7 +86,7 @@ pub async fn run_server(
 
     // Initialize movie manager and piece store for demo mode.
     let (movie_manager, piece_store) = if let Some(dir) = movies_dir.as_ref() {
-        let mut manager = LocalMovieManager::new();
+        let mut manager = FileLibraryManager::new();
         match manager.scan_directory(dir).await {
             Ok(count) => {
                 println!("Found {} movie files in {}", count, dir.display());
@@ -170,11 +170,11 @@ pub async fn run_server(
 /// discover and download pieces from the simulated swarm to stream content, exercising
 /// the full P2P download path.
 async fn setup_demo_swarm(
-    movie_manager: &mut LocalMovieManager,
+    library_manager: &mut FileLibraryManager,
     torrent_engine: &TorrentEngineHandle,
     piece_store: Arc<riptide_sim::InMemoryPieceStore>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let movies = movie_manager.all_movies().to_vec();
+    let movies = library_manager.all_files().to_vec();
     let movie_count = movies.len();
 
     println!("Starting background conversion of {movie_count} movies to BitTorrent pieces...");

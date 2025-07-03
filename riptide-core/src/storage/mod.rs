@@ -3,6 +3,7 @@
 //! Defines storage interface for piece data with file-based implementation.
 //! Handles piece persistence, verification, and torrent completion tracking.
 
+pub mod file_library;
 pub mod file_storage;
 #[cfg(test)]
 pub mod test_fixtures;
@@ -10,6 +11,7 @@ pub mod test_fixtures;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+pub use file_library::{FileLibraryManager, LibraryFile};
 pub use file_storage::FileStorage;
 
 use crate::torrent::{InfoHash, PieceIndex};

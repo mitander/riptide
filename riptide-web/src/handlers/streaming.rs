@@ -341,7 +341,7 @@ pub async fn api_local_movies(State(state): State<AppState>) -> Json<serde_json:
     if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         let movies: Vec<serde_json::Value> = manager
-            .all_movies()
+            .all_files()
             .iter()
             .map(|movie| {
                 json!({
@@ -380,7 +380,7 @@ pub async fn api_add_local_movie(
 
         // Parse the info hash
         if let Ok(info_hash) = InfoHash::from_hex(&params.info_hash) {
-            if let Some(movie) = manager.get_movie(info_hash) {
+            if let Some(movie) = manager.get_file(info_hash) {
                 // Add this movie as a simulated torrent
                 // Create a fake magnet link for the movie
                 let magnet = format!(
@@ -448,7 +448,7 @@ pub async fn stream_local_movie(
     };
 
     let manager = movie_manager.read().await;
-    let movie = match manager.get_movie(info_hash) {
+    let movie = match manager.get_file(info_hash) {
         Some(movie) => movie,
         None => return Err(StatusCode::NOT_FOUND),
     };

@@ -46,7 +46,7 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
     let movie_titles: HashMap<_, _> = if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         manager
-            .all_movies()
+            .all_files()
             .iter()
             .map(|movie| (movie.info_hash, movie.title.clone()))
             .collect()
@@ -182,7 +182,7 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
     // Add local movies to library first (they have better metadata)
     if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
-        for movie in manager.all_movies() {
+        for movie in manager.all_files() {
             local_info_hashes.insert(movie.info_hash);
             library_items.push(json!({
                 "id": movie.info_hash.to_string(),

@@ -6,7 +6,6 @@
 
 pub mod config;
 pub mod engine;
-pub mod local_movies;
 pub mod mode;
 pub mod network;
 pub mod storage;
@@ -15,9 +14,8 @@ pub mod torrent;
 
 // Re-export main types for convenient access
 pub use config::RiptideConfig;
-pub use local_movies::{LocalMovie, LocalMovieManager};
 pub use mode::RuntimeMode;
-pub use storage::{FileStorage, StorageError};
+pub use storage::{FileLibraryManager, FileStorage, LibraryFile, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
 pub use torrent::{EngineStats, TorrentCreator, TorrentEngineHandle, TorrentError};
 
