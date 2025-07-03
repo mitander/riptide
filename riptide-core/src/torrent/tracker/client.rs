@@ -570,7 +570,7 @@ mod tracker_client_tests {
 
     #[test]
     fn test_parse_announce_response_failure_reason() {
-        let bencode_data = b"d14:failure reason16:Something went wronge";
+        let bencode_data = b"d14:failure reason5:errore";
         let config = create_test_network_config();
         let client = HttpTrackerClient::new("http://example.com/announce".to_string(), &config);
 
@@ -578,7 +578,7 @@ mod tracker_client_tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            TorrentError::TorrentNotFoundOnTracker { url } if url.contains("Tracker error")
+            TorrentError::TorrentNotFoundOnTracker { url } if url == "Tracker error: error"
         ));
     }
 
@@ -604,7 +604,7 @@ mod tracker_client_tests {
 
     #[test]
     fn test_parse_scrape_response_failure_reason() {
-        let bencode_data = b"d14:failure reason17:Scrape failed heree";
+        let bencode_data = b"d14:failure reason5:errore";
         let config = create_test_network_config();
         let client = HttpTrackerClient::new("http://example.com/announce".to_string(), &config);
 
@@ -612,7 +612,7 @@ mod tracker_client_tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            TorrentError::ProtocolError { message } if message.contains("Scrape error")
+            TorrentError::ProtocolError { message } if message == "Scrape error: error"
         ));
     }
 }

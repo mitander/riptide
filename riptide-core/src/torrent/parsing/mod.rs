@@ -31,7 +31,7 @@ mod tests {
 
         assert!(result.is_ok());
         let magnet = result.unwrap();
-        assert_eq!(magnet.display_name, Some("Test%20Torrent".to_string()));
+        assert_eq!(magnet.display_name, Some("Test Torrent".to_string()));
         assert_eq!(magnet.trackers, vec!["http://tracker.example.com/announce"]);
     }
 

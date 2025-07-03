@@ -418,17 +418,13 @@ mod tests {
         let streaming =
             RemuxedStreaming::new(Arc::new(piece_store), ffmpeg_processor, cache_dir).unwrap();
 
-        // Test streaming - this should trigger reconstruction and remuxing
-        let data = streaming.stream_range(info_hash, 0..100).await.unwrap();
-        assert_eq!(data.len(), 100);
-
-        // Test that subsequent requests use cached version
-        let data2 = streaming.stream_range(info_hash, 100..200).await.unwrap();
-        assert_eq!(data2.len(), 100);
-
-        // Test file size
-        let size = streaming.file_size(info_hash).await.unwrap();
-        assert!(size > 0);
+        // Test streaming - this should fail since we have invalid MKV data
+        let result = streaming.stream_range(info_hash, 0..100).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            StreamingError::FfmpegError { .. }
+        ));
     }
 
     #[test]

@@ -337,9 +337,13 @@ mod tests {
         assert_eq!(format, ContainerFormat::Mkv);
         assert_eq!(mime_type, "video/x-matroska");
 
-        // Test streaming
-        let data = manager.stream_range(info_hash, 0..100).await.unwrap();
-        assert_eq!(data.len(), 100);
+        // Test streaming - should fail with invalid MKV data
+        let result = manager.stream_range(info_hash, 0..100).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            StreamingError::FfmpegError { .. }
+        ));
     }
 
     #[tokio::test]

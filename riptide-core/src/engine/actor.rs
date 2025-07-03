@@ -15,7 +15,9 @@ use crate::torrent::{PeerManager, TrackerManagement};
 /// commands sequentially, eliminating lock contention and race conditions.
 ///
 /// # Examples
-/// ```
+/// ```rust,no_run
+/// # #[tokio::main]
+/// # async fn main() {
 /// use riptide_core::engine::spawn_torrent_engine;
 /// use riptide_core::config::RiptideConfig;
 /// use riptide_core::torrent::{TcpPeerManager, TrackerManager};
@@ -24,6 +26,7 @@ use crate::torrent::{PeerManager, TrackerManagement};
 /// let peer_manager = TcpPeerManager::new_default();
 /// let tracker_manager = TrackerManager::new(config.network.clone());
 /// let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+/// # }
 /// ```
 pub fn spawn_torrent_engine<P, T>(
     config: RiptideConfig,

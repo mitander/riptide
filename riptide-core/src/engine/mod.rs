@@ -16,7 +16,8 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```rust,no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use riptide_core::engine::spawn_torrent_engine;
 //! use riptide_core::config::RiptideConfig;
 //! use riptide_core::torrent::{TcpPeerManager, TrackerManager};
@@ -31,6 +32,8 @@
 //! // Use the handle to interact with the engine
 //! let info_hash = engine.add_magnet("magnet:?xt=...").await?;
 //! engine.start_download(info_hash).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 mod actor;
