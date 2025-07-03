@@ -1,13 +1,33 @@
 # Riptide
 
 [![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI Status](https://github.com/mitander/riptide/actions/workflows/ci.yml/badge.svg)](https://github.com/mitander/riptide/actions)
 
-**BitTorrent media server optimized for streaming.**
+**Riptide is a modern BitTorrent media server built for streaming performance and rapid iteration.**
 
 > [!WARNING]
-> Early development. Core features working, streaming in progress.
+> This media server is in early development phase.
+> Features are incomplete and breaking changes should be expected.
 
-## Quick Start
+## Overview
+
+Riptide implements BitTorrent protocol with trait-based architecture enabling both production networking and deterministic simulation. Built with focus on correctness, performance, and maintainability.
+
+**Current Status:**
+
+- BitTorrent protocol: Complete tracker communication, peer connections, piece downloading
+- Trait-based architecture: Swappable production/simulation implementations
+- Piece downloader with hash verification and timeout controls
+- Storage layer with piece management and file reconstruction
+- Deterministic simulation framework for reproducible testing
+
+**Coming Next:**
+
+- Streaming optimization with deadline-based piece selection
+- Media search integration and metadata services
+- Web UI for library browsing
+
+## Usage
 
 ```bash
 # Clone and build
@@ -15,39 +35,17 @@ git clone https://github.com/mitander/riptide
 cd riptide
 cargo build --release
 
-# Try simulation mode
-./target/release/riptide simulate --peers 5 test.torrent
+# Start web server with demo data
+cargo run -p riptide-cli -- server --demo
 
-# Run tests
-cargo test
-```
+# Add torrents via magnet links
+cargo run -p riptide-cli -- add "magnet:?xt=urn:btih:..."
 
-## Current Status
+# Start server in development mode
+cargo run -p riptide-cli -- server --host 0.0.0.0 --port 8080 --development
 
-**Working:**
-- BitTorrent protocol with trait-based architecture (production + simulation)
-- Real file-to-torrent conversion with piece splitting and SHA-1 hashing
-- Content distribution simulation with actual piece data serving
-- Piece reconstruction for end-to-end streaming validation
-- Clean workspace architecture with no circular dependencies
-
-**In Progress:**
-- Direct streaming service
-- Template/asset extraction
-- Web interface enhancement
-
-## Development
-
-```bash
-# Build and test
-cargo build
-cargo test
-
-# Standards check
-./scripts/check_standards.sh
-
-# Run simulation
-cargo run -- simulate --peers 10 test.torrent
+# Run simulation scenarios for testing
+cargo test -p riptide-sim -- --nocapture
 ```
 
 ## Architecture
@@ -58,7 +56,7 @@ Multi-crate workspace with clean dependency structure:
 riptide-core (foundational)
     ↑
     ├── riptide-sim (simulation & testing)
-    ├── riptide-web (UI & API) 
+    ├── riptide-web (UI & API)
     ├── riptide-cli (command interface)
     └── riptide-search (media discovery)
 ```
@@ -69,12 +67,33 @@ riptide-core (foundational)
 - **riptide-cli**: Command interface, development tools
 - **riptide-search**: Media search, metadata services
 
+## Development
+
+### Building
+
+```bash
+cargo build --release
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
+```
+
+### Style
+
+See [STYLE.md](docs/STYLE.md) and [NAMING_CONVENTIONS.md](docs/NAMING_CONVENTIONS.md).
+
+Key points:
+
+- Working over clever
+- Measured over assumed
+- Simple over flexible
+- Comprehensive tests required
+
 ## Documentation
 
-- [Design](docs/DESIGN.md) - Architecture decisions
-- [Style](docs/STYLE.md) - Code conventions  
-- [Naming](docs/NAMING_CONVENTIONS.md) - Naming rules
+- [Design](docs/DESIGN.md) - Architecture and implementation
+- [Style Guide](docs/STYLE.md) - Code conventions
+- [Naming Conventions](docs/NAMING_CONVENTIONS.md) - Naming rules
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+Riptide is licensed under the [MIT License](LICENSE).
