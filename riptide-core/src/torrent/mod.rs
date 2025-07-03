@@ -4,6 +4,7 @@ pub mod creation;
 pub mod downloader;
 pub mod enhanced_peer_connection;
 pub mod enhanced_peer_manager;
+pub mod error_recovery;
 pub mod parsing;
 pub mod peer_connection;
 pub mod peer_manager;
