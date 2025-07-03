@@ -73,7 +73,7 @@ pub async fn stream_torrent(
         completed_pieces * session.piece_size as u64
     };
 
-    tracing::info!(
+    tracing::debug!(
         "Streaming info: piece_count={}, piece_size={}, total_size={}, completed_pieces={}, available_size={}",
         session.piece_count,
         session.piece_size,
@@ -130,7 +130,7 @@ async fn get_video_data_with_conversion(
         Ok((data, session.total_size))
     } else {
         // Format needs conversion (MKV -> MP4, etc.)
-        tracing::info!(
+        tracing::debug!(
             "Container format {:?} needs conversion for browser compatibility",
             container_format
         );
@@ -139,14 +139,14 @@ async fn get_video_data_with_conversion(
         {
             let cache = state.conversion_cache.read().await;
             if let Some(converted) = cache.get(&info_hash) {
-                tracing::info!("Using cached converted file for {}", info_hash);
+                tracing::debug!("Using cached converted file for {}", info_hash);
                 let data = read_converted_data(&converted.output_path, start, length).await?;
                 return Ok((data, converted.size));
             }
         }
 
         // Not in cache - need to convert
-        tracing::info!(
+        tracing::debug!(
             "Converting {} from {:?} to MP4",
             session.filename,
             container_format
@@ -219,7 +219,7 @@ async fn convert_file_to_mp4(
         .await
     {
         Ok(result) => {
-            tracing::info!(
+            tracing::debug!(
                 "Successfully converted {} to MP4 in {:.2}s (output size: {} bytes)",
                 session.filename,
                 result.processing_time,

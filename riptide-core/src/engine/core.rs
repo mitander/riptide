@@ -210,7 +210,7 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
         let _peer_manager = self.peer_manager.clone();
 
         tokio::spawn(async move {
-            tracing::info!(
+            tracing::debug!(
                 "Starting realistic BitTorrent download simulation for torrent {} ({} pieces)",
                 info_hash,
                 piece_count
@@ -238,7 +238,7 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
             let peer_discovery_interval = Duration::from_millis(500); // Fast peer discovery for testing
             let mut last_peer_discovery = std::time::Instant::now();
 
-            tracing::info!(
+            tracing::debug!(
                 "BitTorrent simulation: {} pieces, {} max peers, {:.1} MB/s target speed",
                 piece_count,
                 max_peers,
@@ -246,7 +246,7 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
             );
 
             // Phase 1: Peer discovery simulation
-            tracing::info!("Phase 1: Discovering peers for torrent {}", info_hash);
+            tracing::debug!("Phase 1: Discovering peers for torrent {}", info_hash);
             for i in 0..std::cmp::min(max_peers, 10) {
                 let peer_addr: std::net::SocketAddr =
                     format!("192.168.1.{}:6881", 100 + i).parse().unwrap();
@@ -272,7 +272,7 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
             }
 
             // Phase 2: Piece downloading with realistic BitTorrent behavior
-            tracing::info!("Phase 2: Downloading pieces using BitTorrent protocol simulation");
+            tracing::debug!("Phase 2: Downloading pieces using BitTorrent protocol simulation");
 
             while completed_pieces.len() < piece_count as usize {
                 sleep(update_interval).await;
@@ -407,7 +407,7 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
                 }
             }
 
-            tracing::info!(
+            tracing::debug!(
                 "BitTorrent download simulation completed for torrent {} (downloaded {} pieces from {} peers)",
                 info_hash,
                 piece_count,
@@ -416,7 +416,7 @@ impl<P: PeerManager, T: TrackerManagement + 'static> TorrentEngine<P, T> {
 
             // Simulate post-download seeding behavior
             if config.simulation.enabled {
-                tracing::info!("Entering seeding mode for torrent {}", info_hash);
+                tracing::debug!("Entering seeding mode for torrent {}", info_hash);
                 sleep(Duration::from_millis(50)).await; // Brief seeding simulation for testing
             }
         });

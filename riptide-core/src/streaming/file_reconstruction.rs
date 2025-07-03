@@ -101,7 +101,7 @@ impl<P: PieceStore> FileReconstructor<P> {
                 source: e,
             })?;
 
-        tracing::info!(
+        tracing::debug!(
             "Successfully reconstructed {} bytes for torrent {} to {}",
             total_bytes_written,
             info_hash,

@@ -59,7 +59,7 @@ async fn run_actor_loop<P, T>(
     P: PeerManager + Send + 'static,
     T: TrackerManagement + Send + 'static,
 {
-    tracing::info!("Torrent engine actor started");
+    tracing::debug!("Torrent engine actor started");
 
     loop {
         tokio::select! {
@@ -77,7 +77,7 @@ async fn run_actor_loop<P, T>(
         }
     }
 
-    tracing::info!("Torrent engine actor stopped");
+    tracing::debug!("Torrent engine actor stopped");
 }
 
 /// Handles a single command for the torrent engine.
@@ -146,7 +146,7 @@ where
         }
 
         TorrentEngineCommand::Shutdown { responder } => {
-            tracing::info!("Torrent engine actor shutting down");
+            tracing::debug!("Torrent engine actor shutting down");
             let _ = responder.send(());
             return false; // Signal to break out of the loop
         }

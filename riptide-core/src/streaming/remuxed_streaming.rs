@@ -90,7 +90,7 @@ impl<P: PieceStore, F: FfmpegProcessor> RemuxedStreaming<P, F> {
             return Ok(cache_path);
         }
 
-        tracing::info!("Starting remuxing process for {}", info_hash);
+        tracing::debug!("Starting remuxing process for {}", info_hash);
 
         // Check if all pieces are available
         if !self.file_reconstructor.can_reconstruct(info_hash)? {
@@ -112,7 +112,7 @@ impl<P: PieceStore, F: FfmpegProcessor> RemuxedStreaming<P, F> {
             .reconstruct_file(info_hash, &temp_path)
             .await?;
 
-        tracing::info!("File reconstructed, starting remuxing to MP4");
+        tracing::debug!("File reconstructed, starting remuxing to MP4");
 
         // Remux to MP4
         let remux_result = self
@@ -120,7 +120,7 @@ impl<P: PieceStore, F: FfmpegProcessor> RemuxedStreaming<P, F> {
             .remux_to_mp4(&temp_path, &cache_path, &self.remuxing_options)
             .await?;
 
-        tracing::info!(
+        tracing::debug!(
             "Remuxing completed: {} bytes in {:.2}s",
             remux_result.output_size,
             remux_result.processing_time

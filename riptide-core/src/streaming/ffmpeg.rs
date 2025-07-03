@@ -130,7 +130,7 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
         cmd.arg(output_path);
 
         // Execute FFmpeg command
-        tracing::info!("Executing FFmpeg command: {:?}", cmd);
+        tracing::debug!("Executing FFmpeg command: {:?}", cmd);
 
         let output = cmd
             .output()
@@ -144,10 +144,10 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         if !stdout.is_empty() {
-            tracing::info!("FFmpeg stdout: {}", stdout);
+            tracing::debug!("FFmpeg stdout: {}", stdout);
         }
         if !stderr.is_empty() {
-            tracing::info!("FFmpeg stderr: {}", stderr);
+            tracing::debug!("FFmpeg stderr: {}", stderr);
         }
 
         if !output.status.success() {
