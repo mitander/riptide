@@ -1,4 +1,7 @@
-//! Simple JSON API server for torrent management
+//! Modern HTMX + Tailwind web server for Riptide
+//!
+//! Provides both HTMX partial updates and JSON API endpoints.
+//! All pages use server-side rendering with real-time updates.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,9 +23,11 @@ use tower_http::services::ServeDir;
 
 use crate::handlers::{
     api_add_torrent, api_download_torrent, api_library, api_search, api_settings, api_stats,
-    api_torrents, dashboard_page, library_page, search_page, stream_torrent, torrents_page,
-    video_player_page,
+    api_torrents, stream_torrent, video_player_page,
 };
+use crate::htmx::{dashboard_activity, dashboard_downloads, dashboard_stats};
+// Import new architecture modules
+use crate::pages::{dashboard_page, library_page, search_page, torrents_page};
 
 // Removed PieceStoreType enum - using trait objects instead
 
@@ -137,12 +142,22 @@ pub async fn run_server(
     };
 
     let app = Router::new()
+        // Main pages (HTMX + Tailwind)
         .route("/", get(dashboard_page))
         .route("/torrents", get(torrents_page))
         .route("/library", get(library_page))
         .route("/search", get(search_page))
         .route("/player/{info_hash}", get(video_player_page))
+        // HTMX partial update endpoints
+        .route("/htmx/dashboard/stats", get(dashboard_stats))
+        .route("/htmx/dashboard/activity", get(dashboard_activity))
+        .route("/htmx/dashboard/downloads", get(dashboard_downloads))
+        .route("/htmx/torrents/list", get(crate::htmx::torrent_list))
+        .route("/htmx/torrents/add", post(crate::htmx::add_torrent))
+        .route("/htmx/system/status", get(crate::htmx::system_status))
+        // Streaming endpoints
         .route("/stream/{info_hash}", get(stream_torrent))
+        // JSON API endpoints (for external clients)
         .route("/api/stats", get(api_stats))
         .route("/api/torrents", get(api_torrents))
         .route("/api/torrents/add", get(api_add_torrent))
@@ -150,6 +165,7 @@ pub async fn run_server(
         .route("/api/library", get(api_library))
         .route("/api/search", get(api_search))
         .route("/api/settings", get(api_settings))
+        // Static assets (minimal)
         .nest_service("/static", ServeDir::new("riptide-web/static"))
         .layer(CorsLayer::permissive())
         .with_state(state);

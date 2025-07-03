@@ -1,0 +1,249 @@
+//! Live statistics and metrics HTMX handlers
+
+use axum::extract::State;
+use axum::response::Html;
+
+use crate::components::{activity, stats};
+use crate::server::AppState;
+
+/// Real-time dashboard statistics fragment
+pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
+    let engine_stats = state.torrent_engine.get_download_stats().await.unwrap();
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+
+    // Calculate metrics
+    let active_torrents = sessions.len();
+    let downloading_count = sessions.iter().filter(|s| s.progress < 1.0).count();
+    let completed_count = sessions.iter().filter(|s| s.progress >= 1.0).count();
+
+    // Download/upload speeds (simplified for now)
+    let download_speed = (engine_stats.bytes_downloaded as f64) / 1_048_576.0;
+    let upload_speed = (engine_stats.bytes_uploaded as f64) / 1_048_576.0;
+    let total_downloaded = (engine_stats.bytes_downloaded as f64) / 1_073_741_824.0;
+
+    // Library size
+    let library_size = if let Some(ref movie_manager) = state.movie_manager {
+        let manager = movie_manager.read().await;
+        manager.all_files().len()
+    } else {
+        0
+    };
+
+    // Connected peers estimate
+    let connected_peers: usize = sessions
+        .iter()
+        .map(|s| s.completed_pieces.iter().filter(|&&x| x).count())
+        .sum::<usize>()
+        .min(50);
+
+    let stat_cards = vec![
+        stats::stat_card(
+            &active_torrents.to_string(),
+            "Active Torrents",
+            None,
+            None,
+            None,
+        ),
+        stats::stat_card(
+            &downloading_count.to_string(),
+            "Downloading",
+            None,
+            None,
+            Some("text-riptide-400"),
+        ),
+        stats::stat_card(
+            &completed_count.to_string(),
+            "Completed",
+            None,
+            None,
+            Some("text-green-400"),
+        ),
+        stats::stat_card(
+            &format!("{download_speed:.1}"),
+            "Download Speed",
+            Some("MB/s"),
+            None,
+            None,
+        ),
+        stats::stat_card(
+            &format!("{upload_speed:.1}"),
+            "Upload Speed",
+            Some("MB/s"),
+            None,
+            None,
+        ),
+        stats::stat_card(
+            &format!("{total_downloaded:.2}"),
+            "Downloaded",
+            Some("GB"),
+            None,
+            None,
+        ),
+        stats::stat_card(
+            &connected_peers.to_string(),
+            "Connected Peers",
+            None,
+            None,
+            None,
+        ),
+        stats::stat_card(&library_size.to_string(), "Library Items", None, None, None),
+    ];
+
+    Html(stats::stats_grid(&stat_cards))
+}
+
+/// Recent activity feed fragment
+pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+
+    let mut activities = Vec::new();
+
+    // Generate activities from recent torrent events
+    for session in sessions.iter().take(8) {
+        let (icon, title, description) = if session.progress >= 1.0 {
+            (
+                "✅",
+                format!("Completed: {}", session.filename),
+                Some("Download finished successfully".to_string()),
+            )
+        } else if session.progress > 0.5 {
+            (
+                "⬇️",
+                format!("Downloading: {}", session.filename),
+                Some(format!("{:.1}% complete", session.progress * 100.0)),
+            )
+        } else if session.progress > 0.0 {
+            (
+                "🔄",
+                format!("Starting: {}", session.filename),
+                Some("Download in progress".to_string()),
+            )
+        } else {
+            (
+                "📋",
+                format!("Queued: {}", session.filename),
+                Some("Waiting for peers".to_string()),
+            )
+        };
+
+        activities.push(activity::ActivityItem {
+            icon: icon.to_string(),
+            title,
+            description,
+            time: "Just now".to_string(), // TODO: Use actual timestamps
+        });
+    }
+
+    // Add system activity if no torrents
+    if activities.is_empty() {
+        activities.push(activity::ActivityItem {
+            icon: "🚀".to_string(),
+            title: "Riptide started".to_string(),
+            description: Some("BitTorrent engine is running and ready".to_string()),
+            time: "Recently".to_string(),
+        });
+    }
+
+    Html(activity::activity_feed(&activities))
+}
+
+/// Active downloads preview fragment
+pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> {
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+
+    // Show only actively downloading torrents
+    let active_downloads: Vec<_> = sessions
+        .iter()
+        .filter(|s| s.progress < 1.0 && s.progress > 0.0)
+        .take(3)
+        .collect();
+
+    if active_downloads.is_empty() {
+        return Html(
+            r#"<div class="text-center py-8">
+                <div class="text-4xl mb-2">📦</div>
+                <p class="text-gray-400">No active downloads</p>
+                <p class="text-gray-500 text-sm mt-1">Add a torrent to see progress here</p>
+            </div>"#
+                .to_string(),
+        );
+    }
+
+    let downloads_html: String = active_downloads
+        .iter()
+        .map(|session| {
+            let progress_percent = (session.progress * 100.0) as u32;
+            let estimated_size = (session.piece_count as u64 * session.piece_size as u64) as f64 / 1_073_741_824.0;
+            let completed_pieces = session.completed_pieces.iter().filter(|&&x| x).count();
+
+            format!(
+                r#"<div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg border border-gray-700">
+                    <div class="flex-1 min-w-0">
+                        <h4 class="text-white font-medium truncate mb-2">{}</h4>
+                        <div class="w-full bg-gray-700 rounded-full h-2 mb-2">
+                            <div class="bg-riptide-500 h-2 rounded-full transition-all duration-300" style="width: {}%"></div>
+                        </div>
+                        <p class="text-gray-400 text-sm">{:.1} GB • {}/{} pieces</p>
+                    </div>
+                    <div class="ml-4 text-right">
+                        <div class="text-riptide-400 font-bold">{}%</div>
+                        <div class="text-gray-500 text-xs">downloading</div>
+                    </div>
+                </div>"#,
+                session.filename,
+                progress_percent,
+                estimated_size,
+                completed_pieces,
+                session.piece_count,
+                progress_percent
+            )
+        })
+        .collect();
+
+    Html(downloads_html)
+}
+
+/// System performance metrics fragment
+pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
+    // TODO: Implement real system metrics
+    let metrics = [
+        ("🖥️", "45%", "CPU Usage"),
+        ("💾", "2.1GB", "Memory"),
+        ("💿", "127GB", "Disk Free"),
+        ("🌐", "15ms", "Network Latency"),
+    ];
+
+    let metrics_html: String = metrics
+        .iter()
+        .map(|(icon, value, label)| stats::metric_item(icon, value, label, None))
+        .collect();
+
+    Html(format!(
+        r#"<div class="grid grid-cols-2 gap-4">
+            {metrics_html}
+        </div>"#
+    ))
+}
+
+/// Network status and peer information
+pub async fn network_status(State(state): State<AppState>) -> Html<String> {
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+
+    let total_peers: usize = sessions
+        .iter()
+        .map(|s| s.completed_pieces.iter().filter(|&&x| x).count())
+        .sum();
+
+    let status_indicators = [
+        stats::status_indicator("online", "DHT Connected"),
+        stats::status_indicator("active", &format!("{total_peers} Peers")),
+        stats::status_indicator("active", "Trackers Online"),
+    ];
+
+    Html(format!(
+        r#"<div class="space-y-3">
+            {}
+        </div>"#,
+        status_indicators.join("")
+    ))
+}

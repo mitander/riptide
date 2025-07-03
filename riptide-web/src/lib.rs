@@ -1,9 +1,12 @@
-//! Riptide Web - Simple Web UI and API server
+//! Riptide Web - Modern HTMX + Tailwind Web Interface
 //!
-//! Clean, minimal web interface using vanilla JavaScript,
-//! providing modern UI for managing torrents and streaming media.
+//! Server-driven web interface with real-time updates using HTMX.
+//! Provides clean, responsive UI for torrent management and media streaming.
 
+pub mod components;
 pub mod handlers;
+pub mod htmx;
+pub mod pages;
 pub mod server;
 pub mod templates;
 

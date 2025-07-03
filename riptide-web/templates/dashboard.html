@@ -1,37 +1,115 @@
 <div class="page-header">
     <h1>Dashboard</h1>
     <p>Monitor your downloads and server status</p>
+    <div class="last-updated">
+        <span class="status-indicator" id="connection-status">●</span>
+        Auto-refreshing every 5 seconds
+    </div>
 </div>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <span class="stat-value">{{ active_torrents }}</span>
-        <div class="stat-label">Active Torrents</div>
-    </div>
-    <div class="stat-card">
-        <span class="stat-value">{{ download_speed }} MB/s</span>
-        <div class="stat-label">Download Speed</div>
-    </div>
-    <div class="stat-card">
-        <span class="stat-value">{{ upload_speed }} MB/s</span>
-        <div class="stat-label">Upload Speed</div>
-    </div>
-    <div class="stat-card">
-        <span class="stat-value">{{ downloaded_gb }} GB</span>
-        <div class="stat-label">Downloaded</div>
+<!-- Real-time stats that auto-refresh every 5 seconds -->
+<div id="stats-container" 
+     hx-get="/api/dashboard/stats" 
+     hx-trigger="load, every 5s" 
+     hx-target="this" 
+     hx-swap="innerHTML">
+    
+    <!-- Initial server-rendered stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <span class="stat-value">{{ active_torrents }}</span>
+            <div class="stat-label">Active Torrents</div>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ download_speed }}</span>
+            <div class="stat-unit">MB/s</div>
+            <div class="stat-label">Download Speed</div>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ upload_speed }}</span>
+            <div class="stat-unit">MB/s</div>
+            <div class="stat-label">Upload Speed</div>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ downloaded_gb }}</span>
+            <div class="stat-unit">GB</div>
+            <div class="stat-label">Total Downloaded</div>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">0</span>
+            <div class="stat-label">Connected Peers</div>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">0</span>
+            <div class="stat-unit">Items</div>
+            <div class="stat-label">Library Size</div>
+        </div>
     </div>
 </div>
 
 <div class="card">
     <h3>Quick Actions</h3>
-    <div style="display: flex; gap: 15px; margin-top: 15px;">
-        <a href="/search" class="btn">Search Content</a>
-        <a href="/torrents" class="btn">View Downloads</a>
-        <a href="/library" class="btn">Browse Library</a>
+    <div class="action-grid">
+        <a href="/search" class="action-btn">
+            <div class="action-icon">🔍</div>
+            <div>Search Content</div>
+        </a>
+        <a href="/torrents" class="action-btn">
+            <div class="action-icon">⬇️</div>
+            <div>View Downloads</div>
+        </a>
+        <a href="/library" class="action-btn">
+            <div class="action-icon">📚</div>
+            <div>Browse Library</div>
+        </a>
     </div>
 </div>
 
+<!-- Quick Add Torrent -->
+<div class="card">
+    <h3>Quick Add Torrent</h3>
+    <form hx-post="/api/torrents/add" 
+          hx-target="#add-result" 
+          hx-swap="innerHTML"
+          hx-indicator="#add-spinner">
+        <div class="quick-add-form">
+            <input type="text" 
+                   name="magnet" 
+                   placeholder="Paste magnet link here..." 
+                   required
+                   class="quick-add-input">
+            <button type="submit" class="btn">
+                <span class="htmx-indicator" id="add-spinner">Adding...</span>
+                <span>Add Torrent</span>
+            </button>
+        </div>
+    </form>
+    <div id="add-result" class="add-result"></div>
+</div>
+
+<!-- Recent Activity with real-time updates -->
 <div class="card">
     <h3>Recent Activity</h3>
-    <p style="color: #aaa;">Server running in demo mode with simulated data</p>
+    <div id="recent-activity"
+         hx-get="/api/dashboard/activity"
+         hx-trigger="load, every 10s"
+         hx-target="this"
+         hx-swap="innerHTML">
+        <div class="loading">Loading recent activity...</div>
+    </div>
+</div>
+
+<!-- Active Downloads Preview -->
+<div class="card">
+    <div class="card-header">
+        <h3>Active Downloads</h3>
+        <a href="/torrents" class="view-all-link">View All →</a>
+    </div>
+    <div id="active-downloads"
+         hx-get="/api/dashboard/downloads"
+         hx-trigger="load, every 3s"
+         hx-target="this"
+         hx-swap="innerHTML">
+        <div class="loading">Loading downloads...</div>
+    </div>
 </div>
