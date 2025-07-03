@@ -27,6 +27,18 @@ Riptide implements BitTorrent protocol with trait-based architecture enabling bo
 - Media search integration and metadata services
 - Web UI for library browsing
 
+## Dependencies
+
+- **FFmpeg** - Required for media transcoding and remuxing
+
+```bash
+# Ubuntu/Debian
+sudo apt install ffmpeg libavutil-dev libavformat-dev libavcodec-dev
+
+# macOS
+brew install ffmpeg
+```
+
 ## Usage
 
 ```bash
