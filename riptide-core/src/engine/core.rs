@@ -15,7 +15,8 @@ use crate::torrent::downloader::PieceDownloader;
 use crate::torrent::parsing::types::TorrentMetadata;
 use crate::torrent::tracker::{AnnounceEvent, AnnounceRequest, TrackerManagement};
 use crate::torrent::{
-    BencodeTorrentParser, InfoHash, PeerId, PeerManager, PieceIndex, TorrentError, TorrentParser,
+    AdaptivePiecePicker, AdaptiveStreamingPiecePicker, BencodeTorrentParser, InfoHash, PeerId,
+    PeerManager, PiecePicker, TorrentError, TorrentParser,
 };
 
 // Constants
@@ -32,6 +33,7 @@ struct DownloadParams<P: PeerManager> {
     info_hash: InfoHash,
     piece_count: u32,
     piece_sender: mpsc::UnboundedSender<TorrentEngineCommand>,
+    piece_picker: Arc<RwLock<AdaptiveStreamingPiecePicker>>,
 }
 
 /// Context for download operations.
@@ -70,6 +72,8 @@ pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
     peer_id: PeerId,
     /// Channel for internal piece completion notifications
     piece_completion_sender: mpsc::UnboundedSender<TorrentEngineCommand>,
+    /// Active piece pickers for streaming-aware piece selection
+    piece_pickers: HashMap<InfoHash, Arc<RwLock<AdaptiveStreamingPiecePicker>>>,
 }
 
 impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, T> {
@@ -89,6 +93,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             config,
             peer_id: PeerId::generate(),
             piece_completion_sender,
+            piece_pickers: HashMap::new(),
         }
     }
 
@@ -228,6 +233,14 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             .ok_or(TorrentError::TorrentNotFound { info_hash })?
             .clone();
 
+        // Create and store piece picker for this torrent
+        let piece_picker = Arc::new(RwLock::new(AdaptiveStreamingPiecePicker::new(
+            piece_count,
+            metadata.piece_length,
+        )));
+        self.piece_pickers
+            .insert(info_hash, Arc::clone(&piece_picker));
+
         // Start BitTorrent download process
         let download_context = DownloadContext {
             info_hash,
@@ -251,32 +264,39 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     /// Announces to trackers, discovers peers, and downloads pieces using the BitTorrent
     /// wire protocol in a background task.
     async fn spawn_download_task(&self, download_context: DownloadContext<T, P>) {
+        let info_hash = download_context.info_hash;
+        let piece_picker = self.piece_pickers.get(&info_hash).cloned();
+
         tokio::spawn(async move {
-            let info_hash = download_context.info_hash;
             let _piece_count = download_context.piece_count;
 
-            let download_result = tokio::time::timeout(
-                Duration::from_millis(DOWNLOAD_TIMEOUT_MS),
-                Self::download_torrent_pieces(download_context),
-            )
-            .await;
+            if let Some(piece_picker) = piece_picker {
+                let download_result = tokio::time::timeout(
+                    Duration::from_millis(DOWNLOAD_TIMEOUT_MS),
+                    Self::download_torrent_pieces(download_context, piece_picker),
+                )
+                .await;
 
-            match download_result {
-                Ok(Ok(())) => {
-                    tracing::info!("Download completed successfully for torrent {}", info_hash);
+                match download_result {
+                    Ok(Ok(())) => {
+                        tracing::info!("Download completed successfully for torrent {}", info_hash);
+                    }
+                    Ok(Err(e)) => {
+                        tracing::error!("Download failed for torrent {}: {}", info_hash, e);
+                    }
+                    Err(_) => {
+                        tracing::error!("Download timed out for torrent {}", info_hash);
+                    }
                 }
-                Ok(Err(e)) => {
-                    tracing::error!("Download failed for torrent {}: {}", info_hash, e);
-                }
-                Err(_) => {
-                    tracing::error!("Download timed out for torrent {}", info_hash);
-                }
+            } else {
+                tracing::error!("No piece picker found for torrent {}", info_hash);
             }
         });
     }
 
     async fn download_torrent_pieces(
         download_context: DownloadContext<T, P>,
+        piece_picker: Arc<RwLock<AdaptiveStreamingPiecePicker>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let peers = Self::discover_peers(
             download_context.tracker_manager,
@@ -296,6 +316,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             info_hash: download_context.info_hash,
             piece_count: download_context.piece_count,
             piece_sender: download_context.piece_sender,
+            piece_picker,
         };
 
         let result = Self::download_pieces(download_params).await;
@@ -378,13 +399,32 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         let start_time = std::time::Instant::now();
         let mut last_speed_update = start_time;
         let mut bytes_downloaded = 0u64;
+        let mut pieces_downloaded = 0u32;
 
-        for piece_index in 0..params.piece_count {
-            let piece_idx = PieceIndex::new(piece_index);
+        // Use adaptive piece picker for priority-based piece selection
+        while pieces_downloaded < params.piece_count {
+            let piece_idx = {
+                let mut picker = params.piece_picker.write().await;
+                if let Some(next_piece) = picker.next_piece() {
+                    next_piece
+                } else {
+                    // No more pieces to download, break
+                    break;
+                }
+            };
+
             let piece_start = std::time::Instant::now();
 
             match piece_downloader.download_piece(piece_idx).await {
                 Ok(()) => {
+                    // Mark piece as completed in picker
+                    {
+                        let mut picker = params.piece_picker.write().await;
+                        picker.mark_completed(piece_idx);
+                    }
+
+                    pieces_downloaded += 1;
+
                     // Calculate download statistics
                     let piece_duration = piece_start.elapsed();
                     bytes_downloaded += piece_downloader.metadata().piece_length as u64;
@@ -392,7 +432,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                     // Update speed statistics every 2 seconds or on completion
                     let now = std::time::Instant::now();
                     if now.duration_since(last_speed_update) >= std::time::Duration::from_secs(2)
-                        || piece_index == params.piece_count - 1
+                        || pieces_downloaded == params.piece_count
                     {
                         let total_duration = now.duration_since(start_time);
                         let download_speed_bps = if total_duration.as_secs() > 0 {
@@ -402,7 +442,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                         };
 
                         // Send download stats update command to engine
-                        Self::notify_download_stats_update(
+                        Self::update_download_stats_notification(
                             params.info_hash,
                             DownloadStats {
                                 download_speed_bps,
@@ -417,20 +457,26 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                     }
 
                     tracing::debug!(
-                        "Downloaded piece {} in {:?} ({} bytes)",
-                        piece_index,
+                        "Downloaded piece {} in {:?} ({} bytes) - priority-based selection",
+                        piece_idx.as_u32(),
                         piece_duration,
                         piece_downloader.metadata().piece_length
                     );
 
                     Self::notify_piece_completed(
                         params.info_hash,
-                        piece_index,
+                        piece_idx.as_u32(),
                         &params.piece_sender,
                     );
                 }
                 Err(e) => {
-                    return Err(format!("Failed to download piece {piece_index}: {e}").into());
+                    tracing::warn!(
+                        "Failed to download piece {}, will retry: {}",
+                        piece_idx.as_u32(),
+                        e
+                    );
+                    // Don't break on individual piece failure - piece picker will retry
+                    continue;
                 }
             }
         }
@@ -455,7 +501,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         }
     }
 
-    fn notify_download_stats_update(
+    fn update_download_stats_notification(
         info_hash: InfoHash,
         stats: DownloadStats,
         piece_sender: &mpsc::UnboundedSender<TorrentEngineCommand>,
@@ -537,6 +583,159 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         );
 
         Ok(())
+    }
+
+    /// Requests prioritization of pieces around a seek position for streaming.
+    ///
+    /// This method signals the torrent engine to prioritize downloading pieces
+    /// around the specified byte position to enable smooth seeking in video playback.
+    /// The method updates the piece picker priorities synchronously to avoid
+    /// blocking the actor loop.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub fn seek_to_position(
+        &mut self,
+        info_hash: InfoHash,
+        byte_position: u64,
+        buffer_size: u64,
+    ) -> Result<(), TorrentError> {
+        let session = self
+            .active_torrents
+            .get(&info_hash)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
+
+        // Calculate which pieces contain the seek position
+        let piece_size = session.piece_size as u64;
+        let seek_piece = byte_position / piece_size;
+        let buffer_pieces = (buffer_size / piece_size) + 1; // Round up
+
+        tracing::info!(
+            "Seek request for torrent {}: position={}B (piece {}), buffer={}B ({} pieces)",
+            info_hash,
+            byte_position,
+            seek_piece,
+            buffer_size,
+            buffer_pieces
+        );
+
+        // Update piece picker priorities synchronously
+        if let Some(piece_picker) = self.piece_pickers.get(&info_hash) {
+            // Use try_write to avoid blocking the actor
+            if let Ok(mut picker) = piece_picker.try_write() {
+                picker.request_seek_position(byte_position, buffer_size);
+                tracing::info!(
+                    "Successfully updated piece picker priorities for seek request to torrent {}",
+                    info_hash
+                );
+            } else {
+                tracing::warn!(
+                    "Could not acquire write lock on piece picker for torrent {} - seek request deferred",
+                    info_hash
+                );
+                // Could implement a deferred seek queue here if needed
+            }
+        } else {
+            tracing::warn!(
+                "No active piece picker found for torrent {} - seek request ignored",
+                info_hash
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Updates buffer strategy for adaptive piece picking.
+    ///
+    /// Adjusts the buffer parameters for the specified torrent based on
+    /// current playback conditions to optimize buffering behavior.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub fn update_buffer_strategy(
+        &mut self,
+        info_hash: InfoHash,
+        playback_speed: f64,
+        available_bandwidth: u64,
+    ) -> Result<(), TorrentError> {
+        // Validate torrent exists
+        self.active_torrents
+            .get(&info_hash)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
+
+        // Update piece picker buffer strategy if available
+        if let Some(piece_picker) = self.piece_pickers.get(&info_hash) {
+            if let Ok(mut picker) = piece_picker.try_write() {
+                picker.update_buffer_strategy(playback_speed, available_bandwidth);
+                tracing::info!(
+                    "Updated buffer strategy for torrent {}: speed={:.1}x, bandwidth={}MB/s",
+                    info_hash,
+                    playback_speed,
+                    available_bandwidth / 1_000_000
+                );
+            } else {
+                tracing::warn!(
+                    "Could not acquire write lock on piece picker for torrent {} - buffer update deferred",
+                    info_hash
+                );
+            }
+        } else {
+            tracing::warn!(
+                "No active piece picker found for torrent {} - buffer update ignored",
+                info_hash
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Gets current buffer status for a torrent.
+    ///
+    /// Returns detailed information about the buffering state around the
+    /// current playback position.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub fn get_buffer_status(
+        &self,
+        info_hash: InfoHash,
+    ) -> Result<crate::torrent::BufferStatus, TorrentError> {
+        // Validate torrent exists
+        self.active_torrents
+            .get(&info_hash)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
+
+        // Get buffer status from piece picker if available
+        if let Some(piece_picker) = self.piece_pickers.get(&info_hash) {
+            if let Ok(picker) = piece_picker.try_read() {
+                Ok(picker.get_buffer_status())
+            } else {
+                tracing::warn!(
+                    "Could not acquire read lock on piece picker for torrent {}",
+                    info_hash
+                );
+                // Return default buffer status
+                Ok(crate::torrent::BufferStatus {
+                    current_position: 0,
+                    bytes_ahead: 0,
+                    bytes_behind: 0,
+                    buffer_health: 0.0,
+                    pieces_in_buffer: 0,
+                    buffer_duration: 0.0,
+                })
+            }
+        } else {
+            tracing::warn!("No active piece picker found for torrent {}", info_hash);
+            // Return default buffer status
+            Ok(crate::torrent::BufferStatus {
+                current_position: 0,
+                bytes_ahead: 0,
+                bytes_behind: 0,
+                buffer_health: 0.0,
+                pieces_in_buffer: 0,
+                buffer_duration: 0.0,
+            })
+        }
     }
 
     /// Connects to a peer for a specific torrent.
