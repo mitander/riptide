@@ -10,7 +10,7 @@ use super::commands::{EngineStats, TorrentEngineCommand, TorrentSession, Torrent
 use crate::config::RiptideConfig;
 use crate::storage::FileStorage;
 use crate::torrent::downloader::PieceDownloader;
-use crate::torrent::parsing::types::{TorrentFile, TorrentMetadata};
+use crate::torrent::parsing::types::TorrentMetadata;
 use crate::torrent::tracker::{AnnounceEvent, AnnounceRequest, TrackerManagement};
 use crate::torrent::{
     BencodeTorrentParser, InfoHash, PeerId, PeerManager, PieceIndex, TorrentError, TorrentParser,
@@ -35,13 +35,12 @@ struct DownloadParams<P: PeerManager> {
 /// Context for download operations.
 struct DownloadContext<T: TrackerManagement, P: PeerManager> {
     info_hash: InfoHash,
+    metadata: TorrentMetadata,
     tracker_manager: Arc<RwLock<T>>,
     peer_manager: Arc<RwLock<P>>,
     tracker_urls: Vec<String>,
     announce_request: AnnounceRequest,
     piece_count: u32,
-    piece_size: u32,
-    total_size: u64,
     peer_id: PeerId,
     piece_sender: mpsc::UnboundedSender<TorrentEngineCommand>,
 }
@@ -59,6 +58,8 @@ pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
     tracker_manager: Arc<RwLock<T>>,
     /// Active torrents being downloaded
     active_torrents: HashMap<InfoHash, TorrentSession>,
+    /// Stored torrent metadata
+    torrent_metadata: HashMap<InfoHash, TorrentMetadata>,
     /// Torrent parser for metadata extraction
     parser: BencodeTorrentParser,
     /// Configuration
@@ -81,6 +82,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             peer_manager: Arc::new(RwLock::new(peer_manager)),
             tracker_manager: Arc::new(RwLock::new(tracker_manager)),
             active_torrents: HashMap::new(),
+            torrent_metadata: HashMap::new(),
             parser: BencodeTorrentParser::new(),
             config,
             peer_id: PeerId::generate(),
@@ -157,6 +159,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         if self.active_torrents.contains_key(&info_hash) {
             return Err(TorrentError::DuplicateTorrent { info_hash });
         }
+        let info_hash = metadata.info_hash;
 
         let session = TorrentSession::new(TorrentSessionParams {
             info_hash,
@@ -164,10 +167,11 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             piece_size: metadata.piece_length,
             total_size: metadata.total_length,
             filename: metadata.name.clone(),
-            tracker_urls: metadata.announce_urls,
+            tracker_urls: metadata.announce_urls.clone(),
         });
 
         self.active_torrents.insert(info_hash, session);
+        self.torrent_metadata.insert(info_hash, metadata);
         Ok(info_hash)
     }
 
@@ -200,7 +204,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         let tracker_urls = session.tracker_urls.clone();
         let peer_id = self.peer_id;
         let piece_count = session.piece_count;
-        let piece_size = session.piece_size;
+        let _piece_size = session.piece_size;
         let total_size = session.total_size;
         let piece_sender = self.piece_completion_sender.clone();
 
@@ -215,16 +219,22 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             event: AnnounceEvent::Started,
         };
 
+        // Get the stored metadata for this torrent
+        let metadata = self
+            .torrent_metadata
+            .get(&info_hash)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?
+            .clone();
+
         // Start BitTorrent download process
         let download_context = DownloadContext {
             info_hash,
+            metadata,
             tracker_manager,
             peer_manager,
             tracker_urls,
             announce_request,
             piece_count,
-            piece_size,
-            total_size,
             peer_id,
             piece_sender,
         };
@@ -241,13 +251,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     async fn spawn_download_task(&self, download_context: DownloadContext<T, P>) {
         tokio::spawn(async move {
             let info_hash = download_context.info_hash;
-            let piece_count = download_context.piece_count;
-
-            tracing::info!(
-                "Starting real BitTorrent download for torrent {} ({} pieces)",
-                info_hash,
-                piece_count
-            );
+            let _piece_count = download_context.piece_count;
 
             let download_result = tokio::time::timeout(
                 Duration::from_millis(REAL_DOWNLOAD_TIMEOUT_MS),
@@ -272,23 +276,13 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     async fn download_torrent_pieces(
         download_context: DownloadContext<T, P>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        tracing::info!(
-            "Starting download for torrent {}",
-            download_context.info_hash
-        );
         let peers = Self::discover_peers(
             download_context.tracker_manager,
             &download_context.tracker_urls,
             download_context.announce_request,
         )
         .await?;
-        let metadata = Self::create_metadata_from_session(
-            download_context.info_hash,
-            download_context.piece_count,
-            download_context.piece_size,
-            download_context.total_size,
-            download_context.tracker_urls,
-        );
+        let metadata = download_context.metadata;
         let storage = Self::create_temp_storage(&download_context.info_hash)?;
 
         let download_params = DownloadParams {
@@ -324,41 +318,23 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             .await
             .map_err(|e| format!("Failed to announce to trackers: {e}"))?;
 
+        println!(
+            "ENGINE: Tracker response received - interval: {}, complete: {}, incomplete: {}",
+            response.interval, response.complete, response.incomplete
+        );
+
         if response.peers.is_empty() {
             return Err("No peers available for download".into());
         }
 
-        tracing::info!("Tracker responded with {} peers", response.peers.len());
-        Ok(response.peers)
-    }
-
-    fn create_metadata_from_session(
-        info_hash: InfoHash,
-        piece_count: u32,
-        piece_size: u32,
-        total_size: u64,
-        tracker_urls: Vec<String>,
-    ) -> TorrentMetadata {
-        let piece_hashes = (0..piece_count)
-            .map(|i| {
-                let mut hash = [0u8; 20];
-                hash[0] = i as u8;
-                hash
-            })
-            .collect();
-
-        TorrentMetadata {
-            info_hash,
-            name: format!("torrent_{info_hash}"),
-            piece_length: piece_size,
-            piece_hashes,
-            total_length: total_size,
-            files: vec![TorrentFile {
-                path: vec![format!("torrent_{info_hash}.bin")],
-                length: total_size,
-            }],
-            announce_urls: tracker_urls,
+        println!(
+            "ENGINE: Tracker responded with {} peers",
+            response.peers.len()
+        );
+        for (i, peer) in response.peers.iter().enumerate() {
+            println!("ENGINE: Peer {i}: {peer}");
         }
+        Ok(response.peers)
     }
 
     fn create_temp_storage(
@@ -377,8 +353,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     async fn download_pieces(
         params: DownloadParams<P>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        tracing::info!(
-            "Starting download of {} pieces for torrent {} with {} peers",
+        println!(
+            "ENGINE: Starting download of {} pieces for torrent {} with {} peers",
             params.piece_count,
             params.info_hash,
             params.peers.len()
@@ -392,18 +368,20 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         )
         .map_err(|e| format!("Failed to create piece downloader: {e}"))?;
 
-        tracing::debug!("Created piece downloader successfully");
+        println!("ENGINE: Created piece downloader successfully");
 
         piece_downloader.update_peers(params.peers.clone()).await;
-        tracing::debug!("Updated peers: {:?}", params.peers);
+        println!(
+            "ENGINE: Updated piece downloader with {} peers",
+            params.peers.len()
+        );
+        println!("ENGINE: Peer addresses: {:?}", params.peers);
 
         for piece_index in 0..params.piece_count {
             let piece_idx = PieceIndex::new(piece_index);
-            tracing::debug!("Starting download of piece {}", piece_index);
 
             match piece_downloader.download_piece(piece_idx).await {
                 Ok(()) => {
-                    tracing::info!("Successfully downloaded piece {}", piece_index);
                     Self::notify_piece_completed(
                         params.info_hash,
                         piece_index,
@@ -411,13 +389,11 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                     );
                 }
                 Err(e) => {
-                    tracing::error!("Failed to download piece {}: {}", piece_index, e);
-                    break;
+                    return Err(format!("Failed to download piece {piece_index}: {e}").into());
                 }
             }
         }
 
-        tracing::info!("Download completed for torrent {}", params.info_hash);
         Ok(())
     }
 

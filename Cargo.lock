@@ -1923,6 +1923,14 @@ dependencies = [
 name = "riptide-tests"
 version = "0.1.0"
 dependencies = [
+ "reqwest",
+ "riptide-core",
+ "riptide-sim",
+ "riptide-web",
+ "serde_json",
+ "sha1",
+ "tempfile",
+ "tokio",
  "words",
 ]
 

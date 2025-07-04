@@ -7,7 +7,7 @@ mod types;
 
 pub use builder::MockTrackerBuilder;
 pub use mock::MockTracker;
-pub use simulated::SimulatedTrackerManager;
+pub use simulated::{ResponseConfig, SimulatedTrackerManager};
 pub use types::{AnnounceResponse, MockTorrentData, TrackerError};
 
 #[cfg(test)]

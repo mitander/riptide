@@ -5,7 +5,27 @@ edition = "2024"
 
 [dependencies]
 words = "0.1"
+tempfile = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+sha1 = { workspace = true }
+riptide-core = { workspace = true }
+riptide-web = { workspace = true }
+riptide-sim = { workspace = true }
 
 [[test]]
 name = "tidy"
 path = "tidy.rs"
+
+[[test]]
+name = "simulation_integration"
+path = "simulation_integration.rs"
+
+[[test]]
+name = "simple_download_test"
+path = "simple_download_test.rs"
+
+[[test]]
+name = "message_flow_test"
+path = "message_flow_test.rs"

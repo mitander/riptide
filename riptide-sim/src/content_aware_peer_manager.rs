@@ -40,9 +40,9 @@ impl ContentAwarePeer {
         piece_count: u32,
         upload_rate: u64,
     ) -> Self {
-        // Simulate peer having random pieces with high availability
+        // In development mode, peers have all pieces (they're seeders)
         let available_pieces = (0..piece_count)
-            .map(|_| rand::random::<f64>() < 0.9) // 90% chance of having each piece
+            .map(|_| true) // All pieces available
             .collect();
 
         Self {
@@ -295,6 +295,10 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
         info_hash: InfoHash,
         peer_id: PeerId,
     ) -> Result<(), TorrentError> {
+        println!(
+            "PEER_MGR: connect_peer called for {} with info_hash {}",
+            address, info_hash
+        );
         // Check connection limit
         {
             let peers = self.peers.read().await;
@@ -314,6 +318,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
 
         // Get piece count from store
         let piece_count = self.piece_store.piece_count(info_hash).unwrap_or(1000);
+        println!("PEER_MGR: piece_count for {} is {}", info_hash, piece_count);
 
         // Create simulated peer with realistic upload rate
         let upload_rate = 50_000 + (rand::random::<u64>() % 200_000); // 50KB/s to 250KB/s
@@ -321,14 +326,45 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
         peer.status = ConnectionStatus::Connected;
         peer.connected_at = Some(Instant::now());
 
-        // Store peer
-        {
+        // Store peer and get available pieces for bitfield
+        let available_pieces = {
             let mut peers = self.peers.write().await;
+            let peer_clone = peer.clone();
             peers.insert(address, peer);
-        }
+            peer_clone.available_pieces
+        };
 
         // Simulate initial handshake delay
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        println!("PEER_MGR: Sending bitfield for peer {}", address);
+
+        // Send bitfield message to inform engine about available pieces
+        // Convert bool vector to bytes for bitfield
+        let bitfield_bytes = {
+            let mut bytes = Vec::new();
+            for chunk in available_pieces.chunks(8) {
+                let mut byte = 0u8;
+                for (i, &has_piece) in chunk.iter().enumerate() {
+                    if has_piece {
+                        byte |= 1 << (7 - i);
+                    }
+                }
+                bytes.push(byte);
+            }
+            bytes.into()
+        };
+
+        self.simulate_peer_message(
+            address,
+            PeerMessage::Bitfield {
+                bitfield: bitfield_bytes,
+            },
+        )
+        .await?;
+        println!(
+            "PEER_MGR: Successfully connected peer {} and sent bitfield",
+            address
+        );
 
         Ok(())
     }
@@ -536,6 +572,21 @@ mod tests {
             .await
             .unwrap();
 
+        // First, receive and ignore the bitfield message sent during connection
+        let bitfield_response = tokio::time::timeout(
+            tokio::time::Duration::from_millis(100),
+            manager.receive_message(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        // Verify it's a bitfield message
+        assert!(matches!(
+            bitfield_response.message,
+            PeerMessage::Bitfield { .. }
+        ));
+
         // Set peer to have the piece
         manager
             .set_peer_has_piece(peer_address, PieceIndex::new(0), true)
@@ -580,11 +631,33 @@ mod tests {
         let info_hash = InfoHash::new([2u8; 20]);
         let peer_id = PeerId::generate();
 
-        // Connect peer but don't set it to have any pieces
+        // Connect peer
         manager
             .connect_peer(peer_address, info_hash, peer_id)
             .await
             .unwrap();
+
+        // First, receive and ignore the bitfield message sent during connection
+        let bitfield_response = tokio::time::timeout(
+            tokio::time::Duration::from_millis(100),
+            manager.receive_message(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        // Verify it's a bitfield message
+        assert!(matches!(
+            bitfield_response.message,
+            PeerMessage::Bitfield { .. }
+        ));
+
+        // Clear all pieces from peer (simulate peer that doesn't have any pieces)
+        for i in 0..1000 {
+            manager
+                .set_peer_has_piece(peer_address, PieceIndex::new(i), false)
+                .await;
+        }
 
         // Request piece that peer doesn't have
         let request = PeerMessage::Request {

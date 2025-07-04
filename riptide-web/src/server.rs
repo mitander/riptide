@@ -4,7 +4,8 @@
 //! All pages use server-side rendering with real-time updates.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::routing::{get, post};
@@ -59,74 +60,70 @@ pub async fn run_server(
     config.runtime_mode = mode;
 
     // Create engine with appropriate managers based on runtime mode
-    let (torrent_engine, sim_piece_store, sim_tracker_manager) = match mode {
+    type ServerComponents = (
+        TorrentEngineHandle,
+        Option<Arc<RwLock<FileLibraryManager>>>,
+        Option<Arc<dyn PieceStore>>,
+    );
+    let (torrent_engine, movie_manager, piece_store): ServerComponents = match mode {
         RuntimeMode::Production => {
+            // Production mode uses real network components
             let peer_manager = TcpPeerManager::new_default();
             let tracker_manager = TrackerManager::new(config.network.clone());
             let engine = spawn_torrent_engine(config.clone(), peer_manager, tracker_manager);
             (engine, None, None)
         }
         RuntimeMode::Development => {
-            // Development mode uses same peer manager but development tracker
-            let piece_store = Arc::new(riptide_sim::InMemoryPieceStore::new());
-            let peer_manager = TcpPeerManager::new_default();
+            // Development mode uses coordinated simulation components
+            let piece_store_sim = Arc::new(riptide_sim::InMemoryPieceStore::new());
 
-            // Create main tracker manager and get shared peer registry
-            let tracker_manager = riptide_sim::TrackerManager::new(piece_store.clone());
-            let shared_peers = tracker_manager.peer_registry();
-            let tracker_ref = Arc::new(tokio::sync::RwLock::new(tracker_manager));
+            // Create a shared registry of simulated peer addresses
+            let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
+            let peer_registry_clone = peer_registry.clone();
 
-            // Create engine tracker that shares the same peer registry
-            let engine_tracker =
-                riptide_sim::TrackerManager::with_shared_peers(piece_store.clone(), shared_peers);
-            let engine = spawn_torrent_engine(config.clone(), peer_manager, engine_tracker);
+            // Create content-aware peer manager with the piece store
+            let peer_manager_sim = riptide_sim::ContentAwarePeerManager::new(
+                riptide_sim::InMemoryPeerConfig::default(),
+                piece_store_sim.clone(),
+            );
 
-            (engine, Some(piece_store), Some(tracker_ref))
+            // Create tracker that coordinates with the peer registry
+            let tracker_manager_sim =
+                riptide_sim::tracker::SimulatedTrackerManager::with_peer_coordinator(
+                    riptide_sim::tracker::ResponseConfig::default(),
+                    move |info_hash| {
+                        let registry = peer_registry_clone.lock().unwrap();
+                        registry.get(info_hash).cloned().unwrap_or_default()
+                    },
+                );
+
+            let engine =
+                spawn_torrent_engine(config.clone(), peer_manager_sim, tracker_manager_sim);
+
+            // Populate the piece store and register simulated peers
+            let mut manager_opt = None;
+            if let Some(dir) = movies_dir.as_ref() {
+                let mut manager = FileLibraryManager::new();
+                if let Err(e) = setup_development_environment(
+                    &mut manager,
+                    &piece_store_sim,
+                    &peer_registry,
+                    &engine,
+                    dir,
+                )
+                .await
+                {
+                    eprintln!("Warning: Failed to setup development environment: {e}");
+                }
+                manager_opt = Some(Arc::new(RwLock::new(manager)));
+            }
+
+            let piece_store_for_state = Some(piece_store_sim.clone() as Arc<dyn PieceStore>);
+
+            (engine, manager_opt, piece_store_for_state)
         }
     };
     let search_service = MediaSearchService::from_runtime_mode(mode);
-
-    // Initialize movie manager and piece store for development mode.
-    let (movie_manager, piece_store) = if let Some(dir) = movies_dir.as_ref() {
-        let mut manager = FileLibraryManager::new();
-        match manager.scan_directory(dir).await {
-            Ok(count) => {
-                println!("Found {} movie files in {}", count, dir.display());
-
-                if let (Some(memory_store), Some(tracker_manager)) =
-                    (&sim_piece_store, &sim_tracker_manager)
-                {
-                    // Set up simulated peer servers with local movie content
-                    if let Err(e) = setup_simulated_peer_servers(
-                        &mut manager,
-                        &torrent_engine,
-                        memory_store.clone(),
-                        tracker_manager.clone(),
-                    )
-                    .await
-                    {
-                        eprintln!("Warning: Failed to setup peer servers: {e}");
-                    }
-
-                    (
-                        Some(Arc::new(RwLock::new(manager))),
-                        sim_piece_store
-                            .as_ref()
-                            .map(|s| s.clone() as Arc<dyn PieceStore>),
-                    )
-                } else {
-                    // Production mode or no simulation managers
-                    (Some(Arc::new(RwLock::new(manager))), None)
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: Failed to scan movies directory: {e}");
-                (None, None)
-            }
-        }
-    } else {
-        (None, None)
-    };
 
     // Initialize FFmpeg processor based on runtime mode.
     let ffmpeg_processor: Arc<dyn FfmpegProcessor> = match mode {
@@ -181,119 +178,104 @@ pub async fn run_server(
     Ok(())
 }
 
-/// Sets up simulated BitTorrent peer servers for development mode.
+/// Sets up the development environment with simulated peers and torrents.
 ///
-/// This function performs the following steps:
-/// 1. Converts local movie files into torrents and populates an in-memory piece store.
-/// 2. Spawns real BitTorrent peer server tasks that listen on actual ports.
-/// 3. Configures the simulated tracker to return these peer addresses.
-///
-/// This creates a realistic private tracker scenario where the TorrentEngine uses
-/// production BitTorrent logic to connect to and download from simulated peer servers.
-async fn setup_simulated_peer_servers(
+/// This function:
+/// 1. Converts local movie files into torrent pieces
+/// 2. Stores pieces in the InMemoryPieceStore
+/// 3. Creates simulated peer addresses and registers them with the tracker
+/// 4. Starts downloads so the engine can connect to simulated peers
+async fn setup_development_environment(
     library_manager: &mut FileLibraryManager,
+    piece_store: &Arc<riptide_sim::InMemoryPieceStore>,
+    peer_registry: &Arc<Mutex<HashMap<InfoHash, Vec<SocketAddr>>>>,
     torrent_engine: &TorrentEngineHandle,
-    piece_store: Arc<riptide_sim::InMemoryPieceStore>,
-    tracker_manager: Arc<tokio::sync::RwLock<riptide_sim::TrackerManager>>,
+    movies_dir: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    match library_manager.scan_directory(movies_dir).await {
+        Ok(count) => {
+            println!("Found {} movie files in {}", count, movies_dir.display());
+        }
+        Err(e) => {
+            return Err(format!("Failed to scan movies directory: {e}").into());
+        }
+    }
     let movies = library_manager.all_files().to_vec();
-    let movie_count = movies.len();
+    let mut info_hash_updates = Vec::new();
 
-    println!("Starting background conversion of {movie_count} movies to BitTorrent pieces...");
+    println!(
+        "Setting up development environment for {} movies...",
+        movies.len()
+    );
 
-    // Spawn background tasks for each movie conversion to avoid blocking server startup
-    for movie in movies {
-        let movie_title = movie.title.clone();
-        let movie_path = movie.file_path.clone();
-        let _old_info_hash = movie.info_hash;
-        let torrent_engine = torrent_engine.clone();
-        let piece_store = piece_store.clone();
-        let tracker_manager = tracker_manager.clone();
+    for (index, movie) in movies.iter().enumerate() {
+        println!("Converting {} to BitTorrent pieces...", movie.title);
 
-        tokio::spawn(async move {
-            println!("Converting {movie_title} to BitTorrent pieces...");
+        // Create SimulationTorrentCreator
+        let mut sim_creator = riptide_core::torrent::SimulationTorrentCreator::new();
 
-            // Create SimulationTorrentCreator per task since it needs to be mutable
-            let mut sim_creator = riptide_core::torrent::SimulationTorrentCreator::new();
+        match sim_creator
+            .create_with_pieces(
+                &movie.file_path,
+                vec!["http://development-tracker.riptide.local/announce".to_string()],
+            )
+            .await
+        {
+            Ok((metadata, pieces)) => {
+                let canonical_info_hash = metadata.info_hash;
 
-            match sim_creator
-                .create_with_pieces(
-                    &movie_path,
-                    vec!["http://development-tracker.riptide.local/announce".to_string()],
-                )
-                .await
-            {
-                Ok((metadata, pieces)) => {
-                    let canonical_info_hash = metadata.info_hash;
-                    let piece_count = metadata.piece_hashes.len();
+                // Add torrent metadata to the engine
+                torrent_engine
+                    .add_torrent_metadata(metadata.clone())
+                    .await?;
 
-                    // Add torrent metadata to the engine
-                    if let Err(e) = torrent_engine.add_torrent_metadata(metadata.clone()).await {
-                        tracing::error!(
-                            "Failed to add torrent metadata for {}: {}",
-                            movie_title,
-                            e
-                        );
-                        return;
-                    }
+                // Populate the piece store with actual torrent pieces
+                piece_store
+                    .add_torrent_pieces(canonical_info_hash, pieces)
+                    .await?;
 
-                    // Populate the piece store with actual torrent pieces
-                    if let Err(e) = piece_store
-                        .add_torrent_pieces(canonical_info_hash, pieces)
-                        .await
-                    {
-                        tracing::error!(
-                            "Failed to populate piece store for {}: {}",
-                            movie_title,
-                            e
-                        );
-                        return;
-                    }
-
-                    // Seed peer servers for this torrent (spawns real BitTorrent servers)
-                    {
-                        let tracker = tracker_manager.write().await;
-                        match tracker.seed_torrent(canonical_info_hash, 5).await {
-                            Ok(peers) => {
-                                tracing::info!(
-                                    "Spawned {} peer servers for {}: {:?}",
-                                    peers.len(),
-                                    movie_title,
-                                    peers
-                                );
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to spawn peer servers for {}: {}",
-                                    movie_title,
-                                    e
-                                );
-                            }
-                        }
-                    }
-
-                    // Start the download to initialize the session
-                    if let Err(e) = torrent_engine.start_download(canonical_info_hash).await {
-                        tracing::warn!("Failed to start download for {}: {}", movie_title, e);
-                    }
-
-                    // Let the simulation naturally download pieces from ContentAwarePeerManager
-                    // This allows realistic download progress and streaming while downloading
-
-                    println!("✓ Converted {movie_title} ({piece_count} pieces)");
+                // Create simulated peer addresses for this torrent
+                let mut peer_addrs = Vec::new();
+                for peer_num in 0..1 {
+                    let base_index = index as u8;
+                    let peer_index = peer_num as u8;
+                    let addr = SocketAddr::V4(SocketAddrV4::new(
+                        Ipv4Addr::new(192, 168, base_index, peer_index + 1),
+                        6881 + (index as u16) * 10 + peer_num,
+                    ));
+                    peer_addrs.push(addr);
                 }
-                Err(e) => {
-                    tracing::error!("Failed to convert {} to torrent: {}", movie_title, e);
+
+                // Register these peer addresses with the tracker
+                {
+                    let mut registry = peer_registry.lock().unwrap();
+                    registry.insert(canonical_info_hash, peer_addrs.clone());
                 }
+
+                // Start the download to initiate the simulation
+                torrent_engine.start_download(canonical_info_hash).await?;
+
+                // Store the info hash update for later
+                info_hash_updates.push((movie.info_hash, canonical_info_hash));
+
+                println!(
+                    "✓ Converted {} ({} pieces, {} simulated peer)",
+                    movie.title,
+                    metadata.piece_hashes.len(),
+                    peer_addrs.len()
+                );
             }
-        });
+            Err(e) => {
+                return Err(format!("Failed to convert {} to torrent: {}", movie.title, e).into());
+            }
+        }
     }
 
-    // Update movie manager with canonical info hashes after spawning tasks
-    // Note: This is a limitation of the current approach - we can't easily update
-    // the movie manager from background tasks. In a future version, we should
-    // use channels to communicate back the canonical info hashes.
+    // Apply all info hash updates after the loop
+    for (old_hash, new_hash) in info_hash_updates {
+        library_manager.update_file_info_hash(old_hash, new_hash);
+    }
 
-    println!("Development mode: {movie_count} movies queued for background conversion");
+    println!("Development environment ready!");
     Ok(())
 }

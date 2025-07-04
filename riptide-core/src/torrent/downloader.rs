@@ -159,8 +159,14 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                 let error_recovery = self.error_recovery.read().await;
                 error_recovery.should_retry_piece(piece_index)
             };
+            println!(
+                "DOWNLOADER: download_piece: piece={piece_index}, should_retry={should_retry}"
+            );
 
             if !should_retry {
+                println!(
+                    "DOWNLOADER: download_piece: piece={piece_index} exceeded max retries, giving up"
+                );
                 let mut status_map = self.piece_status.write().await;
                 status_map.insert(piece_index, PieceStatus::Failed { attempts: 10 });
                 return Err(TorrentError::PeerConnectionError {
@@ -189,15 +195,24 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
             }
 
             // Attempt to download the piece
+            println!("DOWNLOADER: download_piece: attempting download for piece={piece_index}");
             match self.download_from_peers_with_recovery(piece_index).await {
                 Ok(piece_data) => {
+                    println!(
+                        "DOWNLOADER: download_piece: piece={piece_index} downloaded successfully, {} bytes",
+                        piece_data.len()
+                    );
                     {
                         let mut status_map = self.piece_status.write().await;
                         status_map.insert(piece_index, PieceStatus::Verifying);
                     }
 
                     // Verify piece hash
+                    println!("DOWNLOADER: download_piece: verifying hash for piece={piece_index}");
                     if !self.verify_piece_hash(piece_index, &piece_data) {
+                        println!(
+                            "DOWNLOADER: download_piece: piece={piece_index} hash verification FAILED"
+                        );
                         let hash_error = TorrentError::PieceHashMismatch { index: piece_index };
 
                         // Record hash verification failure
@@ -224,7 +239,11 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         continue; // Retry the download
                     }
 
+                    println!(
+                        "DOWNLOADER: download_piece: piece={piece_index} hash verification PASSED"
+                    );
                     // Store the piece
+                    println!("DOWNLOADER: download_piece: storing piece={piece_index}");
                     match self
                         .storage
                         .store_piece(self.torrent_metadata.info_hash, piece_index, &piece_data)
@@ -232,6 +251,9 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                     {
                         Ok(()) => {
                             // Success! Record it and update status
+                            println!(
+                                "DOWNLOADER: download_piece: piece={piece_index} stored successfully, COMPLETE"
+                            );
                             {
                                 let mut error_recovery = self.error_recovery.write().await;
                                 let dummy_peer = "0.0.0.0:0".parse().unwrap();
@@ -252,6 +274,9 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         }
                         Err(storage_error) => {
                             // Record storage failure
+                            println!(
+                                "DOWNLOADER: download_piece: piece={piece_index} storage FAILED: {storage_error}"
+                            );
                             let torrent_error = TorrentError::Storage(storage_error);
                             {
                                 let mut error_recovery = self.error_recovery.write().await;
@@ -278,6 +303,9 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                     }
                 }
                 Err(download_error) => {
+                    println!(
+                        "DOWNLOADER: download_piece: piece={piece_index} download FAILED: {download_error}"
+                    );
                     {
                         let mut status_map = self.piece_status.write().await;
                         status_map.insert(piece_index, PieceStatus::Failed { attempts: 1 });
@@ -287,6 +315,9 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         "Failed to download piece {}: {}, will retry",
                         piece_index,
                         download_error
+                    );
+                    println!(
+                        "DOWNLOADER: download_piece: piece={piece_index} will retry after failure"
                     );
                     // Continue the loop to retry
                 }
@@ -374,10 +405,19 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         let mut last_error = TorrentError::NoPeersAvailable;
 
         // Try downloading from each available peer
-        for peer_addr in &available_peers {
+        for (i, peer_addr) in available_peers.iter().enumerate() {
+            println!(
+                "DOWNLOADER: download_from_peers_with_recovery: trying peer {} of {}: {}",
+                i + 1,
+                available_peers.len(),
+                peer_addr
+            );
             match self.download_piece_from_peer(*peer_addr, piece_index).await {
                 Ok(piece_data) => {
                     // Record successful download
+                    println!(
+                        "DOWNLOADER: download_from_peers_with_recovery: peer {peer_addr} SUCCESS"
+                    );
                     {
                         let mut error_recovery = self.error_recovery.write().await;
                         error_recovery.record_piece_success(piece_index, *peer_addr);
@@ -386,6 +426,9 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                 }
                 Err(e) => {
                     // Record failure for this peer
+                    println!(
+                        "DOWNLOADER: download_from_peers_with_recovery: peer {peer_addr} FAILED: {e}"
+                    );
                     {
                         let mut error_recovery = self.error_recovery.write().await;
                         error_recovery.record_piece_failure(piece_index, *peer_addr, &e);
@@ -420,18 +463,35 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         peer_addr: SocketAddr,
         piece_index: PieceIndex,
     ) -> Result<Vec<u8>, TorrentError> {
+        println!(
+            "DOWNLOADER: download_piece_from_peer: START peer={peer_addr}, piece={piece_index}"
+        );
         self.connect_to_peer(peer_addr).await?;
+        println!(
+            "DOWNLOADER: download_piece_from_peer: connection successful, starting block download"
+        );
         let piece_data = self.download_piece_blocks(peer_addr, piece_index).await?;
+        println!("DOWNLOADER: download_piece_from_peer: blocks downloaded, disconnecting");
         self.disconnect_from_peer(peer_addr).await;
+        println!(
+            "DOWNLOADER: download_piece_from_peer: SUCCESS peer={peer_addr}, piece={piece_index}, {} bytes",
+            piece_data.len()
+        );
         Ok(piece_data)
     }
 
     /// Establishes connection to a peer for downloading.
     async fn connect_to_peer(&self, peer_addr: SocketAddr) -> Result<(), TorrentError> {
+        println!("DOWNLOADER: Connecting to peer: {peer_addr}");
         let mut peer_manager = self.peer_manager.write().await;
-        peer_manager
+        let result = peer_manager
             .connect_peer(peer_addr, self.torrent_metadata.info_hash, self.peer_id)
-            .await
+            .await;
+        match &result {
+            Ok(_) => println!("DOWNLOADER: Successfully connected to peer: {peer_addr}"),
+            Err(e) => println!("DOWNLOADER: Failed to connect to peer {peer_addr}: {e}"),
+        }
+        result
     }
 
     /// Downloads all blocks for a piece from the connected peer.
@@ -440,31 +500,45 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         peer_addr: SocketAddr,
         piece_index: PieceIndex,
     ) -> Result<Vec<u8>, TorrentError> {
+        println!("DOWNLOADER: download_piece_blocks: START peer={peer_addr}, piece={piece_index}");
         let piece_size = self.calculate_piece_size(piece_index);
-        tracing::debug!(
-            "Calculated piece size for piece {}: {} bytes",
-            piece_index,
-            piece_size
-        );
+        println!("DOWNLOADER: download_piece_blocks: piece_size={piece_size}");
         let mut piece_data = vec![0u8; piece_size];
         let mut offset = 0u32;
+        let mut block_count = 0;
 
         while offset < piece_size as u32 {
             let request_length = std::cmp::min(BLOCK_SIZE, piece_size as u32 - offset);
-            tracing::debug!(
-                "Requesting block: piece={}, offset={}, length={}",
-                piece_index,
-                offset,
-                request_length
+            block_count += 1;
+            println!(
+                "DOWNLOADER: download_piece_blocks: requesting block {block_count}, offset={offset}, length={request_length}"
             );
-            let block_data = self
+
+            let block_data = match self
                 .request_block_from_peer(peer_addr, piece_index, offset, request_length)
-                .await?;
+                .await
+            {
+                Ok(data) => {
+                    println!(
+                        "DOWNLOADER: download_piece_blocks: block {block_count} received, {} bytes",
+                        data.len()
+                    );
+                    data
+                }
+                Err(e) => {
+                    println!("DOWNLOADER: download_piece_blocks: block {block_count} FAILED: {e}");
+                    return Err(e);
+                }
+            };
 
             self.copy_block_to_piece(&mut piece_data, offset, &block_data)?;
             offset += request_length;
         }
 
+        println!(
+            "DOWNLOADER: download_piece_blocks: SUCCESS downloaded {block_count} blocks, total {} bytes",
+            piece_data.len()
+        );
         Ok(piece_data)
     }
 
@@ -499,21 +573,33 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         expected_offset: u32,
     ) -> Result<bytes::Bytes, TorrentError> {
         timeout(Duration::from_secs(PEER_REQUEST_TIMEOUT_SECS), async {
+            let mut message_count = 0;
+            const MAX_MESSAGES: usize = 50; // Prevent infinite loops
+
             loop {
-                let mut peer_manager = self.peer_manager.write().await;
-                match peer_manager.receive_message().await {
-                    Ok(msg_event) => {
-                        if self.is_matching_piece_response(
-                            &msg_event,
-                            peer_addr,
-                            piece_index,
-                            expected_offset,
-                        ) && let PeerMessage::Piece { data, .. } = msg_event.message
-                        {
-                            return Ok::<bytes::Bytes, TorrentError>(data);
-                        }
+                message_count += 1;
+                if message_count > MAX_MESSAGES {
+                    return Err(TorrentError::PeerConnectionError {
+                        reason: "Too many messages while waiting for piece response".to_string(),
+                    });
+                }
+
+                let msg_event = {
+                    let mut peer_manager = self.peer_manager.write().await;
+                    match peer_manager.receive_message().await {
+                        Ok(msg_event) => msg_event,
+                        Err(_) => continue,
                     }
-                    Err(_) => continue,
+                };
+
+                if self.is_matching_piece_response(
+                    &msg_event,
+                    peer_addr,
+                    piece_index,
+                    expected_offset,
+                ) && let PeerMessage::Piece { data, .. } = msg_event.message
+                {
+                    return Ok::<bytes::Bytes, TorrentError>(data);
                 }
             }
         })
