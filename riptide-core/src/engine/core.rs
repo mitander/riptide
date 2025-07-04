@@ -20,7 +20,7 @@ use crate::torrent::{
 
 // Constants
 const DEFAULT_BITTORRENT_PORT: u16 = 6881;
-const REAL_DOWNLOAD_TIMEOUT_MS: u64 = 30000; // 30 seconds for testing
+const DOWNLOAD_TIMEOUT_MS: u64 = 600000; // 10 minutes for development
 
 /// Parameters for piece downloading operations.
 struct DownloadParams<P: PeerManager> {
@@ -256,7 +256,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             let _piece_count = download_context.piece_count;
 
             let download_result = tokio::time::timeout(
-                Duration::from_millis(REAL_DOWNLOAD_TIMEOUT_MS),
+                Duration::from_millis(DOWNLOAD_TIMEOUT_MS),
                 Self::download_torrent_pieces(download_context),
             )
             .await;

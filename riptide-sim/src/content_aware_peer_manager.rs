@@ -259,7 +259,7 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
 
         for _ in 0..peer_count {
             let address = self.generate_peer_address().await;
-            let upload_rate = 50_000 + (rand::random::<u64>() % 200_000); // 50KB/s to 250KB/s
+            let upload_rate = 5_000_000 + (rand::random::<u64>() % 5_000_000); // 5MB/s to 10MB/s for development
 
             // Create peer with all pieces available (seeder)
             let available_pieces = vec![true; piece_count as usize];
@@ -321,8 +321,8 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
         let piece_count = self.piece_store.piece_count(info_hash).unwrap_or(1000);
         tracing::debug!("piece_count for {} is {}", info_hash, piece_count);
 
-        // Create simulated peer with realistic upload rate
-        let upload_rate = 50_000 + (rand::random::<u64>() % 200_000); // 50KB/s to 250KB/s
+        // Create simulated peer with fast upload rate for development
+        let upload_rate = 5_000_000 + (rand::random::<u64>() % 5_000_000); // 5MB/s to 10MB/s for development
         let mut peer = ContentAwarePeer::new(address, info_hash, peer_id, piece_count, upload_rate);
         peer.status = ConnectionStatus::Connected;
         peer.connected_at = Some(Instant::now());

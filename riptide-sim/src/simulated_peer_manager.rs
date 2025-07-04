@@ -31,7 +31,7 @@ pub struct InMemoryPeerConfig {
 impl Default for InMemoryPeerConfig {
     fn default() -> Self {
         Self {
-            message_delay_ms: 50,
+            message_delay_ms: 1, // Minimal delay for development speed
             connection_failure_rate: 0.0,
             message_loss_rate: 0.0,
             max_connections: 50,
