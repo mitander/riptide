@@ -77,8 +77,15 @@ jobs:
       - name: Install FFmpeg (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          choco install ffmpeg
-          echo "FFMPEG_DIR=C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg" >> $GITHUB_ENV
+          # Install vcpkg and ffmpeg for ffmpeg-sys-next compatibility
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg.exe install ffmpeg:x64-windows-static-md
+          # Set environment variables for ffmpeg-sys-next
+          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+          echo "FFMPEG_DIR=C:\vcpkg\installed\x64-windows-static-md" >> $env:GITHUB_ENV
+          echo "FFMPEG_STATIC=1" >> $env:GITHUB_ENV
+          echo "FFMPEG_PKG_CONFIG=0" >> $env:GITHUB_ENV
 
       - name: Build
         run: cargo build --workspace --release

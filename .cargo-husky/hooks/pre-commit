@@ -7,3 +7,6 @@ cargo fmt --check
 
 echo '+cargo clippy --workspace -- -D warnings'
 cargo clippy --workspace -- -D warnings
+
+echo '+cargo test tidy (style enforcement)'
+cd tests && cargo test tidy --quiet && cd ..
