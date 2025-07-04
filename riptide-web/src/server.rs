@@ -23,8 +23,8 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
 use crate::handlers::{
-    api_add_torrent, api_download_torrent, api_library, api_search, api_settings, api_stats,
-    api_torrents, stream_torrent, video_player_page,
+    api_add_torrent, api_download_torrent, api_library, api_search, api_seek_torrent, api_settings,
+    api_stats, api_torrents, stream_torrent, video_player_page,
 };
 use crate::htmx::{dashboard_activity, dashboard_downloads, dashboard_stats};
 // Import new architecture modules
@@ -167,6 +167,7 @@ pub async fn run_server(
         .route("/api/library", get(api_library))
         .route("/api/search", get(api_search))
         .route("/api/settings", get(api_settings))
+        .route("/api/torrents/{info_hash}/seek", post(api_seek_torrent))
         // Static assets (minimal)
         .nest_service("/static", ServeDir::new("riptide-web/static"))
         .layer(CorsLayer::permissive())

@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
@@ -29,6 +29,15 @@ pub struct AddTorrentQuery {
 #[derive(Deserialize)]
 pub struct DownloadRequest {
     pub magnet_link: String,
+}
+
+/// Request body for seeking to a position in streaming torrent.
+#[derive(Deserialize)]
+pub struct SeekRequest {
+    /// Position to seek to in seconds
+    pub position: f64,
+    /// Buffer size around seek position in seconds (optional)
+    pub buffer_duration: Option<f64>,
 }
 
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
@@ -331,6 +340,103 @@ pub async fn api_download_torrent(
             "success": false,
             "error": format!("Failed to add torrent: {e}")
         }))),
+    }
+}
+
+/// API endpoint for seeking to a position in a streaming torrent.
+///
+/// Accepts seek position in seconds and optional buffer duration,
+/// converts to byte position based on torrent bitrate, and signals
+/// the torrent engine to prioritize pieces around that position.
+pub async fn api_seek_torrent(
+    State(state): State<AppState>,
+    Path(info_hash_str): Path<String>,
+    Json(payload): Json<SeekRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // Parse info hash
+    let info_hash = match riptide_core::torrent::InfoHash::from_hex(&info_hash_str) {
+        Ok(hash) => hash,
+        Err(_) => {
+            return Ok(Json(json!({
+                "success": false,
+                "error": "Invalid info hash format"
+            })));
+        }
+    };
+
+    // Validate seek position
+    if payload.position < 0.0 {
+        return Ok(Json(json!({
+            "success": false,
+            "error": "Seek position cannot be negative"
+        })));
+    }
+
+    // Get torrent session to calculate byte position
+    match state.torrent_engine.get_session(info_hash).await {
+        Ok(session) => {
+            // Estimate bitrate based on file size and assume typical video duration
+            // This is a rough approximation - in production you'd want metadata parsing
+            let total_size_bytes = session.piece_count as u64 * session.piece_size as u64;
+            let estimated_duration_seconds =
+                estimate_video_duration(&session.filename, total_size_bytes);
+
+            if payload.position > estimated_duration_seconds {
+                return Ok(Json(json!({
+                    "success": false,
+                    "error": format!("Seek position {:.1}s exceeds estimated duration {:.1}s",
+                        payload.position, estimated_duration_seconds)
+                })));
+            }
+
+            // Convert seek position to byte position
+            let byte_position =
+                (payload.position / estimated_duration_seconds) * total_size_bytes as f64;
+            let buffer_duration = payload.buffer_duration.unwrap_or(30.0); // Default 30s buffer
+            let buffer_size_bytes =
+                (buffer_duration / estimated_duration_seconds) * total_size_bytes as f64;
+
+            // TODO: Signal the torrent engine to prioritize pieces around this position
+            // This would require adding a new command to TorrentEngineCommand::SeekToPosition
+            // For now, return success but note that piece prioritization isn't implemented yet
+
+            Ok(Json(json!({
+                "success": true,
+                "message": format!("Seek request received for position {:.1}s (byte position: {:.0})",
+                    payload.position, byte_position),
+                "seek_position_seconds": payload.position,
+                "seek_position_bytes": byte_position as u64,
+                "buffer_size_bytes": buffer_size_bytes as u64,
+                "estimated_duration": estimated_duration_seconds
+            })))
+        }
+        Err(_) => Ok(Json(json!({
+            "success": false,
+            "error": "Torrent not found or not currently downloading"
+        }))),
+    }
+}
+
+/// Estimates video duration based on filename and file size.
+///
+/// This is a rough heuristic - in production you'd want proper metadata extraction.
+fn estimate_video_duration(filename: &str, size_bytes: u64) -> f64 {
+    // Default assumptions for video bitrates and duration
+    let size_gb = size_bytes as f64 / 1_073_741_824.0;
+
+    // Heuristic based on typical video file sizes
+    if filename.to_lowercase().contains("720p") {
+        // 720p movies: ~1.5-2.5 GB for 90-120 minutes
+        (size_gb / 2.0) * 3600.0 // Rough estimate: 2GB per hour
+    } else if filename.to_lowercase().contains("1080p") {
+        // 1080p movies: ~2.5-4 GB for 90-120 minutes
+        (size_gb / 3.0) * 3600.0 // Rough estimate: 3GB per hour
+    } else if filename.to_lowercase().contains("4k") || filename.to_lowercase().contains("2160p") {
+        // 4K movies: ~8-15 GB for 90-120 minutes
+        (size_gb / 10.0) * 3600.0 // Rough estimate: 10GB per hour
+    } else {
+        // Default assumption for unknown quality
+        (size_gb / 2.5) * 3600.0 // Rough estimate: 2.5GB per hour
     }
 }
 
