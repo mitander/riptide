@@ -396,9 +396,17 @@ pub async fn api_seek_torrent(
             let buffer_size_bytes =
                 (buffer_duration / estimated_duration_seconds) * total_size_bytes as f64;
 
-            // TODO: Signal the torrent engine to prioritize pieces around this position
-            // This would require adding a new command to TorrentEngineCommand::SeekToPosition
-            // For now, return success but note that piece prioritization isn't implemented yet
+            // Signal the torrent engine to prioritize pieces around this position
+            match state
+                .torrent_engine
+                .seek_to_position(info_hash, byte_position as u64, buffer_size_bytes as u64)
+                .await
+            {
+                Ok(()) => {
+                    tracing::info!("Successfully requested piece prioritization for seek position")
+                }
+                Err(e) => tracing::warn!("Failed to prioritize pieces for seek: {:?}", e),
+            }
 
             Ok(Json(json!({
                 "success": true,

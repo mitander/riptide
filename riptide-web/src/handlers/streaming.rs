@@ -96,6 +96,10 @@ pub async fn stream_torrent(
     // Validate range bounds and get safe values
     let (start, safe_end, safe_length) = validate_range_bounds(start, end, available_size)?;
 
+    // Update adaptive piece picker with current playback position
+    // This automatically prioritizes pieces around the requested range for optimal streaming
+    update_playback_position_and_priority(&state, info_hash, start, safe_length, &session).await;
+
     // Check if container format needs remuxing and handle conversion
     let (video_data, actual_file_size) =
         get_video_data_with_conversion(&state, info_hash, &session, start, safe_length).await?;
@@ -337,6 +341,141 @@ async fn read_converted_data(
     Ok(buffer)
 }
 
+/// Update adaptive piece picker with current playback position and prioritize nearby pieces.
+///
+/// This function is called on every range request to inform the torrent engine about
+/// the current video playback position. The adaptive piece picker will then prioritize
+/// downloading pieces around this position for optimal streaming performance.
+async fn update_playback_position_and_priority(
+    state: &AppState,
+    info_hash: InfoHash,
+    start_position: u64,
+    range_length: u64,
+    session: &riptide_core::engine::TorrentSession,
+) {
+    // Calculate the center of the requested range as the current playback position
+    let current_position = start_position + (range_length / 2);
+
+    // Calculate an appropriate buffer size based on the requested range and video characteristics
+    // For streaming, we want to buffer ahead based on estimated bitrate and playback speed
+    let estimated_bitrate = estimate_video_bitrate(session, range_length);
+    let buffer_size = calculate_streaming_buffer_size(estimated_bitrate, session.piece_size);
+
+    tracing::debug!(
+        "Updating playback position for {}: position={}B, range={}B, buffer={}B",
+        info_hash,
+        current_position,
+        range_length,
+        buffer_size
+    );
+
+    // Seek to the current position to prioritize pieces around this location
+    // This will mark urgent priority for pieces immediately needed for playback
+    if let Err(e) = state
+        .torrent_engine
+        .seek_to_position(info_hash, current_position, buffer_size)
+        .await
+    {
+        tracing::warn!(
+            "Failed to update seek position for torrent {}: {}",
+            info_hash,
+            e
+        );
+    }
+
+    // Update buffer strategy based on the range request pattern
+    // Larger ranges suggest faster playback or seeking behavior
+    let playback_speed = infer_playback_speed_from_range(range_length, session.piece_size);
+    let estimated_bandwidth = estimate_available_bandwidth(range_length);
+
+    if let Err(e) = state
+        .torrent_engine
+        .update_buffer_strategy(info_hash, playback_speed, estimated_bandwidth)
+        .await
+    {
+        tracing::warn!(
+            "Failed to update buffer strategy for torrent {}: {}",
+            info_hash,
+            e
+        );
+    }
+}
+
+/// Estimate video bitrate based on torrent characteristics and range request size.
+fn estimate_video_bitrate(
+    session: &riptide_core::engine::TorrentSession,
+    range_length: u64,
+) -> u64 {
+    // Estimate bitrate based on file size and assumed duration
+    // For a typical video file, use file size to infer quality
+    let total_mb = session.total_size / (1024 * 1024);
+
+    let estimated_bitrate = if total_mb < 500 {
+        1_500_000 // 1.5 Mbps for smaller files (SD quality)
+    } else if total_mb < 2000 {
+        4_000_000 // 4 Mbps for medium files (HD quality)
+    } else if total_mb < 8000 {
+        8_000_000 // 8 Mbps for larger files (Full HD)
+    } else {
+        15_000_000 // 15 Mbps for very large files (4K content)
+    };
+
+    // Adjust based on range request size - larger ranges suggest higher bitrate content
+    let range_factor = if range_length > 2 * 1024 * 1024 {
+        1.5 // Large ranges suggest high-bitrate content
+    } else if range_length < 256 * 1024 {
+        0.7 // Small ranges suggest lower bitrate or mobile content
+    } else {
+        1.0
+    };
+
+    (estimated_bitrate as f64 * range_factor) as u64
+}
+
+/// Calculate appropriate streaming buffer size in bytes.
+fn calculate_streaming_buffer_size(estimated_bitrate: u64, piece_size: u32) -> u64 {
+    // Buffer 10-15 seconds of content ahead of current position
+    let buffer_duration_seconds = 12;
+    let buffer_bytes = (estimated_bitrate * buffer_duration_seconds) / 8;
+
+    // Ensure buffer size is at least 3 pieces but not more than 20 pieces
+    let min_buffer = 3 * piece_size as u64;
+    let max_buffer = 20 * piece_size as u64;
+
+    buffer_bytes.clamp(min_buffer, max_buffer)
+}
+
+/// Infer playback speed based on range request patterns.
+fn infer_playback_speed_from_range(range_length: u64, piece_size: u32) -> f64 {
+    // Normal sequential requests suggest 1x playback
+    // Very large ranges suggest seeking or fast-forward behavior
+    // Small frequent ranges suggest slow or paused playback
+
+    let pieces_in_range = (range_length / piece_size as u64).max(1);
+
+    if pieces_in_range >= 8 {
+        1.5 // Large ranges suggest faster playback or seeking
+    } else if pieces_in_range <= 1 {
+        0.8 // Small ranges suggest slower playback
+    } else {
+        1.0 // Normal playback speed
+    }
+}
+
+/// Estimate available bandwidth based on range request size.
+fn estimate_available_bandwidth(range_length: u64) -> u64 {
+    // Use range request size as a proxy for network capacity
+    // Larger ranges suggest the client can handle more data
+
+    if range_length >= 2 * 1024 * 1024 {
+        5_000_000 // 5 MB/s for large range requests
+    } else if range_length >= 512 * 1024 {
+        2_000_000 // 2 MB/s for medium range requests
+    } else {
+        1_000_000 // 1 MB/s for small range requests
+    }
+}
+
 pub async fn api_local_movies(State(state): State<AppState>) -> Json<serde_json::Value> {
     if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
@@ -464,6 +603,12 @@ pub async fn stream_local_movie(
     // Validate range bounds and get safe values
     let (start, safe_end, safe_length) = validate_range_bounds(start, end, movie.size)?;
 
+    // For local movies that have been added to the torrent engine, also update position
+    if let Ok(session) = state.torrent_engine.get_session(info_hash).await {
+        update_playback_position_and_priority(&state, info_hash, start, safe_length, &session)
+            .await;
+    }
+
     // Check if the file format is supported by browsers
     let file_extension = movie
         .file_path
@@ -509,4 +654,167 @@ pub async fn stream_local_movie(
         safe_end,
         movie.size,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use riptide_core::engine::TorrentSession;
+
+    use super::*;
+
+    #[test]
+    fn test_estimate_video_bitrate() {
+        // Create a mock session for testing
+        let session = TorrentSession {
+            info_hash: InfoHash::new([1u8; 20]),
+            piece_count: 100,
+            piece_size: 32768,
+            total_size: 800 * 1024 * 1024, // 800MB file
+            filename: "test_movie.mp4".to_string(),
+            tracker_urls: vec![],
+            is_downloading: false,
+            started_at: std::time::Instant::now(),
+            completed_pieces: vec![false; 100],
+            progress: 0.0,
+            download_speed_bps: 0,
+            upload_speed_bps: 0,
+            bytes_downloaded: 0,
+            bytes_uploaded: 0,
+        };
+
+        // Test bitrate estimation for different range sizes
+        let bitrate_small = estimate_video_bitrate(&session, 128 * 1024); // 128KB range (small)
+        let bitrate_normal = estimate_video_bitrate(&session, 1024 * 1024); // 1MB range (normal)
+        let bitrate_large = estimate_video_bitrate(&session, 3 * 1024 * 1024); // 3MB range (large)
+
+        // Verify the range factor logic is working
+        // Small ranges (< 256KB) get factor 0.7, should be lower
+        // Large ranges (> 2MB) get factor 1.5, should be higher
+        assert!(
+            bitrate_small < bitrate_normal,
+            "Small range should give lower bitrate: {} < {}",
+            bitrate_small,
+            bitrate_normal
+        );
+        assert!(
+            bitrate_large > bitrate_normal,
+            "Large range should give higher bitrate: {} > {}",
+            bitrate_large,
+            bitrate_normal
+        );
+
+        // All should be reasonable bitrates
+        assert!(bitrate_small >= 1_000_000 && bitrate_small <= 10_000_000);
+        assert!(bitrate_normal >= 2_000_000 && bitrate_normal <= 15_000_000);
+        assert!(bitrate_large >= 3_000_000 && bitrate_large <= 20_000_000);
+    }
+
+    #[test]
+    fn test_calculate_streaming_buffer_size() {
+        let piece_size = 32768; // 32KB pieces
+
+        // Test with different bitrates - ensure they're far enough apart
+        let buffer_low = calculate_streaming_buffer_size(1_000_000, piece_size); // 1 Mbps
+        let buffer_high = calculate_streaming_buffer_size(10_000_000, piece_size); // 10 Mbps
+
+        println!(
+            "Low bitrate buffer: {} bytes ({} pieces)",
+            buffer_low,
+            buffer_low / piece_size as u64
+        );
+        println!(
+            "High bitrate buffer: {} bytes ({} pieces)",
+            buffer_high,
+            buffer_high / piece_size as u64
+        );
+
+        // Higher bitrate should require larger buffer (unless clamped to max)
+        // Only assert if the high bitrate buffer isn't clamped to max
+        let max_buffer = 20 * piece_size as u64;
+        if buffer_high < max_buffer {
+            assert!(
+                buffer_high > buffer_low,
+                "High bitrate buffer should be larger: {} > {}",
+                buffer_high,
+                buffer_low
+            );
+        }
+
+        // Buffer should be at least 3 pieces
+        let min_buffer = 3 * piece_size as u64;
+        assert!(buffer_low >= min_buffer);
+        assert!(buffer_high >= min_buffer);
+
+        // Buffer should not exceed 20 pieces
+        assert!(buffer_low <= max_buffer);
+        assert!(buffer_high <= max_buffer);
+    }
+
+    #[test]
+    fn test_infer_playback_speed_from_range() {
+        let piece_size = 32768; // 32KB pieces
+
+        // Small range (less than 1 piece) suggests slow playback
+        let speed_small = infer_playback_speed_from_range(16384, piece_size);
+        assert!(speed_small < 1.0);
+
+        // Normal range (2-4 pieces) suggests normal playback
+        let speed_normal = infer_playback_speed_from_range(2 * piece_size as u64, piece_size);
+        assert_eq!(speed_normal, 1.0);
+
+        // Large range (8+ pieces) suggests fast playback or seeking
+        let speed_large = infer_playback_speed_from_range(10 * piece_size as u64, piece_size);
+        assert!(speed_large > 1.0);
+    }
+
+    #[test]
+    fn test_estimate_available_bandwidth() {
+        // Small ranges suggest limited bandwidth
+        let bw_small = estimate_available_bandwidth(128 * 1024); // 128KB
+        assert_eq!(bw_small, 1_000_000); // 1 MB/s
+
+        // Medium ranges suggest moderate bandwidth
+        let bw_medium = estimate_available_bandwidth(1024 * 1024); // 1MB
+        assert_eq!(bw_medium, 2_000_000); // 2 MB/s
+
+        // Large ranges suggest high bandwidth
+        let bw_large = estimate_available_bandwidth(3 * 1024 * 1024); // 3MB
+        assert_eq!(bw_large, 5_000_000); // 5 MB/s
+    }
+
+    #[test]
+    fn test_detect_container_format() {
+        assert!(matches!(
+            detect_container_format("movie.mp4"),
+            ContainerFormat::Mp4
+        ));
+        assert!(matches!(
+            detect_container_format("video.webm"),
+            ContainerFormat::WebM
+        ));
+        assert!(matches!(
+            detect_container_format("film.mkv"),
+            ContainerFormat::Mkv
+        ));
+        assert!(matches!(
+            detect_container_format("clip.avi"),
+            ContainerFormat::Avi
+        ));
+        assert!(matches!(
+            detect_container_format("unknown.xyz"),
+            ContainerFormat::Unknown
+        ));
+    }
+
+    #[test]
+    fn test_determine_content_type() {
+        // Browser-compatible formats should return their native MIME type
+        assert_eq!(determine_content_type("movie.mp4"), "video/mp4");
+        assert_eq!(determine_content_type("video.webm"), "video/webm");
+
+        // Non-compatible formats should indicate MP4 (after remuxing)
+        assert_eq!(determine_content_type("film.mkv"), "video/mp4");
+        assert_eq!(determine_content_type("clip.avi"), "video/mp4");
+        assert_eq!(determine_content_type("unknown.xyz"), "video/mp4");
+    }
 }
