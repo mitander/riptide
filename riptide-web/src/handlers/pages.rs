@@ -255,7 +255,7 @@ pub async fn video_player_page(
     // Generate video player content
     let player_content = video_player::video_player_content(&info_hash_str, is_local);
 
-    // Wrap in full page template
+    // Wrap in full page template using local CSS
     Html(format!(
         r#"<!DOCTYPE html>
         <html lang="en">
@@ -263,30 +263,28 @@ pub async fn video_player_page(
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Streaming: {title}</title>
+            <link rel="stylesheet" href="/static/css/main.css">
             <script src="https://unpkg.com/htmx.org@1.9.3"></script>
-            <script src="https://cdn.tailwindcss.com"></script>
-            <script>
-                tailwind.config = {{
-                    theme: {{
-                        extend: {{
-                            colors: {{
-                                'riptide': {{
-                                    '50': '#f0f9ff',
-                                    '400': '#38bdf8',
-                                    '500': '#0ea5e9',
-                                    '600': '#0284c7',
-                                }}
-                            }}
-                        }}
-                    }}
-                }}
-            </script>
-            <style>
-                body {{ background: #0f172a; color: white; }}
-            </style>
+            <script src="/static/js/main.js" defer></script>
         </head>
-        <body class="bg-slate-900 text-white">
-            {player_content}
+        <body>
+            <!-- Navigation -->
+            <nav>
+                <div class="nav-container">
+                    <div class="logo">Riptide</div>
+                    <div class="nav-links">
+                        <a href="/">Dashboard</a>
+                        <a href="/search">Search</a>
+                        <a href="/torrents">Torrents</a>
+                        <a href="/library">Library</a>
+                    </div>
+                </div>
+            </nav>
+            
+            <!-- Main Content -->
+            <main class="container">
+                {player_content}
+            </main>
         </body>
         </html>"#
     ))

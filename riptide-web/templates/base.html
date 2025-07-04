@@ -4,56 +4,26 @@
     <title>{{ title }} - Riptide</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/main.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'riptide': {
-                            50: '#eff6ff',
-                            500: '#4a9eff',
-                            600: '#3a8edf',
-                            900: '#0a0a0a'
-                        }
-                    }
-                }
-            }
-        }
-    </script>
     <script src="/static/js/main.js" defer></script>
 </head>
-<body class="bg-gray-900 text-white min-h-screen font-sans">
+<body>
     <!-- Navigation -->
-    <nav class="bg-gray-800 border-b border-gray-700">
-        <div class="max-w-7xl mx-auto px-4">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center space-x-8">
-                    <div class="text-2xl font-bold text-riptide-500">Riptide</div>
-                    <div class="hidden md:flex space-x-6">
-                        <a href="/" class="px-3 py-2 rounded-md text-sm font-medium transition-colors {{ dashboard_active }} hover:text-riptide-500 hover:bg-gray-700">Dashboard</a>
-                        <a href="/search" class="px-3 py-2 rounded-md text-sm font-medium transition-colors {{ search_active }} hover:text-riptide-500 hover:bg-gray-700">Search</a>
-                        <a href="/torrents" class="px-3 py-2 rounded-md text-sm font-medium transition-colors {{ torrents_active }} hover:text-riptide-500 hover:bg-gray-700">Torrents</a>
-                        <a href="/library" class="px-3 py-2 rounded-md text-sm font-medium transition-colors {{ library_active }} hover:text-riptide-500 hover:bg-gray-700">Library</a>
-                    </div>
-                </div>
-                
-                <!-- Mobile menu button -->
-                <div class="md:hidden">
-                    <button class="text-gray-300 hover:text-white p-2">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                    </button>
-                </div>
+    <nav>
+        <div class="nav-container">
+            <div class="logo">Riptide</div>
+            <div class="nav-links">
+                <a href="/" class="{{ dashboard_active }}">Dashboard</a>
+                <a href="/search" class="{{ search_active }}">Search</a>
+                <a href="/torrents" class="{{ torrents_active }}">Torrents</a>
+                <a href="/library" class="{{ library_active }}">Library</a>
             </div>
         </div>
     </nav>
     
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 py-8">
+    <main class="container">
         {{ content }}
     </main>
 
