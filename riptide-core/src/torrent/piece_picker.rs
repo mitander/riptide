@@ -73,7 +73,7 @@ pub trait AdaptivePiecePicker: PiecePicker {
     fn update_buffer_strategy(&mut self, playback_speed: f64, available_bandwidth: u64);
 
     /// Get current buffer status around playback position.
-    fn get_buffer_status(&self) -> BufferStatus;
+    fn buffer_status(&self) -> BufferStatus;
 }
 
 /// Sequential piece picker optimized for streaming.
@@ -353,7 +353,7 @@ impl AdaptivePiecePicker for AdaptiveStreamingPiecePicker {
         }
     }
 
-    fn get_buffer_status(&self) -> BufferStatus {
+    fn buffer_status(&self) -> BufferStatus {
         let current_piece = self.byte_to_piece(self.current_position);
         let effective_buffer_size = if self.adaptive_buffer_enabled {
             self.calculate_adaptive_buffer_size()
@@ -484,7 +484,7 @@ mod tests {
         picker.mark_completed(PieceIndex::new(6)); // Ahead
         picker.mark_completed(PieceIndex::new(7)); // Ahead
 
-        let status = picker.get_buffer_status();
+        let status = picker.buffer_status();
 
         assert_eq!(status.current_position, 5 * 32768);
         assert_eq!(status.bytes_ahead, 2 * 32768); // Pieces 6 and 7

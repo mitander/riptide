@@ -696,7 +696,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     ///
     /// # Errors
     /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    pub fn get_buffer_status(
+    pub fn buffer_status(
         &self,
         info_hash: InfoHash,
     ) -> Result<crate::torrent::BufferStatus, TorrentError> {
@@ -708,7 +708,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         // Get buffer status from piece picker if available
         if let Some(piece_picker) = self.piece_pickers.get(&info_hash) {
             if let Ok(picker) = piece_picker.try_read() {
-                Ok(picker.get_buffer_status())
+                Ok(picker.buffer_status())
             } else {
                 tracing::warn!(
                     "Could not acquire read lock on piece picker for torrent {}",

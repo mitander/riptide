@@ -65,7 +65,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Test initial buffer status
-        let initial_status = handle.get_buffer_status(info_hash).await.unwrap();
+        let initial_status = handle.buffer_status(info_hash).await.unwrap();
         assert_eq!(initial_status.current_position, 0);
 
         // Test seeking to middle of file
@@ -84,7 +84,7 @@ mod tests {
             .unwrap(); // 1.5x speed, 2MB/s
 
         // Get updated buffer status
-        let updated_status = handle.get_buffer_status(info_hash).await.unwrap();
+        let updated_status = handle.buffer_status(info_hash).await.unwrap();
         assert_eq!(updated_status.current_position, seek_position);
 
         // Test seeking to end of file
@@ -94,7 +94,7 @@ mod tests {
             .await
             .unwrap();
 
-        let end_status = handle.get_buffer_status(info_hash).await.unwrap();
+        let end_status = handle.buffer_status(info_hash).await.unwrap();
         assert_eq!(end_status.current_position, end_seek_position);
 
         // Test error handling for non-existent torrent
@@ -105,7 +105,7 @@ mod tests {
             Err(TorrentError::TorrentNotFound { .. })
         ));
 
-        let buffer_result = handle.get_buffer_status(fake_hash).await;
+        let buffer_result = handle.buffer_status(fake_hash).await;
         assert!(matches!(
             buffer_result,
             Err(TorrentError::TorrentNotFound { .. })
@@ -162,7 +162,7 @@ mod tests {
                 .unwrap();
 
             // Get buffer status
-            let status = handle.get_buffer_status(info_hash).await.unwrap();
+            let status = handle.buffer_status(info_hash).await.unwrap();
 
             // Verify buffer status is reasonable
             assert!(status.buffer_health >= 0.0);
@@ -231,7 +231,7 @@ mod tests {
             // Perform concurrent seeks and buffer updates
             let seek_future = handle.seek_to_position(info_hash, seek_position, 2 * 65_536);
             let buffer_future = handle.update_buffer_strategy(info_hash, playback_speed, 1_500_000);
-            let status_future = handle.get_buffer_status(info_hash);
+            let status_future = handle.buffer_status(info_hash);
 
             // Wait for all operations to complete
             let (seek_result, buffer_result, status_result) =

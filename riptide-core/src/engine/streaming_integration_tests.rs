@@ -58,7 +58,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Test initial buffer status (should be at position 0)
-        let initial_status = handle.get_buffer_status(info_hash).await.unwrap();
+        let initial_status = handle.buffer_status(info_hash).await.unwrap();
         assert_eq!(initial_status.current_position, 0);
 
         // Simulate a range request for the middle of the file (simulating HTTP Range header processing)
@@ -72,7 +72,7 @@ mod tests {
             .unwrap();
 
         // Verify the position was updated
-        let updated_status = handle.get_buffer_status(info_hash).await.unwrap();
+        let updated_status = handle.buffer_status(info_hash).await.unwrap();
         assert_eq!(updated_status.current_position, seek_position);
 
         // Test buffer strategy updates (simulating bandwidth estimation from range size)
@@ -97,7 +97,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let status = handle.get_buffer_status(info_hash).await.unwrap();
+            let status = handle.buffer_status(info_hash).await.unwrap();
             assert_eq!(status.current_position, position);
 
             // Verify buffer health metrics are reasonable
@@ -156,7 +156,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let status = handle.get_buffer_status(info_hash).await.unwrap();
+            let status = handle.buffer_status(info_hash).await.unwrap();
             assert_eq!(status.current_position, position);
         }
 
@@ -179,7 +179,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let status = handle.get_buffer_status(info_hash).await.unwrap();
+            let status = handle.buffer_status(info_hash).await.unwrap();
             assert_eq!(status.current_position, position);
         }
 
@@ -196,7 +196,7 @@ mod tests {
             .await
             .unwrap();
 
-        let final_status = handle.get_buffer_status(info_hash).await.unwrap();
+        let final_status = handle.buffer_status(info_hash).await.unwrap();
         assert_eq!(final_status.current_position, pause_position);
 
         // Verify buffer metrics are still reasonable
@@ -265,14 +265,14 @@ mod tests {
             buffer_result.unwrap();
 
             // Verify the updates were applied correctly
-            let status = handle.get_buffer_status(info_hash).await.unwrap();
+            let status = handle.buffer_status(info_hash).await.unwrap();
             assert_eq!(status.current_position, base_position);
         }
 
         // Test that each torrent maintains its own independent state
         for (i, &info_hash) in info_hashes.iter().enumerate() {
             let expected_position = (i as u64 + 1) * 10 * 65_536;
-            let status = handle.get_buffer_status(info_hash).await.unwrap();
+            let status = handle.buffer_status(info_hash).await.unwrap();
             assert_eq!(
                 status.current_position, expected_position,
                 "Torrent {} should maintain independent position",

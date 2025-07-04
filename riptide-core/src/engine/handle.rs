@@ -263,7 +263,7 @@ impl TorrentEngineHandle {
     ///
     /// # Errors
     /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    pub async fn get_buffer_status(
+    pub async fn buffer_status(
         &self,
         info_hash: InfoHash,
     ) -> Result<crate::torrent::BufferStatus, TorrentError> {

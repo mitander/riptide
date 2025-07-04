@@ -191,7 +191,7 @@ where
             info_hash,
             responder,
         } => {
-            let result = engine.get_buffer_status(info_hash);
+            let result = engine.buffer_status(info_hash);
             let _ = responder.send(result);
         }
     }
