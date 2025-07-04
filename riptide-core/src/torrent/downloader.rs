@@ -135,6 +135,11 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         progress
     }
 
+    /// Returns the torrent metadata.
+    pub fn metadata(&self) -> &TorrentMetadata {
+        &self.torrent_metadata
+    }
+
     /// Downloads piece data from peers using BitTorrent protocol with retry logic.
     ///
     /// Connects to available peers, requests piece data, verifies hash,

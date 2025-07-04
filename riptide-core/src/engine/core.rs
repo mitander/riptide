@@ -6,7 +6,9 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tokio::time::Duration;
 
-use super::commands::{EngineStats, TorrentEngineCommand, TorrentSession, TorrentSessionParams};
+use super::commands::{
+    DownloadStats, EngineStats, TorrentEngineCommand, TorrentSession, TorrentSessionParams,
+};
 use crate::config::RiptideConfig;
 use crate::storage::FileStorage;
 use crate::torrent::downloader::PieceDownloader;
@@ -373,11 +375,54 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         tracing::debug!("Updated piece downloader with {} peers", params.peers.len());
         tracing::debug!("Peer addresses: {:?}", params.peers);
 
+        let start_time = std::time::Instant::now();
+        let mut last_speed_update = start_time;
+        let mut bytes_downloaded = 0u64;
+
         for piece_index in 0..params.piece_count {
             let piece_idx = PieceIndex::new(piece_index);
+            let piece_start = std::time::Instant::now();
 
             match piece_downloader.download_piece(piece_idx).await {
                 Ok(()) => {
+                    // Calculate download statistics
+                    let piece_duration = piece_start.elapsed();
+                    bytes_downloaded += piece_downloader.metadata().piece_length as u64;
+
+                    // Update speed statistics every 2 seconds or on completion
+                    let now = std::time::Instant::now();
+                    if now.duration_since(last_speed_update) >= std::time::Duration::from_secs(2)
+                        || piece_index == params.piece_count - 1
+                    {
+                        let total_duration = now.duration_since(start_time);
+                        let download_speed_bps = if total_duration.as_secs() > 0 {
+                            bytes_downloaded / total_duration.as_secs()
+                        } else {
+                            0
+                        };
+
+                        // Send download stats update command to engine
+                        Self::notify_download_stats_update(
+                            params.info_hash,
+                            DownloadStats {
+                                download_speed_bps,
+                                upload_speed_bps: 0, // TODO: Track upload speed
+                                bytes_downloaded,
+                                bytes_uploaded: 0, // TODO: Track upload bytes
+                            },
+                            &params.piece_sender,
+                        );
+
+                        last_speed_update = now;
+                    }
+
+                    tracing::debug!(
+                        "Downloaded piece {} in {:?} ({} bytes)",
+                        piece_index,
+                        piece_duration,
+                        piece_downloader.metadata().piece_length
+                    );
+
                     Self::notify_piece_completed(
                         params.info_hash,
                         piece_index,
@@ -407,6 +452,18 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
         if let Err(e) = piece_sender.send(cmd) {
             tracing::error!("Failed to notify engine of piece completion: {}", e);
+        }
+    }
+
+    fn notify_download_stats_update(
+        info_hash: InfoHash,
+        stats: DownloadStats,
+        piece_sender: &mpsc::UnboundedSender<TorrentEngineCommand>,
+    ) {
+        let cmd = TorrentEngineCommand::UpdateDownloadStats { info_hash, stats };
+
+        if let Err(e) = piece_sender.send(cmd) {
+            tracing::error!("Failed to notify engine of download stats update: {}", e);
         }
     }
 
@@ -446,6 +503,38 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             }
             session.complete_piece(piece_index);
         }
+
+        Ok(())
+    }
+
+    /// Updates download statistics for a torrent.
+    ///
+    /// Updates the download/upload speeds and total bytes transferred for
+    /// the specified torrent. This method is called periodically during
+    /// active downloads to provide real-time statistics.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub fn update_download_stats(
+        &mut self,
+        info_hash: InfoHash,
+        stats: DownloadStats,
+    ) -> Result<(), TorrentError> {
+        let session = self
+            .active_torrents
+            .get_mut(&info_hash)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
+
+        session.update_speed_stats(stats.clone());
+
+        tracing::debug!(
+            "Download stats updated for {}: speed={}B/s ({}B/s up), total={}B down ({}B up)",
+            info_hash,
+            stats.download_speed_bps,
+            stats.upload_speed_bps,
+            stats.bytes_downloaded,
+            stats.bytes_uploaded
+        );
 
         Ok(())
     }

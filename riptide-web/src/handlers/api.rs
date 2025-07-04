@@ -66,12 +66,16 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
         json!({
             "name": name,
             "progress": (session.progress * 100.0) as u32,
-            "speed": 0, // TODO: Track download speed
+            "speed": session.download_speed_formatted(),
             "size": format!("{:.1} GB", (session.piece_count as u64 * session.piece_size as u64) as f64 / 1_073_741_824.0),
             "status": if session.progress >= 1.0 { "completed" } else { "downloading" },
             "info_hash": session.info_hash.to_string(),
             "pieces": format!("{}/{}", session.completed_pieces.iter().filter(|&&x| x).count(), session.piece_count),
-            "is_local": false // BitTorrent torrents should use piece-based streaming
+            "is_local": false, // BitTorrent torrents should use piece-based streaming
+            "eta": calculate_eta(session.progress, session.download_speed_bps, session.total_size),
+            "upload_speed": session.upload_speed_formatted(),
+            "bytes_downloaded": session.bytes_downloaded,
+            "bytes_uploaded": session.bytes_uploaded
         })
     }).collect();
 
@@ -327,5 +331,29 @@ pub async fn api_download_torrent(
             "success": false,
             "error": format!("Failed to add torrent: {e}")
         }))),
+    }
+}
+
+/// Calculates estimated time to completion for a download.
+fn calculate_eta(progress: f32, download_speed_bps: u64, total_size: u64) -> Option<String> {
+    if progress >= 1.0 || download_speed_bps == 0 {
+        return None;
+    }
+
+    let remaining_bytes = total_size - (total_size as f32 * progress) as u64;
+    let eta_seconds = remaining_bytes as f64 / download_speed_bps as f64;
+
+    if eta_seconds > 86400.0 {
+        // More than a day
+        Some(format!("{:.0}d", eta_seconds / 86400.0))
+    } else if eta_seconds > 3600.0 {
+        // More than an hour
+        Some(format!("{:.0}h", eta_seconds / 3600.0))
+    } else if eta_seconds > 60.0 {
+        // More than a minute
+        Some(format!("{:.0}m", eta_seconds / 60.0))
+    } else {
+        // Less than a minute
+        Some(format!("{eta_seconds:.0}s"))
     }
 }

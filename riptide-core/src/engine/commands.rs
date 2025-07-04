@@ -52,6 +52,11 @@ pub enum TorrentEngineCommand {
         info_hash: InfoHash,
         piece_index: u32,
     },
+    /// Update download statistics for a torrent.
+    UpdateDownloadStats {
+        info_hash: InfoHash,
+        stats: DownloadStats,
+    },
 }
 
 /// Active download session for a single torrent.
@@ -80,6 +85,14 @@ pub struct TorrentSession {
     pub is_downloading: bool,
     /// Tracker URLs for this torrent
     pub tracker_urls: Vec<String>,
+    /// Current download speed in bytes per second
+    pub download_speed_bps: u64,
+    /// Current upload speed in bytes per second  
+    pub upload_speed_bps: u64,
+    /// Total bytes downloaded for this torrent
+    pub bytes_downloaded: u64,
+    /// Total bytes uploaded for this torrent
+    pub bytes_uploaded: u64,
 }
 
 impl TorrentSession {
@@ -99,6 +112,10 @@ impl TorrentSession {
             started_at: std::time::Instant::now(),
             is_downloading: false,
             tracker_urls: params.tracker_urls,
+            download_speed_bps: 0,
+            upload_speed_bps: 0,
+            bytes_downloaded: 0,
+            bytes_uploaded: 0,
         }
     }
 
@@ -119,6 +136,24 @@ impl TorrentSession {
     fn update_progress(&mut self) {
         let completed_count = self.completed_pieces.iter().filter(|&&x| x).count();
         self.progress = completed_count as f32 / self.piece_count as f32;
+    }
+
+    /// Updates speed statistics for this torrent.
+    pub fn update_speed_stats(&mut self, stats: DownloadStats) {
+        self.download_speed_bps = stats.download_speed_bps;
+        self.upload_speed_bps = stats.upload_speed_bps;
+        self.bytes_downloaded = stats.bytes_downloaded;
+        self.bytes_uploaded = stats.bytes_uploaded;
+    }
+
+    /// Returns download speed in a human-readable format.
+    pub fn download_speed_formatted(&self) -> String {
+        format_bytes_per_second(self.download_speed_bps)
+    }
+
+    /// Returns upload speed in a human-readable format.
+    pub fn upload_speed_formatted(&self) -> String {
+        format_bytes_per_second(self.upload_speed_bps)
     }
 }
 
@@ -148,6 +183,15 @@ pub struct TorrentSessionParams {
     pub tracker_urls: Vec<String>,
 }
 
+/// Download statistics update for a torrent.
+#[derive(Debug, Clone)]
+pub struct DownloadStats {
+    pub download_speed_bps: u64,
+    pub upload_speed_bps: u64,
+    pub bytes_downloaded: u64,
+    pub bytes_uploaded: u64,
+}
+
 impl Default for EngineStats {
     fn default() -> Self {
         Self {
@@ -157,5 +201,27 @@ impl Default for EngineStats {
             bytes_uploaded: 0,
             average_progress: 0.0,
         }
+    }
+}
+
+/// Formats bytes per second into a human-readable string.
+fn format_bytes_per_second(bytes_per_second: u64) -> String {
+    if bytes_per_second == 0 {
+        return "0 B/s".to_string();
+    }
+
+    const UNITS: &[&str] = &["B/s", "KB/s", "MB/s", "GB/s"];
+    let mut value = bytes_per_second as f64;
+    let mut unit_index = 0;
+
+    while value >= 1024.0 && unit_index < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit_index += 1;
+    }
+
+    if value >= 10.0 {
+        format!("{:.0} {}", value, UNITS[unit_index])
+    } else {
+        format!("{:.1} {}", value, UNITS[unit_index])
     }
 }

@@ -161,6 +161,10 @@ where
             tracing::debug!("Piece {} completed for torrent {}", piece_index, info_hash);
             let _ = engine.mark_pieces_completed(info_hash, vec![piece_index]);
         }
+
+        TorrentEngineCommand::UpdateDownloadStats { info_hash, stats } => {
+            let _ = engine.update_download_stats(info_hash, stats);
+        }
     }
     true // Continue processing
 }

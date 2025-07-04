@@ -7,6 +7,30 @@ use serde::Deserialize;
 use crate::components::{activity, torrent};
 use crate::server::AppState;
 
+/// Calculates estimated time to completion for a download.
+fn calculate_eta(progress: f32, download_speed_bps: u64, total_size: u64) -> Option<String> {
+    if progress >= 1.0 || download_speed_bps == 0 {
+        return None;
+    }
+
+    let remaining_bytes = total_size - (total_size as f32 * progress) as u64;
+    let eta_seconds = remaining_bytes as f64 / download_speed_bps as f64;
+
+    if eta_seconds > 86400.0 {
+        // More than a day
+        Some(format!("{:.0}d", eta_seconds / 86400.0))
+    } else if eta_seconds > 3600.0 {
+        // More than an hour
+        Some(format!("{:.0}h", eta_seconds / 3600.0))
+    } else if eta_seconds > 60.0 {
+        // More than a minute
+        Some(format!("{:.0}m", eta_seconds / 60.0))
+    } else {
+        // Less than a minute
+        Some(format!("{eta_seconds:.0}s"))
+    }
+}
+
 /// Form data for adding torrents
 #[derive(Deserialize)]
 pub struct AddTorrentForm {
@@ -115,17 +139,19 @@ pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
                 "queued"
             };
 
-            let speed = if session.progress < 1.0 && session.progress > 0.0 {
-                Some("2.1 MB/s") // TODO: Calculate real speed
+            let speed_formatted = session.download_speed_formatted();
+            let speed = if session.download_speed_bps > 0 {
+                Some(speed_formatted.as_str())
             } else {
                 None
             };
 
-            let eta = if session.progress < 1.0 && session.progress > 0.0 {
-                Some("12m 34s") // TODO: Calculate real ETA
-            } else {
-                None
-            };
+            let eta_str = calculate_eta(
+                session.progress,
+                session.download_speed_bps,
+                session.total_size,
+            );
+            let eta = eta_str.as_deref();
 
             torrent::torrent_list_item(torrent::TorrentListItemParams {
                 name: &name,
