@@ -57,6 +57,25 @@ pub enum TorrentEngineCommand {
         info_hash: InfoHash,
         stats: DownloadStats,
     },
+    /// Request prioritization of pieces around a seek position for streaming.
+    SeekToPosition {
+        info_hash: InfoHash,
+        byte_position: u64,
+        buffer_size: u64,
+        responder: oneshot::Sender<Result<(), TorrentError>>,
+    },
+    /// Update buffer strategy for adaptive piece picking.
+    UpdateBufferStrategy {
+        info_hash: InfoHash,
+        playback_speed: f64,
+        available_bandwidth: u64,
+        responder: oneshot::Sender<Result<(), TorrentError>>,
+    },
+    /// Get current buffer status for a torrent.
+    GetBufferStatus {
+        info_hash: InfoHash,
+        responder: oneshot::Sender<Result<crate::torrent::BufferStatus, TorrentError>>,
+    },
 }
 
 /// Active download session for a single torrent.

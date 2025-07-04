@@ -196,6 +196,91 @@ impl TorrentEngineHandle {
         rx.await.map_err(|_| TorrentError::EngineShutdown)
     }
 
+    /// Requests prioritization of pieces around a seek position for streaming.
+    ///
+    /// Signals the torrent engine to prioritize downloading pieces around the
+    /// specified byte position to enable smooth seeking in video playback.
+    /// The buffer size determines how many bytes around the position to prioritize.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub async fn seek_to_position(
+        &self,
+        info_hash: InfoHash,
+        byte_position: u64,
+        buffer_size: u64,
+    ) -> Result<(), TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::SeekToPosition {
+            info_hash,
+            byte_position,
+            buffer_size,
+            responder,
+        };
+
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineShutdown)?;
+
+        rx.await.map_err(|_| TorrentError::EngineShutdown)?
+    }
+
+    /// Updates buffer strategy for adaptive piece picking.
+    ///
+    /// Adjusts the buffer size and prioritization strategy based on current
+    /// playback speed and available bandwidth. This helps optimize buffering
+    /// for different viewing conditions.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub async fn update_buffer_strategy(
+        &self,
+        info_hash: InfoHash,
+        playback_speed: f64,
+        available_bandwidth: u64,
+    ) -> Result<(), TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::UpdateBufferStrategy {
+            info_hash,
+            playback_speed,
+            available_bandwidth,
+            responder,
+        };
+
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineShutdown)?;
+
+        rx.await.map_err(|_| TorrentError::EngineShutdown)?
+    }
+
+    /// Gets current buffer status for a torrent.
+    ///
+    /// Returns detailed information about the buffering state, including
+    /// how much content is buffered ahead and behind the current position.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub async fn get_buffer_status(
+        &self,
+        info_hash: InfoHash,
+    ) -> Result<crate::torrent::BufferStatus, TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::GetBufferStatus {
+            info_hash,
+            responder,
+        };
+
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineShutdown)?;
+
+        rx.await.map_err(|_| TorrentError::EngineShutdown)?
+    }
+
     /// Checks if the engine actor is still running.
     ///
     /// Returns true if the sender channel is still open, indicating the

@@ -165,6 +165,35 @@ where
         TorrentEngineCommand::UpdateDownloadStats { info_hash, stats } => {
             let _ = engine.update_download_stats(info_hash, stats);
         }
+
+        TorrentEngineCommand::SeekToPosition {
+            info_hash,
+            byte_position,
+            buffer_size,
+            responder,
+        } => {
+            let result = engine.seek_to_position(info_hash, byte_position, buffer_size);
+            let _ = responder.send(result);
+        }
+
+        TorrentEngineCommand::UpdateBufferStrategy {
+            info_hash,
+            playback_speed,
+            available_bandwidth,
+            responder,
+        } => {
+            let result =
+                engine.update_buffer_strategy(info_hash, playback_speed, available_bandwidth);
+            let _ = responder.send(result);
+        }
+
+        TorrentEngineCommand::GetBufferStatus {
+            info_hash,
+            responder,
+        } => {
+            let result = engine.get_buffer_status(info_hash);
+            let _ = responder.send(result);
+        }
     }
     true // Continue processing
 }
