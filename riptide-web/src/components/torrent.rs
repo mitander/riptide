@@ -61,6 +61,7 @@ pub fn torrent_list_item(params: TorrentListItemParams) -> String {
                 <div class="flex items-center space-x-2">
                     {}
                     {}
+                    {}
                 </div>
             </div>
         </div>"#,
@@ -75,6 +76,14 @@ pub fn torrent_list_item(params: TorrentListItemParams) -> String {
             "Pause",
             "ghost",
             Some(r#"hx-post="/api/torrents/pause" hx-target="closest .bg-gray-800""#)
+        ),
+        button(
+            "▶️ Stream",
+            "primary",
+            Some(&format!(
+                "onclick=\"window.open('/player/{}', '_blank')\"",
+                &info_hash[..40]
+            ))
         ),
         button(
             "Details",
