@@ -11,6 +11,9 @@ use riptide_core::torrent::tracker::{
 };
 use riptide_core::torrent::{InfoHash, TorrentError, TrackerClient, TrackerManagement};
 
+/// Type alias for peer coordination function
+type PeerCoordinator = Box<dyn Fn(&InfoHash) -> Vec<SocketAddr> + Send + Sync>;
+
 /// Simulated tracker client for deterministic testing and development.
 ///
 /// Provides controllable tracker responses without network communication.
@@ -22,6 +25,7 @@ pub struct SimulatedTrackerClient {
     swarm_stats: Arc<Mutex<HashMap<InfoHash, SwarmStats>>>,
     announce_count: AtomicU32,
     response_config: ResponseConfig,
+    peer_coordinator: Option<PeerCoordinator>,
 }
 
 /// Configuration for simulated tracker responses
@@ -130,7 +134,19 @@ impl SimulatedTrackerClient {
             swarm_stats: Arc::new(Mutex::new(HashMap::new())),
             announce_count: AtomicU32::new(0),
             response_config: config,
+            peer_coordinator: None,
         }
+    }
+
+    /// Sets a peer coordinator callback to get peer addresses from ContentAwarePeerManager.
+    ///
+    /// This ensures the tracker returns peer addresses that the peer manager
+    /// knows about and can handle connections to.
+    pub fn set_peer_coordinator<F>(&mut self, coordinator: Box<F>)
+    where
+        F: Fn(&InfoHash) -> Vec<SocketAddr> + Send + Sync + 'static,
+    {
+        self.peer_coordinator = Some(coordinator);
     }
 
     /// Injects predefined swarm statistics for specific info hash.
@@ -232,8 +248,21 @@ impl TrackerClient for SimulatedTrackerClient {
         // Update internal swarm statistics
         self.update_swarm_stats(request.info_hash, request.event);
 
-        // Generate peer list
-        let peers = {
+        // Generate peer list - use coordinator if available, otherwise generate random peers
+        let peers = if let Some(ref coordinator) = self.peer_coordinator {
+            let coordinated_peers = coordinator(&request.info_hash);
+            if coordinated_peers.is_empty() {
+                // Fallback to generated peers if coordinator returns no peers
+                let mut generator = self.peer_generator.lock().unwrap();
+                generator.generate_peers(self.response_config.peer_count)
+            } else {
+                // Limit to configured peer count
+                coordinated_peers
+                    .into_iter()
+                    .take(self.response_config.peer_count)
+                    .collect()
+            }
+        } else {
             let mut generator = self.peer_generator.lock().unwrap();
             generator.generate_peers(self.response_config.peer_count)
         };
@@ -306,7 +335,8 @@ impl TrackerClient for SimulatedTrackerClient {
 /// Simulated tracker management for testing multi-tracker scenarios.
 ///
 /// Provides deterministic tracker selection and failover behavior
-/// without requiring real network infrastructure.
+/// without requiring real network infrastructure. Returns peer addresses
+/// that ContentAwarePeerManager can handle.
 pub struct SimulatedTrackerManager {
     default_client: SimulatedTrackerClient,
 }
@@ -334,6 +364,25 @@ impl SimulatedTrackerManager {
                 "http://sim-tracker.test/announce".to_string(),
                 config,
             ),
+        }
+    }
+
+    /// Creates simulated tracker manager with callback to coordinate with peer manager.
+    ///
+    /// This allows the tracker to return peer addresses that the peer manager
+    /// knows about and can handle connections to.
+    pub fn with_peer_coordinator<F>(config: ResponseConfig, peer_coordinator: F) -> Self
+    where
+        F: Fn(&InfoHash) -> Vec<SocketAddr> + Send + Sync + 'static,
+    {
+        let mut client = SimulatedTrackerClient::with_config(
+            "http://sim-tracker.test/announce".to_string(),
+            config,
+        );
+        client.set_peer_coordinator(Box::new(peer_coordinator));
+
+        Self {
+            default_client: client,
         }
     }
 }

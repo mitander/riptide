@@ -394,10 +394,18 @@ pub struct SimulationTorrentCreator {
 }
 
 impl SimulationTorrentCreator {
-    /// Creates simulation torrent creator
+    /// Creates simulation torrent creator with adaptive piece size
     pub fn new() -> Self {
         Self {
             creator: TorrentCreator::new(),
+            pieces: Vec::new(),
+        }
+    }
+
+    /// Creates simulation torrent creator with custom piece size
+    pub fn with_piece_size(piece_size: u32) -> Self {
+        Self {
+            creator: TorrentCreator::with_piece_size(piece_size),
             pieces: Vec::new(),
         }
     }
@@ -423,6 +431,15 @@ impl SimulationTorrentCreator {
 
         let mut file = File::open(file_path).await?;
         let file_size = file.metadata().await?.len();
+
+        // Use adaptive piece size for small files to avoid protocol issues
+        if file_size <= 1024 {
+            // For very small files, use the file size as piece size
+            self.creator = TorrentCreator::with_piece_size(file_size as u32);
+        } else if file_size <= 16384 {
+            // For small files, use 16KB pieces
+            self.creator = TorrentCreator::with_piece_size(16384);
+        }
 
         // Calculate pieces with data storage
         self.pieces.clear();

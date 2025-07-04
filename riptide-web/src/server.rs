@@ -51,40 +51,37 @@ pub struct AppState {
 }
 
 pub async fn run_server(
-    config: RiptideConfig,
+    mut config: RiptideConfig,
     mode: RuntimeMode,
     movies_dir: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // For development mode, we need to keep references to simulation managers for setup
-    let (torrent_engine, sim_memory_store, _sim_tracker_manager, sim_piece_store) = match mode {
+    // Set the runtime mode in config so the engine can access it
+    config.runtime_mode = mode;
+
+    // Create engine with appropriate managers based on runtime mode
+    let (torrent_engine, sim_piece_store, sim_tracker_manager) = match mode {
         RuntimeMode::Production => {
             let peer_manager = TcpPeerManager::new_default();
             let tracker_manager = TrackerManager::new(config.network.clone());
             let engine = spawn_torrent_engine(config.clone(), peer_manager, tracker_manager);
-            (
-                engine,
-                None::<Arc<riptide_sim::InMemoryPieceStore>>,
-                None::<()>,
-                None::<Arc<dyn PieceStore>>,
-            )
+            (engine, None, None)
         }
         RuntimeMode::Development => {
-            // In development mode, we use simulation components that are aware of the content.
+            // Development mode uses same peer manager but development tracker
             let piece_store = Arc::new(riptide_sim::InMemoryPieceStore::new());
-            let peer_manager = riptide_sim::ContentAwarePeerManager::new(
-                riptide_sim::InMemoryPeerConfig::default(),
-                piece_store.clone(),
-            );
-            let tracker_manager = riptide_sim::SimulatedTrackerManager::new();
+            let peer_manager = TcpPeerManager::new_default();
 
-            let engine = spawn_torrent_engine(config.clone(), peer_manager, tracker_manager);
+            // Create main tracker manager and get shared peer registry
+            let tracker_manager = riptide_sim::TrackerManager::new(piece_store.clone());
+            let shared_peers = tracker_manager.peer_registry();
+            let tracker_ref = Arc::new(tokio::sync::RwLock::new(tracker_manager));
 
-            (
-                engine,
-                Some(piece_store.clone()),
-                None::<()>,
-                Some(piece_store as Arc<dyn PieceStore>),
-            )
+            // Create engine tracker that shares the same peer registry
+            let engine_tracker =
+                riptide_sim::TrackerManager::with_shared_peers(piece_store.clone(), shared_peers);
+            let engine = spawn_torrent_engine(config.clone(), peer_manager, engine_tracker);
+
+            (engine, Some(piece_store), Some(tracker_ref))
         }
     };
     let search_service = MediaSearchService::from_runtime_mode(mode);
@@ -96,18 +93,26 @@ pub async fn run_server(
             Ok(count) => {
                 println!("Found {} movie files in {}", count, dir.display());
 
-                if let Some(memory_store) = &sim_memory_store {
-                    // Set up the simulated swarm with local movie content.
-                    if let Err(e) =
-                        setup_development_swarm(&mut manager, &torrent_engine, memory_store.clone())
-                            .await
+                if let (Some(memory_store), Some(tracker_manager)) =
+                    (&sim_piece_store, &sim_tracker_manager)
+                {
+                    // Set up simulated peer servers with local movie content
+                    if let Err(e) = setup_simulated_peer_servers(
+                        &mut manager,
+                        &torrent_engine,
+                        memory_store.clone(),
+                        tracker_manager.clone(),
+                    )
+                    .await
                     {
-                        eprintln!("Warning: Failed to populate piece store: {e}");
+                        eprintln!("Warning: Failed to setup peer servers: {e}");
                     }
 
                     (
                         Some(Arc::new(RwLock::new(manager))),
-                        sim_piece_store.clone(),
+                        sim_piece_store
+                            .as_ref()
+                            .map(|s| s.clone() as Arc<dyn PieceStore>),
                     )
                 } else {
                     // Production mode or no simulation managers
@@ -176,20 +181,20 @@ pub async fn run_server(
     Ok(())
 }
 
-/// Sets up a simulated BitTorrent swarm for development mode.
+/// Sets up simulated BitTorrent peer servers for development mode.
 ///
 /// This function performs the following steps:
 /// 1. Converts local movie files into torrents and populates an in-memory piece store.
-/// 2. Injects a configurable number of simulated peers into the `ContentAwarePeerManager`.
-/// 3. Adds these simulated peers to the `SimulatedTrackerManager` to make them discoverable.
+/// 2. Spawns real BitTorrent peer server tasks that listen on actual ports.
+/// 3. Configures the simulated tracker to return these peer addresses.
 ///
-/// This creates a realistic, closed-loop simulation where the `TorrentEngine` must
-/// discover and download pieces from the simulated swarm to stream content, exercising
-/// the full P2P download path.
-async fn setup_development_swarm(
+/// This creates a realistic private tracker scenario where the TorrentEngine uses
+/// production BitTorrent logic to connect to and download from simulated peer servers.
+async fn setup_simulated_peer_servers(
     library_manager: &mut FileLibraryManager,
     torrent_engine: &TorrentEngineHandle,
     piece_store: Arc<riptide_sim::InMemoryPieceStore>,
+    tracker_manager: Arc<tokio::sync::RwLock<riptide_sim::TrackerManager>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let movies = library_manager.all_files().to_vec();
     let movie_count = movies.len();
@@ -203,6 +208,7 @@ async fn setup_development_swarm(
         let _old_info_hash = movie.info_hash;
         let torrent_engine = torrent_engine.clone();
         let piece_store = piece_store.clone();
+        let tracker_manager = tracker_manager.clone();
 
         tokio::spawn(async move {
             println!("Converting {movie_title} to BitTorrent pieces...");
@@ -242,6 +248,28 @@ async fn setup_development_swarm(
                             e
                         );
                         return;
+                    }
+
+                    // Seed peer servers for this torrent (spawns real BitTorrent servers)
+                    {
+                        let tracker = tracker_manager.write().await;
+                        match tracker.seed_torrent(canonical_info_hash, 5).await {
+                            Ok(peers) => {
+                                tracing::info!(
+                                    "Spawned {} peer servers for {}: {:?}",
+                                    peers.len(),
+                                    movie_title,
+                                    peers
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to spawn peer servers for {}: {}",
+                                    movie_title,
+                                    e
+                                );
+                            }
+                        }
                     }
 
                     // Start the download to initialize the session

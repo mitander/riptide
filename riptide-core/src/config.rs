@@ -5,6 +5,8 @@
 
 use std::time::Duration;
 
+use crate::RuntimeMode;
+
 /// Central configuration for all Riptide components.
 ///
 /// Groups related configuration settings into logical sections.
@@ -15,6 +17,7 @@ pub struct RiptideConfig {
     pub network: NetworkConfig,
     pub storage: StorageConfig,
     pub simulation: SimulationConfig,
+    pub runtime_mode: RuntimeMode,
 }
 
 /// BitTorrent protocol-specific configuration.

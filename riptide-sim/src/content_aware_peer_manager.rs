@@ -244,6 +244,47 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
 
         SocketAddr::V4(SocketAddrV4::new(ip, port))
     }
+
+    /// Seeds content-aware peers for a specific torrent.
+    ///
+    /// This creates simulated peers that have pieces available for the given torrent.
+    /// The tracker can then return these peer addresses to downloaders.
+    pub async fn seed_peers_for_torrent(
+        &mut self,
+        info_hash: InfoHash,
+        peer_count: usize,
+    ) -> Vec<SocketAddr> {
+        let piece_count = self.piece_store.piece_count(info_hash).unwrap_or(1000);
+        let mut seeded_addresses = Vec::new();
+
+        for _ in 0..peer_count {
+            let address = self.generate_peer_address().await;
+            let upload_rate = 50_000 + (rand::random::<u64>() % 200_000); // 50KB/s to 250KB/s
+
+            // Create peer with all pieces available (seeder)
+            let available_pieces = vec![true; piece_count as usize];
+            self.inject_peer_with_pieces(address, info_hash, available_pieces, upload_rate)
+                .await;
+
+            seeded_addresses.push(address);
+        }
+
+        seeded_addresses
+    }
+
+    /// Returns all connected peer addresses for a specific torrent.
+    ///
+    /// Used by TrackerManager to provide realistic peer lists in announce responses.
+    pub async fn get_peers_for_torrent(&self, info_hash: InfoHash) -> Vec<SocketAddr> {
+        let peers = self.peers.read().await;
+        peers
+            .values()
+            .filter(|peer| {
+                peer.info_hash == info_hash && peer.status == ConnectionStatus::Connected
+            })
+            .map(|peer| peer.address)
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -561,5 +602,57 @@ mod tests {
         .await;
 
         assert!(receive_result.is_err()); // Timeout - no response
+    }
+
+    #[tokio::test]
+    async fn test_peer_seeding_and_coordination() {
+        let piece_store = Arc::new(InMemoryPieceStore::new());
+        let info_hash = InfoHash::new([3u8; 20]);
+
+        // Add test piece to store
+        let test_piece = TorrentPiece {
+            index: 0,
+            hash: [0u8; 20],
+            data: b"Test content for peer coordination".to_vec(),
+        };
+        piece_store
+            .add_torrent_pieces(info_hash, vec![test_piece])
+            .await
+            .unwrap();
+
+        let config = InMemoryPeerConfig::default();
+        let mut manager = ContentAwarePeerManager::new(config, piece_store);
+
+        // Seed peers for the torrent
+        let seeded_addresses = manager.seed_peers_for_torrent(info_hash, 3).await;
+        assert_eq!(seeded_addresses.len(), 3);
+
+        // Verify we can get peers for the torrent
+        let peers_for_torrent = manager.get_peers_for_torrent(info_hash).await;
+        assert_eq!(peers_for_torrent.len(), 3);
+
+        // Verify addresses match
+        for address in &seeded_addresses {
+            assert!(peers_for_torrent.contains(address));
+        }
+
+        // Test that each peer can serve the piece
+        for &peer_address in &seeded_addresses {
+            let request = PeerMessage::Request {
+                piece_index: PieceIndex::new(0),
+                offset: 0,
+                length: 34, // Length of test content
+            };
+            manager.send_message(peer_address, request).await.unwrap();
+
+            let response = manager.receive_message().await.unwrap();
+            assert_eq!(response.peer_address, peer_address);
+
+            if let PeerMessage::Piece { data, .. } = response.message {
+                assert_eq!(data.as_ref(), b"Test content for peer coordination");
+            } else {
+                panic!("Expected Piece message");
+            }
+        }
     }
 }

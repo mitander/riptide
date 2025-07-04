@@ -2,7 +2,7 @@
 
 mod builder;
 mod mock;
-mod simulated;
+pub mod simulated;
 mod types;
 
 pub use builder::MockTrackerBuilder;

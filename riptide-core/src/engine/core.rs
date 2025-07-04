@@ -18,7 +18,6 @@ use crate::torrent::{
 
 // Constants
 const DEFAULT_BITTORRENT_PORT: u16 = 6881;
-const DEFAULT_PIECE_SIZE: u32 = 262_144; // 256KB
 const REAL_DOWNLOAD_TIMEOUT_MS: u64 = 30000; // 30 seconds for testing
 
 /// Parameters for piece downloading operations.
@@ -41,6 +40,8 @@ struct DownloadContext<T: TrackerManagement, P: PeerManager> {
     tracker_urls: Vec<String>,
     announce_request: AnnounceRequest,
     piece_count: u32,
+    piece_size: u32,
+    total_size: u64,
     peer_id: PeerId,
     piece_sender: mpsc::UnboundedSender<TorrentEngineCommand>,
 }
@@ -192,12 +193,14 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         session.is_downloading = true;
         session.started_at = std::time::Instant::now();
 
-        // Announce to trackers to discover peers and start real downloading
+        // Announce to trackers to discover peers and start downloading
+        // In development mode, this will use simulated components transparently
         let tracker_manager = self.tracker_manager.clone();
         let peer_manager = self.peer_manager.clone();
         let tracker_urls = session.tracker_urls.clone();
         let peer_id = self.peer_id;
         let piece_count = session.piece_count;
+        let piece_size = session.piece_size;
         let total_size = session.total_size;
         let piece_sender = self.piece_completion_sender.clone();
 
@@ -220,6 +223,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             tracker_urls,
             announce_request,
             piece_count,
+            piece_size,
+            total_size,
             peer_id,
             piece_sender,
         };
@@ -277,9 +282,11 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             download_context.announce_request,
         )
         .await?;
-        let metadata = Self::create_test_metadata(
+        let metadata = Self::create_metadata_from_session(
             download_context.info_hash,
             download_context.piece_count,
+            download_context.piece_size,
+            download_context.total_size,
             download_context.tracker_urls,
         );
         let storage = Self::create_temp_storage(&download_context.info_hash)?;
@@ -325,9 +332,11 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         Ok(response.peers)
     }
 
-    fn create_test_metadata(
+    fn create_metadata_from_session(
         info_hash: InfoHash,
         piece_count: u32,
+        piece_size: u32,
+        total_size: u64,
         tracker_urls: Vec<String>,
     ) -> TorrentMetadata {
         let piece_hashes = (0..piece_count)
@@ -341,12 +350,12 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         TorrentMetadata {
             info_hash,
             name: format!("torrent_{info_hash}"),
-            piece_length: DEFAULT_PIECE_SIZE,
+            piece_length: piece_size,
             piece_hashes,
-            total_length: (piece_count as u64) * DEFAULT_PIECE_SIZE as u64,
+            total_length: total_size,
             files: vec![TorrentFile {
                 path: vec![format!("torrent_{info_hash}.bin")],
-                length: (piece_count as u64) * DEFAULT_PIECE_SIZE as u64,
+                length: total_size,
             }],
             announce_urls: tracker_urls,
         }

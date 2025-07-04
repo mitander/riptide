@@ -53,17 +53,20 @@
 //! - **Metrics Collection**: Detailed performance and behavior analysis
 
 pub mod content_aware_peer_manager;
+pub mod coordination;
 pub mod deterministic;
 pub mod magneto_provider;
 pub mod media;
 pub mod network;
 pub mod peer;
+pub mod peer_server;
 pub mod piece_reconstruction;
 pub mod piece_store;
 pub mod scenarios;
 pub mod simulated_peer_manager;
 pub mod streaming_integration_tests;
 pub mod tracker;
+pub mod tracker_manager;
 
 // Re-export core types for convenience
 use std::collections::HashSet;
@@ -71,6 +74,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub use content_aware_peer_manager::ContentAwarePeerManager;
+pub use coordination::SimulationCoordinator;
 pub use deterministic::{
     BandwidthInvariant, DataIntegrityInvariant, DeterministicClock, DeterministicRng,
     DeterministicSimulation, EventPriority, EventType, Invariant, InvariantViolation,
@@ -85,6 +89,7 @@ pub use magneto_provider::{
 pub use media::{MediaStreamingSimulation, MovieFolder, StreamingResult};
 pub use network::{NetworkSimulator, NetworkSimulatorBuilder};
 pub use peer::{MockPeer, MockPeerBuilder};
+pub use peer_server::{BitTorrentPeerServer, spawn_peer_servers_for_torrent};
 pub use piece_reconstruction::{PieceReconstructionService, ReconstructionProgress, VerifiedPiece};
 pub use piece_store::InMemoryPieceStore;
 // Re-export config from core for convenience
@@ -95,6 +100,7 @@ pub use scenarios::{
 };
 pub use simulated_peer_manager::{InMemoryPeerConfig, InMemoryPeerManager};
 pub use tracker::{MockTracker, MockTrackerBuilder, SimulatedTrackerManager};
+pub use tracker_manager::TrackerManager;
 
 /// Simulation environment for BitTorrent development.
 ///

@@ -441,11 +441,22 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         piece_index: PieceIndex,
     ) -> Result<Vec<u8>, TorrentError> {
         let piece_size = self.calculate_piece_size(piece_index);
+        tracing::debug!(
+            "Calculated piece size for piece {}: {} bytes",
+            piece_index,
+            piece_size
+        );
         let mut piece_data = vec![0u8; piece_size];
         let mut offset = 0u32;
 
         while offset < piece_size as u32 {
             let request_length = std::cmp::min(BLOCK_SIZE, piece_size as u32 - offset);
+            tracing::debug!(
+                "Requesting block: piece={}, offset={}, length={}",
+                piece_index,
+                offset,
+                request_length
+            );
             let block_data = self
                 .request_block_from_peer(peer_addr, piece_index, offset, request_length)
                 .await?;
@@ -582,12 +593,22 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         }
 
         if index == total_pieces - 1 {
+            // For the last piece, calculate remaining bytes
             let remaining =
                 self.torrent_metadata.total_length % self.torrent_metadata.piece_length as u64;
             if remaining > 0 {
                 remaining as usize
             } else {
-                self.torrent_metadata.piece_length as usize
+                // If remainder is 0, the last piece is exactly piece_length size
+                // UNLESS the total file is smaller than piece_length (single small piece case)
+                if total_pieces == 1
+                    && self.torrent_metadata.total_length
+                        < self.torrent_metadata.piece_length as u64
+                {
+                    self.torrent_metadata.total_length as usize
+                } else {
+                    self.torrent_metadata.piece_length as usize
+                }
             }
         } else {
             self.torrent_metadata.piece_length as usize
