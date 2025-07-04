@@ -295,9 +295,10 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
         info_hash: InfoHash,
         peer_id: PeerId,
     ) -> Result<(), TorrentError> {
-        println!(
-            "PEER_MGR: connect_peer called for {} with info_hash {}",
-            address, info_hash
+        tracing::debug!(
+            "connect_peer called for {} with info_hash {}",
+            address,
+            info_hash
         );
         // Check connection limit
         {
@@ -318,7 +319,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
 
         // Get piece count from store
         let piece_count = self.piece_store.piece_count(info_hash).unwrap_or(1000);
-        println!("PEER_MGR: piece_count for {} is {}", info_hash, piece_count);
+        tracing::debug!("piece_count for {} is {}", info_hash, piece_count);
 
         // Create simulated peer with realistic upload rate
         let upload_rate = 50_000 + (rand::random::<u64>() % 200_000); // 50KB/s to 250KB/s
@@ -336,7 +337,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
 
         // Simulate initial handshake delay
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        println!("PEER_MGR: Sending bitfield for peer {}", address);
+        tracing::debug!("Sending bitfield for peer {}", address);
 
         // Send bitfield message to inform engine about available pieces
         // Convert bool vector to bytes for bitfield
@@ -361,10 +362,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
             },
         )
         .await?;
-        println!(
-            "PEER_MGR: Successfully connected peer {} and sent bitfield",
-            address
-        );
+        tracing::debug!("Successfully connected peer {} and sent bitfield", address);
 
         Ok(())
     }

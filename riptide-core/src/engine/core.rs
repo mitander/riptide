@@ -318,21 +318,20 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             .await
             .map_err(|e| format!("Failed to announce to trackers: {e}"))?;
 
-        println!(
-            "ENGINE: Tracker response received - interval: {}, complete: {}, incomplete: {}",
-            response.interval, response.complete, response.incomplete
+        tracing::info!(
+            "Tracker response received - interval: {}, complete: {}, incomplete: {}",
+            response.interval,
+            response.complete,
+            response.incomplete
         );
 
         if response.peers.is_empty() {
             return Err("No peers available for download".into());
         }
 
-        println!(
-            "ENGINE: Tracker responded with {} peers",
-            response.peers.len()
-        );
+        tracing::info!("Tracker responded with {} peers", response.peers.len());
         for (i, peer) in response.peers.iter().enumerate() {
-            println!("ENGINE: Peer {i}: {peer}");
+            tracing::debug!("Peer {i}: {peer}");
         }
         Ok(response.peers)
     }
@@ -353,8 +352,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     async fn download_pieces(
         params: DownloadParams<P>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!(
-            "ENGINE: Starting download of {} pieces for torrent {} with {} peers",
+        tracing::info!(
+            "Starting download of {} pieces for torrent {} with {} peers",
             params.piece_count,
             params.info_hash,
             params.peers.len()
@@ -368,14 +367,11 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         )
         .map_err(|e| format!("Failed to create piece downloader: {e}"))?;
 
-        println!("ENGINE: Created piece downloader successfully");
+        tracing::debug!("Created piece downloader successfully");
 
         piece_downloader.update_peers(params.peers.clone()).await;
-        println!(
-            "ENGINE: Updated piece downloader with {} peers",
-            params.peers.len()
-        );
-        println!("ENGINE: Peer addresses: {:?}", params.peers);
+        tracing::debug!("Updated piece downloader with {} peers", params.peers.len());
+        tracing::debug!("Peer addresses: {:?}", params.peers);
 
         for piece_index in 0..params.piece_count {
             let piece_idx = PieceIndex::new(piece_index);
