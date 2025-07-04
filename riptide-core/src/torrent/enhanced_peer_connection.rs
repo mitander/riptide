@@ -174,7 +174,7 @@ impl EnhancedPeerConnection {
         };
 
         if should_be_interested != self.state.is_interested() {
-            self.state.set_interested(should_be_interested);
+            self.state.update_interest(should_be_interested);
 
             // Only send message if we're actually connected
             if self.is_connected() {
@@ -266,7 +266,7 @@ impl EnhancedPeerConnection {
     /// - `TorrentError::PeerConnectionError` - Send failed
     pub async fn choke_peer(&mut self) -> Result<(), TorrentError> {
         if !self.state.is_choking_peer() {
-            self.state.set_choking_peer(true);
+            self.state.update_choking_peer(true);
             self.protocol.send_message(PeerMessage::Choke).await?;
         }
         Ok(())
@@ -278,7 +278,7 @@ impl EnhancedPeerConnection {
     /// - `TorrentError::PeerConnectionError` - Send failed
     pub async fn unchoke_peer(&mut self) -> Result<(), TorrentError> {
         if self.state.is_choking_peer() {
-            self.state.set_choking_peer(false);
+            self.state.update_choking_peer(false);
             self.protocol.send_message(PeerMessage::Unchoke).await?;
         }
         Ok(())

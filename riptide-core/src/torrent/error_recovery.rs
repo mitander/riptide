@@ -354,8 +354,8 @@ impl ErrorRecoveryManager {
             .unwrap_or(true) // Allow first attempt
     }
 
-    /// Get delay before retrying piece download
-    pub fn get_retry_delay(&self, piece_index: PieceIndex) -> Duration {
+    /// Calculate delay before retrying piece download
+    pub fn calculate_retry_delay(&self, piece_index: PieceIndex) -> Duration {
         self.piece_retries
             .get(&piece_index)
             .map(|tracker| tracker.next_retry_delay())
@@ -375,8 +375,8 @@ impl ErrorRecoveryManager {
         }
     }
 
-    /// Get list of peers to avoid for a specific piece
-    pub fn get_peers_to_avoid_for_piece(&self, piece_index: PieceIndex) -> Vec<SocketAddr> {
+    /// List peers to avoid for a specific piece
+    pub fn peers_to_avoid_for_piece(&self, piece_index: PieceIndex) -> Vec<SocketAddr> {
         let mut peers_to_avoid = Vec::new();
 
         // Add piece-specific failed peers
@@ -401,8 +401,8 @@ impl ErrorRecoveryManager {
         peers_to_avoid
     }
 
-    /// Get statistics about error recovery
-    pub fn get_statistics(&self) -> ErrorRecoveryStats {
+    /// Statistics about error recovery
+    pub fn statistics(&self) -> ErrorRecoveryStats {
         let total_pieces_with_failures = self.piece_retries.len();
         let total_blacklisted_peers = self
             .peer_failures
@@ -597,7 +597,7 @@ mod tests {
             manager.record_piece_failure(piece, peer1, &error);
         }
 
-        let avoided_peers = manager.get_peers_to_avoid_for_piece(piece);
+        let avoided_peers = manager.peers_to_avoid_for_piece(piece);
         assert!(avoided_peers.contains(&peer1));
         assert!(!avoided_peers.contains(&peer2));
     }

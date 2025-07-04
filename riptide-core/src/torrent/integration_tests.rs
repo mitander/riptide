@@ -371,11 +371,11 @@ pub async fn test_error_recovery_real_failures() -> Result<(), TorrentError> {
     assert!(error_recovery.is_peer_blacklisted(&peer_addr));
 
     // Check that peer is avoided for this piece
-    let avoided_peers = error_recovery.get_peers_to_avoid_for_piece(piece_index);
+    let avoided_peers = error_recovery.peers_to_avoid_for_piece(piece_index);
     assert!(avoided_peers.contains(&peer_addr));
 
     // Test recovery stats
-    let stats = error_recovery.get_statistics();
+    let stats = error_recovery.statistics();
     assert_eq!(stats.total_pieces_with_failures, 1);
     assert_eq!(stats.total_blacklisted_peers, 1);
     assert_eq!(stats.total_retry_attempts, 3);

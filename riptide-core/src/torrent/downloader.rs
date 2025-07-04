@@ -175,7 +175,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
             // Wait for retry delay if this is a retry attempt
             let retry_delay = {
                 let error_recovery = self.error_recovery.read().await;
-                error_recovery.get_retry_delay(piece_index)
+                error_recovery.calculate_retry_delay(piece_index)
             };
 
             if !retry_delay.is_zero() {
@@ -348,7 +348,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     /// Get error recovery statistics
     pub async fn get_error_recovery_stats(&self) -> super::error_recovery::ErrorRecoveryStats {
         let error_recovery = self.error_recovery.read().await;
-        error_recovery.get_statistics()
+        error_recovery.statistics()
     }
 
     /// Cleanup expired error recovery entries
@@ -378,7 +378,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         // Get list of peers to avoid for this piece
         let peers_to_avoid = {
             let error_recovery = self.error_recovery.read().await;
-            error_recovery.get_peers_to_avoid_for_piece(piece_index)
+            error_recovery.peers_to_avoid_for_piece(piece_index)
         };
 
         // Filter out blacklisted and problematic peers

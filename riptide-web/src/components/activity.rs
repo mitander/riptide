@@ -132,6 +132,8 @@ pub fn status_banner(message: &str, status: &str, dismissible: bool) -> String {
 }
 
 // Helper structs for component data
+
+/// Activity item displayed in the activity feed
 #[derive(Debug)]
 pub struct ActivityItem {
     pub icon: String,
@@ -140,6 +142,7 @@ pub struct ActivityItem {
     pub time: String,
 }
 
+/// Statistic displayed in the ticker component
 #[derive(Debug)]
 pub struct TickerStat {
     pub icon: String,

@@ -115,8 +115,8 @@ impl PeerBitfield {
         byte_index < self.bits.len() && (self.bits[byte_index] & (1 << bit_index)) != 0
     }
 
-    /// Mark piece as available (set bit)
-    pub fn set_piece(&mut self, piece_index: PieceIndex) {
+    /// Mark piece as available
+    pub fn mark_piece_available(&mut self, piece_index: PieceIndex) {
         let index = piece_index.as_u32();
         if index >= self.piece_count {
             return;
@@ -206,14 +206,14 @@ impl PeerConnectionState {
         }
 
         if let Some(ref mut pieces) = self.peer_pieces {
-            pieces.set_piece(piece_index);
+            pieces.mark_piece_available(piece_index);
         }
     }
 
     /// Mark that we have a specific piece
     pub fn we_have_piece(&mut self, piece_index: PieceIndex) {
         if let Some(ref mut pieces) = self.our_pieces {
-            pieces.set_piece(piece_index);
+            pieces.mark_piece_available(piece_index);
         }
     }
 
@@ -261,13 +261,13 @@ impl PeerConnectionState {
         self.peer_interested = false;
     }
 
-    /// Set our interest in this peer
-    pub fn set_interested(&mut self, interested: bool) {
+    /// Update our interest in this peer
+    pub fn update_interest(&mut self, interested: bool) {
         self.interested = interested;
     }
 
-    /// Set whether we're choking this peer
-    pub fn set_choking_peer(&mut self, choking: bool) {
+    /// Update whether we're choking this peer
+    pub fn update_choking_peer(&mut self, choking: bool) {
         self.peer_choked = choking;
     }
 
@@ -380,9 +380,9 @@ mod tests {
         let mut bitfield = PeerBitfield::new(16);
 
         // Set and check pieces
-        bitfield.set_piece(PieceIndex::new(0));
-        bitfield.set_piece(PieceIndex::new(7));
-        bitfield.set_piece(PieceIndex::new(15));
+        bitfield.mark_piece_available(PieceIndex::new(0));
+        bitfield.mark_piece_available(PieceIndex::new(7));
+        bitfield.mark_piece_available(PieceIndex::new(15));
 
         assert!(bitfield.has_piece(PieceIndex::new(0)));
         assert!(bitfield.has_piece(PieceIndex::new(7)));
@@ -458,7 +458,7 @@ mod tests {
         assert!(!state.is_interested());
         assert!(!state.is_peer_interested());
 
-        state.set_interested(true);
+        state.update_interest(true);
         state.handle_peer_interested();
 
         assert!(state.is_interested());

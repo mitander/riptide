@@ -138,11 +138,11 @@ impl SimulatedTrackerClient {
         }
     }
 
-    /// Sets a peer coordinator callback to get peer addresses from ContentAwarePeerManager.
+    /// Configure peer coordinator callback to get peer addresses from ContentAwarePeerManager.
     ///
     /// This ensures the tracker returns peer addresses that the peer manager
     /// knows about and can handle connections to.
-    pub fn set_peer_coordinator<F>(&mut self, coordinator: Box<F>)
+    pub fn configure_peer_coordinator<F>(&mut self, coordinator: Box<F>)
     where
         F: Fn(&InfoHash) -> Vec<SocketAddr> + Send + Sync + 'static,
     {
@@ -379,7 +379,7 @@ impl SimulatedTrackerManager {
             "http://sim-tracker.test/announce".to_string(),
             config,
         );
-        client.set_peer_coordinator(Box::new(peer_coordinator));
+        client.configure_peer_coordinator(Box::new(peer_coordinator));
 
         Self {
             default_client: client,
