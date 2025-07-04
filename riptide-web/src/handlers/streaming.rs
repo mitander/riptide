@@ -64,22 +64,21 @@ pub async fn stream_torrent(
         Err(_) => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Calculate available size based on completed pieces
+    // For streaming, always report the full file size as available
+    // This allows seeking to any position - missing pieces will be downloaded on-demand
     let total_size = session.total_size;
     let completed_pieces = session.completed_pieces.iter().filter(|&&x| x).count() as u64;
-    let available_size = if completed_pieces == session.piece_count as u64 {
-        total_size
-    } else {
-        completed_pieces * session.piece_size as u64
-    };
+    let available_size = total_size; // Always use full size for proper seeking support
 
-    tracing::debug!(
-        "Streaming info: piece_count={}, piece_size={}, total_size={}, completed_pieces={}, available_size={}",
+    tracing::info!(
+        "Streaming request: piece_count={}, piece_size={}, total_size={}, completed_pieces={}/{}, available_size={}, progress={:.1}%",
         session.piece_count,
         session.piece_size,
         total_size,
         completed_pieces,
-        available_size
+        session.piece_count,
+        available_size,
+        session.progress * 100.0
     );
 
     // Handle range requests for video streaming
@@ -95,6 +94,12 @@ pub async fn stream_torrent(
 
     // Validate range bounds and get safe values
     let (start, safe_end, safe_length) = validate_range_bounds(start, end, available_size)?;
+    
+    tracing::info!(
+        "Range request: bytes={}-{} (length={}), validated: {}-{} (length={})",
+        start, end, end.saturating_sub(start) + 1,
+        start, safe_end, safe_length
+    );
 
     // Update adaptive piece picker with current playback position
     // This automatically prioritizes pieces around the requested range for optimal streaming
@@ -182,13 +187,23 @@ async fn read_original_data(
         let piece_reader =
             create_piece_reader_from_trait_object(Arc::clone(piece_store), session.piece_size);
 
-        piece_reader
-            .read_range(info_hash, start..start + length)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to read from piece store: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })
+        // Try to read from piece store, but handle missing pieces gracefully
+        match piece_reader.read_range(info_hash, start..start + length).await {
+            Ok(data) => Ok(data),
+            Err(e) => {
+                tracing::warn!(
+                    "Pieces not yet available for range {}..{}: {:?}. Sending partial response.",
+                    start,
+                    start + length,
+                    e
+                );
+                
+                // For missing pieces, return zero-filled data temporarily
+                // This allows seeking to work while pieces download in background
+                // The adaptive piece picker should prioritize these pieces
+                Ok(vec![0u8; length as usize])
+            }
+        }
     } else if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         manager
