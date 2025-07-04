@@ -94,11 +94,15 @@ pub async fn stream_torrent(
 
     // Validate range bounds and get safe values
     let (start, safe_end, safe_length) = validate_range_bounds(start, end, available_size)?;
-    
+
     tracing::info!(
         "Range request: bytes={}-{} (length={}), validated: {}-{} (length={})",
-        start, end, end.saturating_sub(start) + 1,
-        start, safe_end, safe_length
+        start,
+        end,
+        end.saturating_sub(start) + 1,
+        start,
+        safe_end,
+        safe_length
     );
 
     // Update adaptive piece picker with current playback position
@@ -188,7 +192,10 @@ async fn read_original_data(
             create_piece_reader_from_trait_object(Arc::clone(piece_store), session.piece_size);
 
         // Try to read from piece store, but handle missing pieces gracefully
-        match piece_reader.read_range(info_hash, start..start + length).await {
+        match piece_reader
+            .read_range(info_hash, start..start + length)
+            .await
+        {
             Ok(data) => Ok(data),
             Err(e) => {
                 tracing::warn!(
@@ -197,7 +204,7 @@ async fn read_original_data(
                     start + length,
                     e
                 );
-                
+
                 // For missing pieces, return zero-filled data temporarily
                 // This allows seeking to work while pieces download in background
                 // The adaptive piece picker should prioritize these pieces

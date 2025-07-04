@@ -253,7 +253,7 @@ pub async fn video_player_page(
     };
 
     // Generate video player content
-    let player_content = video_player::video_player_content(&info_hash_str, is_local);
+    let player_content = video_player::video_player_content(&info_hash_str, &title, is_local);
 
     // Wrap in full page template using local CSS
     Html(format!(
