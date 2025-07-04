@@ -36,7 +36,7 @@
 //! let mut sim = DeterministicSimulation::new(config)?;
 //! sim.create_streaming_scenario(100, Duration::from_secs(5))?;
 //!
-//! let report = sim.run_for(Duration::from_secs(30))?;
+//! let report = sim.execute_for_duration(Duration::from_secs(30))?;
 //! println!("Completed {} pieces", report.final_state.completed_pieces.len());
 //! # Ok(())
 //! # }
