@@ -16,7 +16,7 @@ use crate::torrent::parsing::types::TorrentMetadata;
 use crate::torrent::tracker::{AnnounceEvent, AnnounceRequest, TrackerManagement};
 use crate::torrent::{
     AdaptivePiecePicker, AdaptiveStreamingPiecePicker, BencodeTorrentParser, InfoHash, PeerId,
-    PeerManager, PiecePicker, TorrentError, TorrentParser,
+    PeerManager, PiecePicker, TcpPeerManager, TorrentError, TorrentParser,
 };
 
 // Constants
@@ -241,6 +241,10 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         self.piece_pickers
             .insert(info_hash, Arc::clone(&piece_picker));
 
+        // Configure upload manager for streaming if using TcpPeerManager
+        self.configure_upload_manager_for_streaming(info_hash, metadata.piece_length as u64)
+            .await;
+
         // Start BitTorrent download process
         let download_context = DownloadContext {
             info_hash,
@@ -382,6 +386,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             params.peers.len()
         );
 
+        let peer_manager_for_stats = Arc::clone(&params.peer_manager);
+
         let mut piece_downloader = PieceDownloader::new(
             params.metadata,
             params.storage,
@@ -441,14 +447,20 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                             0
                         };
 
+                        // Get upload statistics from peer manager
+                        let (bytes_uploaded, upload_speed_bps) = {
+                            let peer_manager = peer_manager_for_stats.read().await;
+                            peer_manager.upload_stats().await
+                        };
+
                         // Send download stats update command to engine
                         Self::update_download_stats_notification(
                             params.info_hash,
                             DownloadStats {
                                 download_speed_bps,
-                                upload_speed_bps: 0, // TODO: Track upload speed
+                                upload_speed_bps,
                                 bytes_downloaded,
-                                bytes_uploaded: 0, // TODO: Track upload bytes
+                                bytes_uploaded,
                             },
                             &params.piece_sender,
                         );
@@ -792,6 +804,13 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             total_progress += session.progress;
         }
 
+        // Calculate total uploaded bytes from peer manager
+        let total_uploaded = {
+            let peer_manager = self.peer_manager.read().await;
+            let (bytes_uploaded, _speed) = peer_manager.upload_stats().await;
+            bytes_uploaded
+        };
+
         let average_progress = if active_torrents > 0 {
             total_progress / active_torrents as f32
         } else {
@@ -802,7 +821,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             active_torrents,
             total_peers,
             bytes_downloaded: total_downloaded,
-            bytes_uploaded: 0, // TODO: Track upload stats
+            bytes_uploaded: total_uploaded,
             average_progress,
         }
     }
@@ -815,5 +834,57 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     pub async fn maintenance(&mut self) {
         // Remove completed torrents that are no longer needed
         // TODO: Implement based on configuration
+    }
+
+    /// Configures upload manager for streaming-optimized behavior.
+    ///
+    /// This demonstrates the clean pattern: directly accessing the upload manager
+    /// through the peer manager's public interface without wrapper methods.
+    async fn configure_upload_manager_for_streaming(&self, info_hash: InfoHash, piece_size: u64) {
+        let mut peer_manager = self.peer_manager.write().await;
+
+        // Check if we have a TcpPeerManager that supports upload management
+        if let Some(tcp_peer_manager) = peer_manager.as_any_mut().downcast_mut::<TcpPeerManager>() {
+            let upload_manager = tcp_peer_manager.upload_manager();
+            let mut upload_mgr = upload_manager.lock().await;
+
+            // Configure streaming-optimized settings based on config
+            let total_bandwidth = self.config.network.download_limit.unwrap_or(10_000_000); // 10MB/s default
+            upload_mgr.update_available_bandwidth(total_bandwidth);
+            upload_mgr.update_streaming_position(info_hash, 0); // Start at beginning
+
+            tracing::info!(
+                "Configured streaming upload throttling for torrent {} with piece_size={}",
+                info_hash,
+                piece_size
+            );
+        }
+    }
+
+    /// Updates streaming position across piece picker and upload manager.
+    ///
+    /// This method shows the clean pattern: coordinating between components
+    /// by directly accessing their interfaces rather than through wrappers.
+    pub async fn update_streaming_position_coordinated(
+        &self,
+        info_hash: InfoHash,
+        byte_position: u64,
+    ) -> Result<(), TorrentError> {
+        // Update piece picker priorities
+        if let Some(piece_picker) = self.piece_pickers.get(&info_hash) {
+            if let Ok(mut picker) = piece_picker.try_write() {
+                picker.request_seek_position(byte_position, 10_000_000); // 10MB buffer
+            }
+        }
+
+        // Update upload manager filtering - direct access, no wrappers
+        let mut peer_manager = self.peer_manager.write().await;
+        if let Some(tcp_peer_manager) = peer_manager.as_any_mut().downcast_mut::<TcpPeerManager>() {
+            let upload_manager = tcp_peer_manager.upload_manager();
+            let mut upload_mgr = upload_manager.lock().await;
+            upload_mgr.update_streaming_position(info_hash, byte_position);
+        }
+
+        Ok(())
     }
 }

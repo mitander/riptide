@@ -14,6 +14,7 @@ pub mod peer_state;
 pub mod piece_picker;
 pub mod piece_store;
 pub mod protocol;
+pub mod streaming_upload_manager;
 #[cfg(test)]
 pub mod test_data;
 pub mod tracker;
@@ -37,6 +38,7 @@ pub use piece_store::PieceStore;
 pub use protocol::{
     BitTorrentPeerProtocol, PeerHandshake, PeerId, PeerMessage, PeerProtocol, PeerState,
 };
+pub use streaming_upload_manager::{StreamingUploadConfig, StreamingUploadManager, UploadRequest};
 pub use tracker::{
     AnnounceRequest, AnnounceResponse, HttpTrackerClient, ScrapeRequest, ScrapeResponse,
     ScrapeStats, TrackerClient, TrackerManagement, TrackerManager,

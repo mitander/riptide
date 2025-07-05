@@ -50,6 +50,8 @@ struct InMemoryPeer {
     connected_at: Option<Instant>,
     last_activity: Instant,
     has_pieces: Vec<bool>, // Which pieces this peer has
+    bytes_downloaded: u64,
+    bytes_uploaded: u64,
 }
 
 impl InMemoryPeer {
@@ -67,6 +69,8 @@ impl InMemoryPeer {
             connected_at: None,
             last_activity: Instant::now(),
             has_pieces,
+            bytes_downloaded: 0,
+            bytes_uploaded: 0,
         }
     }
 
@@ -76,8 +80,8 @@ impl InMemoryPeer {
             status: self.status.clone(),
             connected_at: self.connected_at,
             last_activity: self.last_activity,
-            bytes_downloaded: 0,
-            bytes_uploaded: 0,
+            bytes_downloaded: self.bytes_downloaded,
+            bytes_uploaded: self.bytes_uploaded,
         }
     }
 }
@@ -388,6 +392,13 @@ impl PeerManager for InMemoryPeerManager {
             .values()
             .filter(|peer| peer.status == ConnectionStatus::Connected)
             .count()
+    }
+
+    async fn upload_stats(&self) -> (u64, u64) {
+        let peers = self.peers.read().await;
+        let total_uploaded: u64 = peers.values().map(|peer| peer.bytes_uploaded).sum();
+        // For simulation, upload speed is not tracked separately
+        (total_uploaded, 0)
     }
 
     async fn shutdown(&mut self) -> Result<(), TorrentError> {

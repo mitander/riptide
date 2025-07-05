@@ -26,6 +26,10 @@ pub struct MockPeerManager {
     should_fail_connection: bool,
     pending_requests: Arc<RwLock<Vec<(SocketAddr, PeerMessage)>>>,
     simulate_piece_data: bool,
+    /// Track total bytes uploaded to peers
+    bytes_uploaded: Arc<RwLock<u64>>,
+    /// Track when uploads started for speed calculation
+    upload_start_time: std::time::Instant,
 }
 
 impl MockPeerManager {
@@ -36,6 +40,8 @@ impl MockPeerManager {
             should_fail_connection: false,
             pending_requests: Arc::new(RwLock::new(Vec::new())),
             simulate_piece_data: true,
+            bytes_uploaded: Arc::new(RwLock::new(0)),
+            upload_start_time: std::time::Instant::now(),
         }
     }
 
@@ -46,6 +52,8 @@ impl MockPeerManager {
             should_fail_connection: true,
             pending_requests: Arc::new(RwLock::new(Vec::new())),
             simulate_piece_data: false,
+            bytes_uploaded: Arc::new(RwLock::new(0)),
+            upload_start_time: std::time::Instant::now(),
         }
     }
 
@@ -58,6 +66,22 @@ impl MockPeerManager {
     /// Enables piece data simulation for testing piece downloading.
     pub fn enable_piece_data_simulation(&mut self) {
         self.simulate_piece_data = true;
+    }
+
+    /// Gets current upload statistics.
+    ///
+    /// Returns (total_bytes_uploaded, upload_speed_bps)
+    pub async fn upload_stats_internal(&self) -> (u64, u64) {
+        let bytes_uploaded = *self.bytes_uploaded.read().await;
+        let elapsed = self.upload_start_time.elapsed();
+
+        let upload_speed_bps = if elapsed.as_secs() > 0 {
+            bytes_uploaded / elapsed.as_secs()
+        } else {
+            0
+        };
+
+        (bytes_uploaded, upload_speed_bps)
     }
 }
 
@@ -127,6 +151,12 @@ impl PeerManager for MockPeerManager {
                     // Generate deterministic mock piece data that will pass hash verification
                     let mock_data = vec![piece_index.as_u32() as u8; length as usize];
 
+                    // Track upload bytes (simulating sending piece data to requesting peer)
+                    {
+                        let mut bytes_uploaded = self.bytes_uploaded.write().await;
+                        *bytes_uploaded += length as u64;
+                    }
+
                     Ok(PeerMessageEvent {
                         peer_address,
                         message: PeerMessage::Piece {
@@ -163,6 +193,10 @@ impl PeerManager for MockPeerManager {
     async fn connection_count(&self) -> usize {
         let peers = self.connected_peers.read().await;
         peers.values().map(|v| v.len()).sum()
+    }
+
+    async fn upload_stats(&self) -> (u64, u64) {
+        self.upload_stats_internal().await
     }
 
     async fn shutdown(&mut self) -> Result<(), TorrentError> {
