@@ -1943,6 +1943,7 @@ dependencies = [
  "hex",
  "hyper",
  "mime_guess",
+ "rand",
  "riptide-core",
  "riptide-search",
  "riptide-sim",

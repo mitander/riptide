@@ -137,6 +137,13 @@ async fn get_video_data_with_conversion(
 ) -> Result<(Vec<u8>, u64), StatusCode> {
     let container_format = detect_container_format(&session.filename);
 
+    tracing::info!(
+        "Container format for {}: {:?}, is_browser_compatible: {}",
+        session.filename,
+        container_format,
+        container_format.is_browser_compatible()
+    );
+
     if container_format.is_browser_compatible() {
         // Direct streaming for MP4, WebM, etc. - no conversion needed
         let video_data = read_original_data(state, info_hash, session, start, length).await?;

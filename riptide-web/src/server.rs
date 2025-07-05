@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::routing::{get, post};
+use rand::{Rng, rng};
 use riptide_core::config::RiptideConfig;
 use riptide_core::streaming::{
     FfmpegProcessor, ProductionFfmpegProcessor, SimulationFfmpegProcessor,
@@ -82,9 +83,18 @@ pub async fn run_server(
             let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
             let peer_registry_clone = peer_registry.clone();
 
-            // Create content-aware peer manager with the piece store
+            // Create content-aware peer manager using simulation environment settings
+            // (Using streaming environment's network characteristics: 10-100ms latency, 0.1% packet loss)
+            let realistic_peer_config = riptide_sim::InMemoryPeerConfig {
+                message_delay_ms: 50,          // 10-100ms range from streaming environment
+                connection_failure_rate: 0.05, // 5% failure rate (realistic)
+                message_loss_rate: 0.001,      // 0.1% from streaming environment
+                max_connections: 100,          // Support for larger peer swarms
+                auto_keepalive: true,
+            };
+
             let peer_manager_sim = riptide_sim::ContentAwarePeerManager::new(
-                riptide_sim::InMemoryPeerConfig::default(),
+                realistic_peer_config,
                 piece_store_sim.clone(),
             );
 
@@ -237,14 +247,21 @@ async fn setup_development_environment(
                     .add_torrent_pieces(canonical_info_hash, pieces)
                     .await?;
 
-                // Create simulated peer addresses for this torrent
+                // Create realistic multi-peer simulation (40-50 peers with varying characteristics)
+                let mut rng = rng();
+                let peer_count = 40 + rng.random_range(0..11); // 40-50 peers
                 let mut peer_addrs = Vec::new();
-                for peer_num in 0..1 {
-                    let base_index = index as u8;
-                    let peer_index = peer_num as u8;
+
+                for peer_num in 0..peer_count {
+                    // Distribute peers across different subnets for realism
+                    let subnet_base = 192;
+                    let subnet_middle = 168 + ((peer_num / 50) as u8); // Different /16 subnets
+                    let subnet_third = (index as u8).wrapping_add((peer_num / 10) as u8);
+                    let host = 1 + (peer_num % 10) as u8;
+
                     let addr = SocketAddr::V4(SocketAddrV4::new(
-                        Ipv4Addr::new(192, 168, base_index, peer_index + 1),
-                        6881 + (index as u16) * 10 + peer_num,
+                        Ipv4Addr::new(subnet_base, subnet_middle, subnet_third, host),
+                        6881 + (peer_num as u16),
                     ));
                     peer_addrs.push(addr);
                 }
@@ -262,7 +279,7 @@ async fn setup_development_environment(
                 info_hash_updates.push((movie.info_hash, canonical_info_hash));
 
                 println!(
-                    "✓ Converted {} ({} pieces, {} simulated peer)",
+                    "✓ Converted {} ({} pieces, {} simulated peers)",
                     movie.title,
                     metadata.piece_hashes.len(),
                     peer_addrs.len()
