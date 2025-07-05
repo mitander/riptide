@@ -49,6 +49,7 @@ pub struct AppState {
     pub piece_store: Option<Arc<dyn PieceStore>>,
     pub ffmpeg_processor: Arc<dyn FfmpegProcessor>,
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
+    pub server_started_at: std::time::Instant,
 }
 
 pub async fn run_server(
@@ -141,6 +142,7 @@ pub async fn run_server(
         piece_store,
         ffmpeg_processor,
         conversion_cache,
+        server_started_at: std::time::Instant::now(),
     };
 
     let app = Router::new()

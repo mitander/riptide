@@ -1,10 +1,31 @@
 //! Live statistics and metrics HTMX handlers
 
+use std::time::Instant;
+
 use axum::extract::State;
 use axum::response::Html;
 
 use crate::components::{activity, stats};
 use crate::server::AppState;
+
+/// Formats elapsed time from start instant into human-readable string
+fn format_elapsed_time(started_at: Instant) -> String {
+    let elapsed = started_at.elapsed();
+    let total_seconds = elapsed.as_secs();
+
+    if total_seconds < 60 {
+        format!("{total_seconds}s ago")
+    } else if total_seconds < 3600 {
+        let minutes = total_seconds / 60;
+        format!("{minutes}m ago")
+    } else if total_seconds < 86400 {
+        let hours = total_seconds / 3600;
+        format!("{hours}h ago")
+    } else {
+        let days = total_seconds / 86400;
+        format!("{days}d ago")
+    }
+}
 
 /// Real-time dashboard statistics fragment
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
@@ -130,7 +151,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
             icon: icon.to_string(),
             title,
             description,
-            time: "Just now".to_string(), // TODO: Use actual timestamps
+            time: format_elapsed_time(session.started_at),
         });
     }
 
@@ -140,7 +161,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
             icon: "🚀".to_string(),
             title: "Riptide started".to_string(),
             description: Some("BitTorrent engine is running and ready".to_string()),
-            time: "Recently".to_string(),
+            time: format_elapsed_time(state.server_started_at),
         });
     }
 
@@ -203,15 +224,73 @@ pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> 
     Html(downloads_html)
 }
 
+/// Get basic system information without external dependencies
+fn get_system_metrics() -> [(&'static str, String, &'static str); 4] {
+    // For CPU usage, we'll show a placeholder since accurate CPU monitoring
+    // requires external crates like sysinfo. This is a good compromise.
+    let cpu_usage = "~";
+
+    // Memory usage from /proc/meminfo on Linux, placeholder on other systems
+    let memory_usage = get_memory_usage();
+
+    // Disk usage from current directory
+    let disk_free = get_disk_free();
+
+    // Network latency placeholder - would need external ping/network measurement
+    let network_latency = "~";
+
+    [
+        ("🖥️", cpu_usage.to_string(), "CPU Usage"),
+        ("💾", memory_usage, "Memory"),
+        ("💿", disk_free, "Disk Free"),
+        ("🌐", network_latency.to_string(), "Network"),
+    ]
+}
+
+/// Get memory usage information
+fn get_memory_usage() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        // Try to read /proc/meminfo on Linux
+        if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+            let mut mem_total = 0u64;
+            let mut mem_available = 0u64;
+
+            for line in meminfo.lines() {
+                if line.starts_with("MemTotal:") {
+                    if let Some(value) = line.split_whitespace().nth(1) {
+                        mem_total = value.parse::<u64>().unwrap_or(0) * 1024; // Convert KB to bytes
+                    }
+                } else if line.starts_with("MemAvailable:") {
+                    if let Some(value) = line.split_whitespace().nth(1) {
+                        mem_available = value.parse::<u64>().unwrap_or(0) * 1024; // Convert KB to bytes
+                    }
+                }
+            }
+
+            if mem_total > 0 && mem_available > 0 {
+                let used = mem_total - mem_available;
+                let used_gb = used as f64 / (1024.0 * 1024.0 * 1024.0);
+                return format!("{:.1}GB", used_gb);
+            }
+        }
+    }
+
+    // Fallback for non-Linux or if reading fails
+    "~".to_string()
+}
+
+/// Get available disk space using basic filesystem info
+fn get_disk_free() -> String {
+    // For now, just show a placeholder since getting disk space
+    // reliably across platforms requires external dependencies
+    // This could be enhanced later with platform-specific code
+    "~".to_string()
+}
+
 /// System performance metrics fragment
 pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
-    // TODO: Implement real system metrics
-    let metrics = [
-        ("🖥️", "45%", "CPU Usage"),
-        ("💾", "2.1GB", "Memory"),
-        ("💿", "127GB", "Disk Free"),
-        ("🌐", "15ms", "Network Latency"),
-    ];
+    let metrics = get_system_metrics();
 
     let metrics_html: String = metrics
         .iter()
