@@ -225,16 +225,16 @@ pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> 
 }
 
 /// Get basic system information without external dependencies
-fn get_system_metrics() -> [(&'static str, String, &'static str); 4] {
+fn collect_system_metrics() -> [(&'static str, String, &'static str); 4] {
     // For CPU usage, we'll show a placeholder since accurate CPU monitoring
     // requires external crates like sysinfo. This is a good compromise.
     let cpu_usage = "~";
 
     // Memory usage from /proc/meminfo on Linux, placeholder on other systems
-    let memory_usage = get_memory_usage();
+    let memory_usage = memory_usage();
 
     // Disk usage from current directory
-    let disk_free = get_disk_free();
+    let disk_free = disk_free();
 
     // Network latency placeholder - would need external ping/network measurement
     let network_latency = "~";
@@ -248,7 +248,7 @@ fn get_system_metrics() -> [(&'static str, String, &'static str); 4] {
 }
 
 /// Get memory usage information
-fn get_memory_usage() -> String {
+fn memory_usage() -> String {
     #[cfg(target_os = "linux")]
     {
         // Try to read /proc/meminfo on Linux
@@ -281,7 +281,7 @@ fn get_memory_usage() -> String {
 }
 
 /// Get available disk space using basic filesystem info
-fn get_disk_free() -> String {
+fn disk_free() -> String {
     // For now, just show a placeholder since getting disk space
     // reliably across platforms requires external dependencies
     // This could be enhanced later with platform-specific code
@@ -290,7 +290,7 @@ fn get_disk_free() -> String {
 
 /// System performance metrics fragment
 pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
-    let metrics = get_system_metrics();
+    let metrics = collect_system_metrics();
 
     let metrics_html: String = metrics
         .iter()
