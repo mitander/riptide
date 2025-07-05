@@ -77,7 +77,7 @@ pub async fn handle_command(command: Commands) -> Result<()> {
     match command {
         Commands::Add { source, output } => add_torrent(engine, source, output).await,
         Commands::Start { torrent } => start_torrent(engine, torrent).await,
-        Commands::Stop { torrent } => stop_torrent(torrent).await,
+        Commands::Stop { torrent } => stop_torrent(engine.clone(), torrent).await,
         Commands::Status { torrent } => show_status(engine, torrent).await,
         Commands::List => list_torrents(engine).await,
         Commands::Server {
@@ -142,12 +142,11 @@ pub async fn start_torrent(engine: TorrentEngineHandle, torrent: String) -> Resu
 ///
 /// # Errors
 /// - `RiptideError::Torrent` - Torrent not found or stop failed
-pub async fn stop_torrent(torrent: String) -> Result<()> {
+pub async fn stop_torrent(engine: TorrentEngineHandle, torrent: String) -> Result<()> {
     let info_hash = parse_torrent_identifier(&torrent)?;
 
     println!("Stopping download for torrent: {info_hash}");
-    // TODO: Add stop_download method to engine
-    println!("Note: Stop functionality pending engine enhancement");
+    engine.stop_download(info_hash).await?;
 
     println!("Download stopped for torrent: {info_hash}");
     println!("  Connections closed and resources released");
@@ -177,13 +176,14 @@ pub async fn list_torrents(engine: TorrentEngineHandle) -> Result<()> {
     println!("Torrent List");
     println!("{:-<60}", "");
 
+    let sessions = engine.get_active_sessions().await?;
     let stats = engine.get_download_stats().await?;
 
-    if stats.active_torrents == 0 {
+    if sessions.is_empty() {
         println!("No torrents added yet.");
         println!("Use 'riptide add <magnet-link-or-file>' to add a torrent.");
     } else {
-        println!("Active torrents: {}", stats.active_torrents);
+        println!("Active torrents: {}", sessions.len());
         println!(
             "Total downloaded: {:.2} MB",
             stats.bytes_downloaded as f64 / 1_048_576.0
@@ -194,8 +194,24 @@ pub async fn list_torrents(engine: TorrentEngineHandle) -> Result<()> {
         );
         println!("Connected peers: {}", stats.total_peers);
 
-        // TODO: Once engine provides torrent iteration, list individual torrents
-        println!("\nUse 'riptide status' for detailed information.");
+        println!("\nTorrents:");
+        for (i, session) in sessions.iter().enumerate() {
+            let status = if session.is_downloading {
+                "Downloading"
+            } else {
+                "Stopped"
+            };
+            println!(
+                "  {}: {} ({:.1}%) - {} - {}",
+                i + 1,
+                session.filename,
+                session.progress * 100.0,
+                status,
+                session.info_hash
+            );
+        }
+
+        println!("\nUse 'riptide status <info-hash>' for detailed information.");
     }
 
     Ok(())
@@ -421,5 +437,15 @@ mod tests {
         let engine = test_engine_handle_builder();
         let result = show_status(engine, None).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_stop_torrent_valid_hash() {
+        let engine = test_engine_handle_builder();
+        let hash_str = "0123456789abcdef0123456789abcdef01234567";
+
+        // This should return an error since the torrent doesn't exist
+        let result = stop_torrent(engine, hash_str.to_string()).await;
+        assert!(result.is_err()); // Expected to fail since torrent doesn't exist
     }
 }

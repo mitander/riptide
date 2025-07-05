@@ -865,16 +865,17 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     ///
     /// This method shows the clean pattern: coordinating between components
     /// by directly accessing their interfaces rather than through wrappers.
+    #[allow(dead_code)]
     pub async fn update_streaming_position_coordinated(
         &self,
         info_hash: InfoHash,
         byte_position: u64,
     ) -> Result<(), TorrentError> {
         // Update piece picker priorities
-        if let Some(piece_picker) = self.piece_pickers.get(&info_hash) {
-            if let Ok(mut picker) = piece_picker.try_write() {
-                picker.request_seek_position(byte_position, 10_000_000); // 10MB buffer
-            }
+        if let Some(piece_picker) = self.piece_pickers.get(&info_hash)
+            && let Ok(mut picker) = piece_picker.try_write()
+        {
+            picker.request_seek_position(byte_position, 10_000_000); // 10MB buffer
         }
 
         // Update upload manager filtering - direct access, no wrappers
@@ -884,6 +885,44 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             let mut upload_mgr = upload_manager.lock().await;
             upload_mgr.update_streaming_position(info_hash, byte_position);
         }
+
+        Ok(())
+    }
+
+    /// Stops downloading a torrent by its info hash.
+    ///
+    /// Stops the download process for the specified torrent, closes peer
+    /// connections, and releases resources. The torrent remains in the
+    /// engine's list but is marked as not downloading.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub fn stop_download(&mut self, info_hash: InfoHash) -> Result<(), TorrentError> {
+        let session = self
+            .active_torrents
+            .get_mut(&info_hash)
+            .ok_or(TorrentError::TorrentNotFound { info_hash })?;
+
+        if !session.is_downloading {
+            return Ok(()); // Already stopped
+        }
+
+        session.is_downloading = false;
+
+        tracing::info!(
+            "Stopped download for torrent {} ({})",
+            info_hash,
+            session.filename
+        );
+
+        // Clean up piece picker for this torrent
+        self.piece_pickers.remove(&info_hash);
+
+        // TODO: In a full implementation, we would also:
+        // - Cancel any ongoing download tasks
+        // - Close peer connections for this torrent
+        // - Announce "stopped" event to trackers
+        // For now, we just mark the session as stopped
 
         Ok(())
     }

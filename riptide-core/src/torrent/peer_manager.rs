@@ -208,6 +208,7 @@ impl TcpPeerManager {
     }
 
     /// Starts background task to handle peer connection lifecycle.
+    #[allow(clippy::too_many_arguments)]
     async fn start_peer_task(
         &self,
         address: SocketAddr,

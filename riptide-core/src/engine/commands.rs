@@ -76,6 +76,11 @@ pub enum TorrentEngineCommand {
         info_hash: InfoHash,
         responder: oneshot::Sender<Result<crate::torrent::BufferStatus, TorrentError>>,
     },
+    /// Stop downloading a torrent by its info hash.
+    StopDownload {
+        info_hash: InfoHash,
+        responder: oneshot::Sender<Result<(), TorrentError>>,
+    },
 }
 
 /// Active download session for a single torrent.

@@ -194,6 +194,14 @@ where
             let result = engine.buffer_status(info_hash);
             let _ = responder.send(result);
         }
+
+        TorrentEngineCommand::StopDownload {
+            info_hash,
+            responder,
+        } => {
+            let result = engine.stop_download(info_hash);
+            let _ = responder.send(result);
+        }
     }
     true // Continue processing
 }

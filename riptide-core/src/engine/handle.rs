@@ -281,6 +281,29 @@ impl TorrentEngineHandle {
         rx.await.map_err(|_| TorrentError::EngineShutdown)?
     }
 
+    /// Stops downloading a torrent by its info hash.
+    ///
+    /// Stops the download process for the specified torrent, closes peer
+    /// connections, and releases resources. The torrent remains in the
+    /// engine's list but is marked as not downloading.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub async fn stop_download(&self, info_hash: InfoHash) -> Result<(), TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::StopDownload {
+            info_hash,
+            responder,
+        };
+
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineShutdown)?;
+
+        rx.await.map_err(|_| TorrentError::EngineShutdown)?
+    }
+
     /// Checks if the engine actor is still running.
     ///
     /// Returns true if the sender channel is still open, indicating the

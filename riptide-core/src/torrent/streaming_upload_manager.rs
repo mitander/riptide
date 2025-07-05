@@ -160,6 +160,7 @@ impl StreamingUploadManager {
     /// Queues an upload request from a peer.
     ///
     /// Returns true if request was queued, false if rejected due to throttling.
+    #[allow(clippy::too_many_arguments)]
     pub fn queue_upload_request(
         &mut self,
         peer_address: SocketAddr,
@@ -235,20 +236,19 @@ impl StreamingUploadManager {
             }
 
             let reciprocity = stats.reciprocity_ratio();
-            if best_peer.map_or(true, |(_, best_ratio)| reciprocity > best_ratio) {
+            if best_peer.is_none_or(|(_, best_ratio)| reciprocity > best_ratio) {
                 best_peer = Some((peer_address, reciprocity));
             }
         }
 
         // Get next request from best peer
-        if let Some((peer_address, _)) = best_peer {
-            if let Some(stats) = self.peer_stats.get_mut(&peer_address) {
-                if let Some(request) = stats.upload_queue.pop_front() {
-                    stats.is_actively_uploading = true;
-                    self.active_upload_slots += 1;
-                    return Some((peer_address, request));
-                }
-            }
+        if let Some((peer_address, _)) = best_peer
+            && let Some(stats) = self.peer_stats.get_mut(&peer_address)
+            && let Some(request) = stats.upload_queue.pop_front()
+        {
+            stats.is_actively_uploading = true;
+            self.active_upload_slots += 1;
+            return Some((peer_address, request));
         }
 
         None
@@ -279,10 +279,11 @@ impl StreamingUploadManager {
 
     /// Removes disconnected peer from tracking.
     pub fn remove_peer(&mut self, peer_address: SocketAddr) {
-        if let Some(stats) = self.peer_stats.remove(&peer_address) {
-            if stats.is_actively_uploading && self.active_upload_slots > 0 {
-                self.active_upload_slots -= 1;
-            }
+        if let Some(stats) = self.peer_stats.remove(&peer_address)
+            && stats.is_actively_uploading
+            && self.active_upload_slots > 0
+        {
+            self.active_upload_slots -= 1;
         }
     }
 
