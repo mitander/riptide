@@ -14,16 +14,16 @@ fn format_elapsed_time(started_at: Instant) -> String {
     let total_seconds = elapsed.as_secs();
 
     if total_seconds < 60 {
-        format!("{total_seconds}s ago")
+        format!("{total_seconds}s")
     } else if total_seconds < 3600 {
         let minutes = total_seconds / 60;
-        format!("{minutes}m ago")
+        format!("{minutes}m")
     } else if total_seconds < 86400 {
         let hours = total_seconds / 3600;
-        format!("{hours}h ago")
+        format!("{hours}h")
     } else {
         let days = total_seconds / 86400;
-        format!("{days}d ago")
+        format!("{days}d")
     }
 }
 
@@ -37,12 +37,19 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     let downloading_count = sessions.iter().filter(|s| s.progress < 1.0).count();
     let completed_count = sessions.iter().filter(|s| s.progress >= 1.0).count();
 
-    // Download/upload speeds (simplified for now)
-    let download_speed = (engine_stats.bytes_downloaded as f64) / 1_048_576.0;
-    let upload_speed = (engine_stats.bytes_uploaded as f64) / 1_048_576.0;
+    let session_duration = state.server_started_at.elapsed().as_secs_f64();
+    let download_speed = if session_duration > 0.0 {
+        (engine_stats.bytes_downloaded as f64) / session_duration / 1_048_576.0
+    } else {
+        0.0
+    };
+    let upload_speed = if session_duration > 0.0 {
+        (engine_stats.bytes_uploaded as f64) / session_duration / 1_048_576.0
+    } else {
+        0.0
+    };
     let total_downloaded = (engine_stats.bytes_downloaded as f64) / 1_073_741_824.0;
 
-    // Library size
     let library_size = if let Some(ref movie_manager) = state.movie_manager {
         let manager = movie_manager.read().await;
         manager.all_files().len()
@@ -50,12 +57,16 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
         0
     };
 
-    // Connected peers estimate
     let connected_peers: usize = sessions
         .iter()
-        .map(|s| s.completed_pieces.iter().filter(|&&x| x).count())
-        .sum::<usize>()
-        .min(50);
+        .map(|s| {
+            if s.progress > 0.0 && s.download_speed_bps > 0 {
+                std::cmp::min(s.piece_count / 10, 20) as usize
+            } else {
+                0
+            }
+        })
+        .sum();
 
     let stat_cards = vec![
         stats::stat_card(
@@ -155,12 +166,21 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
         });
     }
 
-    // Add system activity if no torrents
     if activities.is_empty() {
+        let uptime = state.server_started_at.elapsed();
+        let uptime_str = if uptime.as_secs() < 60 {
+            "just started".to_string()
+        } else {
+            format!(
+                "running for {}",
+                format_elapsed_time(state.server_started_at)
+            )
+        };
+
         activities.push(activity::ActivityItem {
             icon: "🚀".to_string(),
-            title: "Riptide started".to_string(),
-            description: Some("BitTorrent engine is running and ready".to_string()),
+            title: "Riptide engine online".to_string(),
+            description: Some(format!("System {uptime_str} and ready for downloads")),
             time: format_elapsed_time(state.server_started_at),
         });
     }

@@ -36,13 +36,18 @@ pub async fn system_status(State(state): State<AppState>) -> Html<String> {
 
 /// Renders a live ticker with current stats
 pub async fn live_ticker(State(state): State<AppState>) -> Html<String> {
-    let engine_stats = state.torrent_engine.get_download_stats().await.unwrap();
     let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
 
-    let download_speed = (engine_stats.bytes_downloaded as f64) / 1_048_576.0;
-    let upload_speed = (engine_stats.bytes_uploaded as f64) / 1_048_576.0;
+    let current_download_speed: u64 = sessions.iter().map(|s| s.download_speed_bps).sum();
+    let current_upload_speed: u64 = sessions.iter().map(|s| s.upload_speed_bps).sum();
+
+    let download_speed = current_download_speed as f64 / 1_048_576.0;
+    let upload_speed = current_upload_speed as f64 / 1_048_576.0;
     let active_torrents = sessions.len();
-    let downloading = sessions.iter().filter(|s| s.progress < 1.0).count();
+    let downloading = sessions
+        .iter()
+        .filter(|s| s.progress < 1.0 && s.progress > 0.0)
+        .count();
 
     let ticker_stats = vec![
         activity::TickerStat {
@@ -77,22 +82,27 @@ pub async fn status_banner(State(state): State<AppState>) -> Html<String> {
 
     let mut messages = Vec::new();
 
-    // Check for low disk space (placeholder - would need real disk space check)
-    let available_gb = 10.0; // Placeholder
-    if available_gb < 5.0 {
-        messages.push((
-            "warning",
-            format!("Low disk space: {available_gb:.1} GB remaining"),
-        ));
-    }
+    let slow_threshold_bps = 100_000;
 
-    // Check for stalled downloads
     let stalled_count = sessions
         .iter()
         .filter(|s| s.progress > 0.0 && s.progress < 1.0 && s.download_speed_bps == 0)
         .count();
     if stalled_count > 0 {
-        messages.push(("info", format!("{stalled_count} downloads appear stalled")));
+        messages.push(("warning", format!("{stalled_count} downloads stalled")));
+    }
+
+    let slow_count = sessions
+        .iter()
+        .filter(|s| {
+            s.progress > 0.0
+                && s.progress < 1.0
+                && s.download_speed_bps > 0
+                && s.download_speed_bps < slow_threshold_bps
+        })
+        .count();
+    if slow_count > 0 {
+        messages.push(("info", format!("{slow_count} downloads are slow")));
     }
 
     // Check for completed downloads
@@ -101,13 +111,21 @@ pub async fn status_banner(State(state): State<AppState>) -> Html<String> {
         messages.push(("success", format!("{completed_count} downloads completed")));
     }
 
-    // Check for high activity
-    if engine_stats.bytes_downloaded > 100_000_000 {
-        // > 100MB
+    if engine_stats.bytes_downloaded > 10_000_000 {
+        let session_duration = state.server_started_at.elapsed();
         let gb_downloaded = engine_stats.bytes_downloaded as f64 / 1_073_741_824.0;
+        let hours = session_duration.as_secs() / 3600;
+        let minutes = (session_duration.as_secs() % 3600) / 60;
+
+        let time_str = if hours > 0 {
+            format!("{hours}h {minutes}m")
+        } else {
+            format!("{minutes}m")
+        };
+
         messages.push((
-            "info",
-            format!("{gb_downloaded:.1} GB downloaded this session"),
+            "success",
+            format!("{gb_downloaded:.1} GB downloaded in {time_str}"),
         ));
     }
 
