@@ -16,6 +16,7 @@ Riptide implements BitTorrent protocol with trait-based architecture enabling bo
 **Current Status:**
 
 - BitTorrent protocol: Complete tracker communication, peer connections, piece downloading
+- Streaming service: Direct MP4/WebM playback, FFmpeg conversion for MKV/AVI
 - Trait-based architecture: Swappable production/simulation implementations
 - Piece downloader with hash verification and timeout controls
 - Storage layer with piece management and file reconstruction
@@ -23,9 +24,10 @@ Riptide implements BitTorrent protocol with trait-based architecture enabling bo
 
 **Coming Next:**
 
-- Streaming optimization with deadline-based piece selection
+- Sequential piece picking for streaming optimization
+- Upload throttling to prioritize download bandwidth
 - Media search integration and metadata services
-- Web UI for library browsing
+- Enhanced web UI for library browsing
 
 ## Dependencies
 
@@ -39,6 +41,17 @@ sudo apt install ffmpeg libavutil-dev libavformat-dev libavcodec-dev
 brew install ffmpeg
 ```
 
+## Streaming Support
+
+Riptide provides direct browser streaming for downloaded content:
+
+- **MP4/WebM**: Direct streaming without conversion
+- **MKV/AVI/MOV**: Automatic FFmpeg conversion to MP4
+- **Range requests**: Supports seeking and partial content
+- **Real-time**: Streams content as it downloads (when sufficient pieces available)
+
+Access streaming via: `http://localhost:3000/stream/{torrent_hash}`
+
 ## Usage
 
 ```bash
@@ -47,14 +60,17 @@ git clone https://github.com/mitander/riptide
 cd riptide
 cargo build --release
 
-# Start web server with demo data
-cargo run -p riptide-cli -- server --demo
+# Start web server in development mode (simulation data)
+cargo run --bin riptide -- server --mode development
 
 # Add torrents via magnet links
-cargo run -p riptide-cli -- add "magnet:?xt=urn:btih:..."
+cargo run --bin riptide -- add "magnet:?xt=urn:btih:..."
 
-# Start server in development mode
-cargo run -p riptide-cli -- server --host 0.0.0.0 --port 8080 --development
+# Start server with custom host/port
+cargo run --bin riptide -- server --host 0.0.0.0 --port 8080
+
+# Start server with local movie files for simulation
+cargo run --bin riptide -- server --mode development --movies-dir /path/to/movies
 
 # Run simulation scenarios for testing
 cargo test -p riptide-sim -- --nocapture

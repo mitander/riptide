@@ -212,9 +212,9 @@ pub struct PieceReconstructionService {
 
 ### 5. Streaming Strategy
 
-**Choice**: Direct streaming by default, pre-transcode during download for incompatible formats.
+**Choice**: Direct streaming for browser-compatible formats (MP4/WebM), FFmpeg conversion for others (MKV/AVI/MOV) when download is near-complete.
 
-**Rationale**: Eliminates buffering/stuttering. Most devices support H.264/H.265 directly.
+**Rationale**: Direct streaming eliminates transcoding overhead. Legacy formats converted only when sufficient content is available for reliable processing.
 
 ### 6. Database Design
 
