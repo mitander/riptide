@@ -291,14 +291,10 @@ pub async fn create_development_components(
     use riptide_core::torrent::{InfoHash, PieceStore, spawn_torrent_engine};
     use tokio::sync::RwLock;
 
-    // Development mode uses simulation components
     let piece_store_sim = Arc::new(InMemoryPieceStore::new());
 
-    // Create a shared registry of simulated peer addresses
     let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
     let peer_registry_clone = peer_registry.clone();
-
-    // Create content-aware peer manager with realistic network characteristics
     let realistic_peer_config = InMemoryPeerConfig {
         message_delay_ms: 50,          // 10-100ms range from streaming environment
         connection_failure_rate: 0.05, // 5% failure rate (realistic)
@@ -310,7 +306,6 @@ pub async fn create_development_components(
     let peer_manager_sim =
         ContentAwarePeerManager::new(realistic_peer_config, piece_store_sim.clone());
 
-    // Create tracker that coordinates with the peer registry
     let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_coordinator(
         tracker::ResponseConfig::default(),
         move |info_hash| {
@@ -322,18 +317,15 @@ pub async fn create_development_components(
     let engine = spawn_torrent_engine(config, peer_manager_sim, tracker_manager_sim);
     let conversion_progress = Arc::new(RwLock::new(HashMap::new()));
 
-    // Initialize file library manager if movies directory provided
     let manager_opt = if let Some(dir) = movies_dir.as_ref() {
         let mut manager = FileLibraryManager::new();
 
-        // Quick scan to initialize the manager
         match manager.scan_directory(dir).await {
             Ok(count) => {
                 println!("Found {} movie files in {}", count, dir.display());
 
                 let movies: Vec<_> = manager.all_files().into_iter().cloned().collect();
 
-                // Initialize conversion progress tracking
                 {
                     let mut progress = conversion_progress.write().await;
                     for movie in &movies {

@@ -10,7 +10,6 @@ use std::sync::Arc;
 use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, warn};
 
 /// BitTorrent peer server that serves pieces from a PieceStore
 pub struct BitTorrentPeerServer<P: PieceStore> {
@@ -34,9 +33,10 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     /// The server runs in a background task and serves pieces to connecting peers
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(self.listen_address).await?;
-        info!(
+        tracing::info!(
             "Started BitTorrent peer server for {} on {}",
-            self.info_hash, self.listen_address
+            self.info_hash,
+            self.listen_address
         );
 
         // Spawn background task to handle connections
@@ -44,7 +44,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
             loop {
                 match listener.accept().await {
                     Ok((stream, peer_addr)) => {
-                        debug!("Accepted connection from {}", peer_addr);
+                        tracing::debug!("Accepted connection from {}", peer_addr);
                         let server = BitTorrentPeerServer {
                             info_hash: self.info_hash,
                             piece_store: self.piece_store.clone(),
@@ -53,12 +53,12 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
 
                         tokio::spawn(async move {
                             if let Err(e) = server.handle_connection(stream, peer_addr).await {
-                                debug!("Connection from {} ended: {}", peer_addr, e);
+                                tracing::debug!("Connection from {} ended: {}", peer_addr, e);
                             }
                         });
                     }
                     Err(e) => {
-                        error!("Failed to accept connection: {}", e);
+                        tracing::error!("Failed to accept connection: {}", e);
                         break;
                     }
                 }
@@ -74,7 +74,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         mut stream: TcpStream,
         peer_addr: SocketAddr,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        debug!("Handling connection from {}", peer_addr);
+        tracing::debug!("Handling connection from {}", peer_addr);
 
         // Simple handshake - in a real implementation this would be more complete
         let mut handshake_buf = [0u8; 68];
@@ -82,16 +82,18 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
 
         // Verify protocol string (first 20 bytes should be BitTorrent protocol)
         if &handshake_buf[1..20] != b"BitTorrent protocol" {
-            warn!("Invalid handshake from {}", peer_addr);
+            tracing::warn!("Invalid handshake from {}", peer_addr);
             return Err("Invalid handshake".into());
         }
 
         // Extract info_hash from handshake (bytes 28-48)
         let received_info_hash = InfoHash::new(<[u8; 20]>::try_from(&handshake_buf[28..48])?);
         if received_info_hash != self.info_hash {
-            warn!(
+            tracing::warn!(
                 "Wrong info_hash from {}: got {}, expected {}",
-                peer_addr, received_info_hash, self.info_hash
+                peer_addr,
+                received_info_hash,
+                self.info_hash
             );
             return Err("Wrong info_hash".into());
         }
@@ -104,7 +106,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         response.extend_from_slice(&[0u8; 20]); // Peer ID
         stream.write_all(&response).await?;
 
-        debug!("Handshake completed with {}", peer_addr);
+        tracing::debug!("Handshake completed with {}", peer_addr);
 
         // Send bitfield message to indicate we have all pieces
         if let Ok(piece_count) = self.piece_store.piece_count(self.info_hash) {
@@ -128,23 +130,23 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
                                 .await?;
                         }
                         PeerMessage::Interested => {
-                            debug!("Peer {} is interested", peer_addr);
+                            tracing::debug!("Peer {} is interested", peer_addr);
                             // Already unchoked
                         }
                         PeerMessage::KeepAlive => {
-                            debug!("Keep-alive from {}", peer_addr);
+                            tracing::debug!("Keep-alive from {}", peer_addr);
                         }
                         _ => {
-                            debug!("Received message from {}: {:?}", peer_addr, message);
+                            tracing::debug!("Received message from {}: {:?}", peer_addr, message);
                         }
                     }
                 }
                 Ok(None) => {
-                    debug!("Connection closed by peer {}", peer_addr);
+                    tracing::debug!("Connection closed by peer {}", peer_addr);
                     break;
                 }
                 Err(e) => {
-                    debug!("Error reading message from {}: {}", peer_addr, e);
+                    tracing::debug!("Error reading message from {}: {}", peer_addr, e);
                     break;
                 }
             }
@@ -174,7 +176,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         stream.write_all(&[5u8]).await?; // Bitfield message ID
         stream.write_all(&bitfield).await?;
 
-        debug!("Sent bitfield with {} pieces", piece_count);
+        tracing::debug!("Sent bitfield with {} pieces", piece_count);
         Ok(())
     }
 
@@ -186,7 +188,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         let message_length = 1u32;
         stream.write_all(&message_length.to_be_bytes()).await?;
         stream.write_all(&[1u8]).await?; // Unchoke message ID
-        debug!("Sent unchoke message");
+        tracing::debug!("Sent unchoke message");
         Ok(())
     }
 
@@ -267,9 +269,11 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         offset: u32,
         length: u32,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        debug!(
+        tracing::debug!(
             "Handling piece request: piece={}, offset={}, length={}",
-            piece_index, offset, length
+            piece_index,
+            offset,
+            length
         );
 
         // Get piece data from store
@@ -283,7 +287,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
                 let end = std::cmp::min(start + length as usize, piece_data.len());
 
                 if start >= piece_data.len() {
-                    warn!(
+                    tracing::warn!(
                         "Invalid piece request: offset {} >= piece length {}",
                         start,
                         piece_data.len()
@@ -303,15 +307,15 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
                 stream.write_all(&offset.to_be_bytes()).await?;
                 stream.write_all(block_data).await?;
 
-                debug!(
+                tracing::debug!(
                     "Sent piece block: piece={}, offset={}, length={}",
                     piece_index,
                     offset,
-                    block_data.len()
+                    length
                 );
             }
             Err(e) => {
-                warn!("Failed to get piece data for piece {}: {}", piece_index, e);
+                tracing::warn!("Failed to get piece data for piece {}: {}", piece_index, e);
             }
         }
 
@@ -352,7 +356,7 @@ pub async fn spawn_peer_servers_for_torrent<P: PieceStore + Send + Sync + 'stati
         server.start().await?;
 
         peer_addresses.push(address);
-        info!(
+        tracing::info!(
             "Spawned peer server {} for torrent {} on {}",
             i + 1,
             info_hash,

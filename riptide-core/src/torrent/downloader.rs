@@ -11,11 +11,12 @@ use std::time::Duration;
 
 use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
-use tokio::time::timeout;
 
+#[cfg(test)]
+use super::enhanced_peer_connection::EnhancedPeerConnection;
 use super::error_recovery::ErrorRecoveryManager;
 use super::protocol::types::{PeerId, PeerMessage};
-use super::{PeerManager, PieceIndex, TorrentError, TorrentMetadata};
+use super::{PeerManager, PeerMessageEvent, PieceIndex, TorrentError, TorrentMetadata};
 use crate::storage::Storage;
 
 // Constants
@@ -565,7 +566,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         piece_index: PieceIndex,
         expected_offset: u32,
     ) -> Result<bytes::Bytes, TorrentError> {
-        timeout(Duration::from_secs(PEER_REQUEST_TIMEOUT_SECS), async {
+        tokio::time::timeout(Duration::from_secs(PEER_REQUEST_TIMEOUT_SECS), async {
             let mut message_count = 0;
             const MAX_MESSAGES: usize = 50; // Prevent infinite loops
 
@@ -605,7 +606,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     /// Checks if received message matches the expected piece response.
     fn is_matching_piece_response(
         &self,
-        msg_event: &crate::torrent::PeerMessageEvent,
+        msg_event: &PeerMessageEvent,
         expected_peer: SocketAddr,
         expected_piece: PieceIndex,
         expected_offset: u32,
@@ -1020,8 +1021,6 @@ mod tests {
     #[tokio::test]
     async fn test_enhanced_peer_connection_integration() {
         use std::net::{IpAddr, Ipv4Addr};
-
-        use crate::torrent::enhanced_peer_connection::EnhancedPeerConnection;
 
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let mut connection = EnhancedPeerConnection::new(address, 100);

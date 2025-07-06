@@ -1,8 +1,14 @@
 //! Core torrent engine implementation for the actor model.
 
 use std::collections::HashMap;
+use std::env::temp_dir;
+use std::error::Error;
+use std::fs::create_dir_all;
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 
+use tokio::sync::oneshot::channel;
 use tokio::sync::{RwLock, mpsc};
 use tokio::time::Duration;
 
@@ -15,8 +21,8 @@ use crate::torrent::downloader::PieceDownloader;
 use crate::torrent::parsing::types::TorrentMetadata;
 use crate::torrent::tracker::{AnnounceEvent, AnnounceRequest, TrackerManagement};
 use crate::torrent::{
-    AdaptivePiecePicker, AdaptiveStreamingPiecePicker, BencodeTorrentParser, InfoHash, PeerId,
-    PeerManager, PiecePicker, TcpPeerManager, TorrentError, TorrentParser,
+    AdaptivePiecePicker, AdaptiveStreamingPiecePicker, BencodeTorrentParser, BufferStatus,
+    InfoHash, PeerId, PeerManager, PiecePicker, TorrentError, TorrentParser,
 };
 
 // Constants
@@ -29,7 +35,7 @@ struct DownloadParams<P: PeerManager> {
     storage: FileStorage,
     peer_manager: Arc<RwLock<P>>,
     peer_id: PeerId,
-    peers: Vec<std::net::SocketAddr>,
+    peers: Vec<SocketAddr>,
     info_hash: InfoHash,
     piece_count: u32,
     piece_sender: mpsc::UnboundedSender<TorrentEngineCommand>,
@@ -202,7 +208,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         }
 
         session.is_downloading = true;
-        session.started_at = std::time::Instant::now();
+        session.started_at = Instant::now();
 
         // Announce to trackers to discover peers and start downloading
         // In development mode, this will use simulated components transparently
@@ -301,7 +307,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     async fn download_torrent_pieces(
         download_context: DownloadContext<T, P>,
         piece_picker: Arc<RwLock<AdaptiveStreamingPiecePicker>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let peers = Self::discover_peers(
             download_context.tracker_manager,
             &download_context.tracker_urls,
@@ -338,7 +344,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         tracker_manager: Arc<RwLock<T>>,
         tracker_urls: &[String],
         announce_request: AnnounceRequest,
-    ) -> Result<Vec<std::net::SocketAddr>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<SocketAddr>, Box<dyn Error + Send + Sync>> {
         let mut manager = tracker_manager.write().await;
         let response = manager
             .announce_to_trackers(tracker_urls, announce_request)
@@ -365,20 +371,20 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
     fn create_temp_storage(
         info_hash: &InfoHash,
-    ) -> Result<FileStorage, Box<dyn std::error::Error + Send + Sync>> {
-        let temp_dir = std::env::temp_dir().join(format!("riptide_{info_hash}"));
-        std::fs::create_dir_all(&temp_dir)
+    ) -> Result<FileStorage, Box<dyn Error + Send + Sync>> {
+        let temp_dir_path = temp_dir().join(format!("riptide_{info_hash}"));
+        create_dir_all(&temp_dir_path)
             .map_err(|e| format!("Failed to create storage directory: {e}"))?;
 
         Ok(FileStorage::new(
-            temp_dir.join("downloads"),
-            temp_dir.join("library"),
+            temp_dir_path.join("downloads"),
+            temp_dir_path.join("library"),
         ))
     }
 
     async fn download_pieces(
         params: DownloadParams<P>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         tracing::info!(
             "Starting download of {} pieces for torrent {} with {} peers",
             params.piece_count,
@@ -402,7 +408,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         tracing::debug!("Updated piece downloader with {} peers", params.peers.len());
         tracing::debug!("Peer addresses: {:?}", params.peers);
 
-        let start_time = std::time::Instant::now();
+        let start_time = Instant::now();
         let mut last_speed_update = start_time;
         let mut bytes_downloaded = 0u64;
         let mut pieces_downloaded = 0u32;
@@ -419,7 +425,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                 }
             };
 
-            let piece_start = std::time::Instant::now();
+            let piece_start = Instant::now();
 
             match piece_downloader.download_piece(piece_idx).await {
                 Ok(()) => {
@@ -436,8 +442,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                     bytes_downloaded += piece_downloader.metadata().piece_length as u64;
 
                     // Update speed statistics every 2 seconds or on completion
-                    let now = std::time::Instant::now();
-                    if now.duration_since(last_speed_update) >= std::time::Duration::from_secs(2)
+                    let now = Instant::now();
+                    if now.duration_since(last_speed_update) >= Duration::from_secs(2)
                         || pieces_downloaded == params.piece_count
                     {
                         let total_duration = now.duration_since(start_time);
@@ -501,7 +507,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         piece_index: u32,
         piece_sender: &mpsc::UnboundedSender<TorrentEngineCommand>,
     ) {
-        let (responder, _receiver) = tokio::sync::oneshot::channel();
+        let (responder, _receiver) = channel();
         let cmd = TorrentEngineCommand::MarkPiecesCompleted {
             info_hash,
             piece_indices: vec![piece_index],
@@ -708,10 +714,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     ///
     /// # Errors
     /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    pub fn buffer_status(
-        &self,
-        info_hash: InfoHash,
-    ) -> Result<crate::torrent::BufferStatus, TorrentError> {
+    pub fn buffer_status(&self, info_hash: InfoHash) -> Result<BufferStatus, TorrentError> {
         // Validate torrent exists
         self.active_torrents
             .get(&info_hash)
@@ -727,7 +730,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                     info_hash
                 );
                 // Return default buffer status
-                Ok(crate::torrent::BufferStatus {
+                Ok(BufferStatus {
                     current_position: 0,
                     bytes_ahead: 0,
                     bytes_behind: 0,
@@ -739,7 +742,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         } else {
             tracing::warn!("No active piece picker found for torrent {}", info_hash);
             // Return default buffer status
-            Ok(crate::torrent::BufferStatus {
+            Ok(BufferStatus {
                 current_position: 0,
                 bytes_ahead: 0,
                 bytes_behind: 0,
@@ -761,7 +764,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     pub async fn connect_peer(
         &self,
         info_hash: InfoHash,
-        peer_address: std::net::SocketAddr,
+        peer_address: SocketAddr,
     ) -> Result<(), TorrentError> {
         let mut peer_manager = self.peer_manager.write().await;
         peer_manager
@@ -838,21 +841,28 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
     /// Configures upload manager for streaming-optimized behavior.
     ///
-    /// This demonstrates the clean pattern: directly accessing the upload manager
-    /// through the peer manager's public interface without wrapper methods.
-    async fn configure_upload_manager_for_streaming(&self, info_hash: InfoHash, piece_size: u64) {
+    /// Uses the PeerManager trait interface to configure upload throttling
+    /// without requiring downcasting to specific implementation types.
+    pub async fn configure_upload_manager_for_streaming(
+        &self,
+        info_hash: InfoHash,
+        piece_size: u64,
+    ) {
         let mut peer_manager = self.peer_manager.write().await;
 
-        // Check if we have a TcpPeerManager that supports upload management
-        if let Some(tcp_peer_manager) = peer_manager.as_any_mut().downcast_mut::<TcpPeerManager>() {
-            let upload_manager = tcp_peer_manager.upload_manager();
-            let mut upload_mgr = upload_manager.lock().await;
+        let total_bandwidth = self.config.network.download_limit.unwrap_or(10_000_000); // 10MB/s default
 
-            // Configure streaming-optimized settings based on config
-            let total_bandwidth = self.config.network.download_limit.unwrap_or(10_000_000); // 10MB/s default
-            upload_mgr.update_available_bandwidth(total_bandwidth);
-            upload_mgr.update_streaming_position(info_hash, 0); // Start at beginning
-
+        // Use trait method instead of downcasting
+        if let Err(e) = peer_manager
+            .configure_upload_manager(info_hash, piece_size, total_bandwidth)
+            .await
+        {
+            tracing::warn!(
+                "Failed to configure upload manager for torrent {}: {}",
+                info_hash,
+                e
+            );
+        } else {
             tracing::info!(
                 "Configured streaming upload throttling for torrent {} with piece_size={}",
                 info_hash,
@@ -863,9 +873,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
     /// Updates streaming position across piece picker and upload manager.
     ///
-    /// This method shows the clean pattern: coordinating between components
-    /// by directly accessing their interfaces rather than through wrappers.
-    #[allow(dead_code)]
+    /// Coordinates between piece picker and upload manager using trait
+    /// interfaces to avoid implementation-specific coupling.
     pub async fn update_streaming_position_coordinated(
         &self,
         info_hash: InfoHash,
@@ -878,12 +887,16 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             picker.request_seek_position(byte_position, 10_000_000); // 10MB buffer
         }
 
-        // Update upload manager filtering - direct access, no wrappers
         let mut peer_manager = self.peer_manager.write().await;
-        if let Some(tcp_peer_manager) = peer_manager.as_any_mut().downcast_mut::<TcpPeerManager>() {
-            let upload_manager = tcp_peer_manager.upload_manager();
-            let mut upload_mgr = upload_manager.lock().await;
-            upload_mgr.update_streaming_position(info_hash, byte_position);
+        if let Err(e) = peer_manager
+            .update_streaming_position(info_hash, byte_position)
+            .await
+        {
+            tracing::warn!(
+                "Failed to update streaming position for torrent {}: {}",
+                info_hash,
+                e
+            );
         }
 
         Ok(())

@@ -310,6 +310,123 @@ mod tracker {
 }
 ```
 
+## Import Organization and Context
+
+### Context-Aware Import Guidelines
+
+The choice between top-level imports and inline module references depends on **semantic clarity** and **context preservation**.
+
+#### Always Use Inline Module References
+
+Functions that lose critical context when imported without module path:
+
+```rust
+// GOOD - Async context preserved
+tokio::spawn(async {
+    process_data().await;
+});
+
+// BAD - Context lost, could be thread::spawn
+use tokio::spawn;
+spawn(async {
+    process_data().await;
+});
+
+// GOOD - Serialization format context preserved
+let json_data = serde_json::to_string_pretty(&data)?;
+let yaml_data = serde_yaml::to_string(&data)?;
+
+// BAD - Format context lost
+use serde_json::to_string_pretty;
+use serde_yaml::to_string;
+let json_data = to_string_pretty(&data)?;
+let yaml_data = to_string(&data)?;
+```
+
+**Context-critical functions** (always keep module path):
+
+- `spawn` (tokio vs thread)
+- `sleep` (tokio vs thread)
+- `timeout`, `select`, `join` (async context)
+- `lock`, `read`, `write` (async vs sync)
+- `connect`, `listen` (network context)
+- `parse`, `serialize`, `deserialize` (format context)
+- `to_string`, `from_str` (format-specific conversions)
+
+#### Prefer Top-Level Imports
+
+**Universally recognized types** (import at top):
+
+```rust
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+// GOOD - Clean, no context loss
+let cache: HashMap<String, Arc<Data>> = HashMap::new();
+let timeout = Duration::from_secs(30);
+
+// UNNECESSARILY VERBOSE
+let cache: std::collections::HashMap<String, std::sync::Arc<Data>> =
+    std::collections::HashMap::new();
+```
+
+**Common types to import**: `HashMap`, `BTreeMap`, `HashSet`, `Vec`, `String`, `Result`, `Option`, `Box`, `Arc`, `Rc`, `Duration`, `Instant`, `SystemTime`
+
+#### Smart Usage-Based Rules
+
+```rust
+// Used once - inline acceptable
+let config = toml::from_str(&content)?;
+
+// Used multiple times - import at top
+use toml::from_str;
+let config = from_str(&config_content)?;
+let metadata = from_str(&metadata_content)?;
+let settings = from_str(&settings_content)?;
+```
+
+#### Cross-Crate References
+
+```rust
+// GOOD - Workspace crate context preserved
+use riptide_core::TorrentEngine;
+let engine = TorrentEngine::new(config);
+
+// GOOD - External crate context when semantic value exists
+let client = reqwest::Client::new();
+let response = client.get(url).send().await?;
+
+// Import when used frequently
+use reqwest::Client;
+let client = Client::new();
+```
+
+### Enforcement
+
+The tidy checker (`cargo test --test tidy`) automatically enforces these import guidelines:
+
+**Automatic Detection:**
+
+- **Context-critical functions**: `tokio::spawn`, `serde_json::to_string`, `std::thread::sleep` - preserved inline
+- **Universally recognized types**: `std::collections::HashMap`, `std::sync::Arc` - flagged if used 3+ times
+- **Workspace crate context**: `riptide_core::`, `riptide_sim::` - preserved unless used 5+ times
+- **Usage frequency analysis**: Counts module usage patterns across entire file
+
+**Violation Examples:**
+
+```rust
+// WARNING: Import 'std::collections::HashMap' at top of file - used 4 times
+let map1 = std::collections::HashMap::new();
+let map2 = std::collections::HashMap::with_capacity(10);
+let map3 = std::collections::HashMap::from([("key", "value")]);
+let map4 = std::collections::HashMap::default();
+
+// GOOD: Context preserved for ambiguous functions
+tokio::spawn(async { process().await });  // NOT flagged
+std::thread::spawn(|| process_sync());    // NOT flagged
+```
+
 ## Modules and Files
 
 ### Organization Rules

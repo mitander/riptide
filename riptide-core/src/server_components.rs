@@ -41,7 +41,6 @@ pub struct ServerComponents {
     pub conversion_progress: Option<Arc<RwLock<HashMap<String, ConversionProgress>>>>,
 }
 
-// Serde helper functions for Instant serialization
 fn serialize_instant<S>(instant: &std::time::Instant, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

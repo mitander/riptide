@@ -3,7 +3,6 @@
 //! Extends basic simulation with actual piece data serving, enabling end-to-end
 //! content distribution testing from real files to reconstructed streams.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
@@ -531,8 +530,21 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
         Ok(())
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
+    async fn configure_upload_manager(
+        &mut self,
+        _info_hash: InfoHash,
+        _piece_size: u64,
+        _total_bandwidth: u64,
+    ) -> Result<(), TorrentError> {
+        Ok(())
+    }
+
+    async fn update_streaming_position(
+        &mut self,
+        _info_hash: InfoHash,
+        _byte_position: u64,
+    ) -> Result<(), TorrentError> {
+        Ok(())
     }
 }
 

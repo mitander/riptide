@@ -47,7 +47,7 @@ pub trait PeerLayer: Send + Sync {
     /// Returns number of active connections
     async fn connection_count(&self) -> usize;
 
-    /// Configure maximum number of concurrent connections  
+    /// Configure maximum number of concurrent connections
     fn configure_max_connections(&mut self, max: usize);
 }
 

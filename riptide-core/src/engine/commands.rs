@@ -81,6 +81,19 @@ pub enum TorrentEngineCommand {
         info_hash: InfoHash,
         responder: oneshot::Sender<Result<(), TorrentError>>,
     },
+    /// Configure upload manager for streaming optimization.
+    ConfigureUploadManager {
+        info_hash: InfoHash,
+        piece_size: u64,
+        total_bandwidth: u64,
+        responder: oneshot::Sender<Result<(), TorrentError>>,
+    },
+    /// Update streaming position for upload throttling.
+    UpdateStreamingPosition {
+        info_hash: InfoHash,
+        byte_position: u64,
+        responder: oneshot::Sender<Result<(), TorrentError>>,
+    },
 }
 
 /// Active download session for a single torrent.
