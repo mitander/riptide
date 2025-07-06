@@ -111,21 +111,50 @@ pub async fn run_server(
             let engine =
                 spawn_torrent_engine(config.clone(), peer_manager_sim, tracker_manager_sim);
 
-            // Populate the piece store and register simulated peers
+            // Initialize file library and start background conversions
             let mut manager_opt = None;
             if let Some(dir) = movies_dir.as_ref() {
                 let mut manager = FileLibraryManager::new();
-                if let Err(e) = setup_development_environment(
-                    &mut manager,
-                    &piece_store_sim,
-                    &peer_registry,
-                    &engine,
-                    dir,
-                )
-                .await
-                {
-                    eprintln!("Warning: Failed to setup development environment: {e}");
+
+                // Quick scan to initialize the manager
+                match manager.scan_directory(dir).await {
+                    Ok(count) => {
+                        println!("Found {} movie files in {}", count, dir.display());
+
+                        // Get the list of files to convert
+                        let movies: Vec<_> = manager.all_files().into_iter().cloned().collect();
+
+                        if !movies.is_empty() {
+                            println!("Starting background conversion tasks...");
+
+                            // Spawn background conversion for each movie
+                            for movie in movies {
+                                let piece_store_bg = piece_store_sim.clone();
+                                let peer_registry_bg = peer_registry.clone();
+                                let engine_bg = engine.clone();
+
+                                tokio::spawn(async move {
+                                    if let Err(e) = convert_single_movie(
+                                        movie,
+                                        piece_store_bg,
+                                        peer_registry_bg,
+                                        engine_bg,
+                                    )
+                                    .await
+                                    {
+                                        eprintln!("Failed to convert movie: {e}");
+                                    }
+                                });
+                            }
+                        } else {
+                            println!("No movies found to convert.");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to scan movies directory: {e}");
+                    }
                 }
+
                 manager_opt = Some(Arc::new(RwLock::new(manager)));
             }
 
@@ -191,7 +220,70 @@ pub async fn run_server(
     Ok(())
 }
 
-/// Sets up the development environment with simulated peers and torrents.
+/// Generate mock peer addresses for simulation
+fn generate_mock_peer_addresses(min_count: u32, max_count: u32) -> Vec<SocketAddr> {
+    let mut rng = rand::rng();
+    let peer_count = min_count + rng.random_range(0..(max_count - min_count + 1));
+    let mut addresses = Vec::new();
+
+    for i in 0..peer_count {
+        let addr = SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8),
+            6881 + (i as u16 % 1000),
+        ));
+        addresses.push(addr);
+    }
+
+    addresses
+}
+
+/// Convert a single movie file to torrent in background (thread-safe)
+async fn convert_single_movie(
+    movie: riptide_core::storage::LibraryFile,
+    piece_store: Arc<riptide_sim::InMemoryPieceStore>,
+    peer_registry: Arc<Mutex<HashMap<InfoHash, Vec<SocketAddr>>>>,
+    torrent_engine: TorrentEngineHandle,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("Converting {} to BitTorrent pieces...", movie.title);
+
+    let mut sim_creator = riptide_core::torrent::SimulationTorrentCreator::new();
+
+    let (metadata, pieces) = sim_creator
+        .create_with_pieces(
+            &movie.file_path,
+            vec!["http://development-tracker.riptide.local/announce".to_string()],
+        )
+        .await?;
+
+    let canonical_info_hash = metadata.info_hash;
+
+    torrent_engine
+        .add_torrent_metadata(metadata.clone())
+        .await?;
+    piece_store
+        .add_torrent_pieces(canonical_info_hash, pieces)
+        .await?;
+
+    let peer_addrs = generate_mock_peer_addresses(35, 45);
+
+    {
+        let mut registry = peer_registry.lock().unwrap();
+        registry.insert(canonical_info_hash, peer_addrs.clone());
+    }
+
+    torrent_engine.start_download(canonical_info_hash).await?;
+
+    println!(
+        "✓ Converted {} ({} pieces, {} simulated peers)",
+        movie.title,
+        metadata.piece_hashes.len(),
+        peer_addrs.len()
+    );
+
+    Ok(())
+}
+
+/// Original blocking setup function (kept for reference)
 ///
 /// This function:
 /// 1. Converts local movie files into torrent pieces
@@ -199,7 +291,7 @@ pub async fn run_server(
 /// 3. Creates simulated peer addresses and registers them with the tracker
 /// 4. Starts downloads so the engine can connect to simulated peers
 async fn setup_development_environment(
-    library_manager: &mut FileLibraryManager,
+    library_manager: &mut riptide_core::FileLibraryManager,
     piece_store: &Arc<riptide_sim::InMemoryPieceStore>,
     peer_registry: &Arc<Mutex<HashMap<InfoHash, Vec<SocketAddr>>>>,
     torrent_engine: &TorrentEngineHandle,
@@ -224,7 +316,6 @@ async fn setup_development_environment(
     for (index, movie) in movies.iter().enumerate() {
         println!("Converting {} to BitTorrent pieces...", movie.title);
 
-        // Create SimulationTorrentCreator
         let mut sim_creator = riptide_core::torrent::SimulationTorrentCreator::new();
 
         match sim_creator
@@ -237,25 +328,21 @@ async fn setup_development_environment(
             Ok((metadata, pieces)) => {
                 let canonical_info_hash = metadata.info_hash;
 
-                // Add torrent metadata to the engine
                 torrent_engine
                     .add_torrent_metadata(metadata.clone())
                     .await?;
 
-                // Populate the piece store with actual torrent pieces
                 piece_store
                     .add_torrent_pieces(canonical_info_hash, pieces)
                     .await?;
 
-                // Create realistic multi-peer simulation (40-50 peers with varying characteristics)
                 let mut rng = rng();
-                let peer_count = 40 + rng.random_range(0..11); // 40-50 peers
+                let peer_count = 40 + rng.random_range(0..11);
                 let mut peer_addrs = Vec::new();
 
                 for peer_num in 0..peer_count {
-                    // Distribute peers across different subnets for realism
                     let subnet_base = 192;
-                    let subnet_middle = 168 + ((peer_num / 50) as u8); // Different /16 subnets
+                    let subnet_middle = 168 + ((peer_num / 50) as u8);
                     let subnet_third = (index as u8).wrapping_add((peer_num / 10) as u8);
                     let host = 1 + (peer_num % 10) as u8;
 
@@ -266,16 +353,13 @@ async fn setup_development_environment(
                     peer_addrs.push(addr);
                 }
 
-                // Register these peer addresses with the tracker
                 {
                     let mut registry = peer_registry.lock().unwrap();
                     registry.insert(canonical_info_hash, peer_addrs.clone());
                 }
 
-                // Start the download to initiate the simulation
                 torrent_engine.start_download(canonical_info_hash).await?;
 
-                // Store the info hash update for later
                 info_hash_updates.push((movie.info_hash, canonical_info_hash));
 
                 println!(
@@ -291,7 +375,6 @@ async fn setup_development_environment(
         }
     }
 
-    // Apply all info hash updates after the loop
     for (old_hash, new_hash) in info_hash_updates {
         library_manager.update_file_info_hash(old_hash, new_hash);
     }
