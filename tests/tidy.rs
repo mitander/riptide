@@ -117,6 +117,9 @@ const COMMON_VERBS: &[&str] = &[
     "downgrade",
 ];
 
+/// Standard library modules that are always available
+const STD_MODULES: &[&str] = &["std", "core", "alloc"];
+
 // --- Violation Tracking ---
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -237,7 +240,7 @@ impl IdentifierTracker {
     }
 
     /// Check if a name uses problematic abbreviations that should be full words
-    /// TEMPORARILY DISABLED - dictionary too aggressive with false positives  
+    /// TEMPORARILY DISABLED - dictionary too aggressive with false positives
     fn uses_problematic_abbreviations(&self, _name: &str) -> bool {
         // TODO: Replace with better English dictionary that doesn't flag common words
         false
@@ -628,15 +631,21 @@ struct StyleChecker {
     current_file: PathBuf,
     file_lines: Vec<String>,
     identifiers: IdentifierTracker,
+    workspace_crates: Vec<String>,
+    external_dependencies: Vec<String>,
 }
 
 impl StyleChecker {
     fn new() -> Self {
+        let workspace_crates = Self::detect_workspace_crates();
+        let external_dependencies = Self::detect_external_dependencies();
         Self {
             violations: Vec::new(),
             current_file: PathBuf::new(),
             file_lines: Vec::new(),
             identifiers: IdentifierTracker::new(),
+            workspace_crates,
+            external_dependencies,
         }
     }
 
@@ -666,6 +675,7 @@ impl StyleChecker {
         // Code organization
         self.check_test_naming_patterns();
         self.check_import_organization();
+        self.check_inline_module_references();
 
         Ok(())
     }
@@ -1166,7 +1176,269 @@ impl StyleChecker {
         }
     }
 
-    /// Extract struct field name with underscore prefix
+    /// Check for inline module references that should be imports instead
+    fn check_inline_module_references(&mut self) {
+        let mut violations_to_add = Vec::new();
+        let mut in_import_section = false;
+        let mut in_doc_comment = false;
+        let mut in_multiline_comment = false;
+
+        for (line_num, line) in self.file_lines.iter().enumerate() {
+            let trimmed = line.trim();
+
+            // Skip empty lines
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            // Track comment state
+            if trimmed.starts_with("//!") || trimmed.starts_with("///") {
+                in_doc_comment = true;
+                continue;
+            }
+
+            if trimmed.starts_with("/*") {
+                in_multiline_comment = true;
+            }
+            if trimmed.ends_with("*/") {
+                in_multiline_comment = false;
+                continue;
+            }
+
+            // Skip if we're in comments
+            if in_doc_comment || in_multiline_comment || trimmed.starts_with("//") {
+                in_doc_comment = false;
+                continue;
+            }
+
+            // Track import section
+            if trimmed.starts_with("use ") {
+                in_import_section = true;
+                continue;
+            } else if in_import_section && !trimmed.is_empty() {
+                in_import_section = false;
+            }
+
+            // Skip import lines and module declarations
+            if in_import_section || trimmed.starts_with("use ") || trimmed.starts_with("mod ") {
+                continue;
+            }
+
+            // Check for inline module references
+            self.collect_inline_reference_violations(line_num + 1, line, &mut violations_to_add);
+        }
+
+        // Add all violations after the loop
+        for (severity, line_num, rule, message) in violations_to_add {
+            self.add_violation(severity, line_num, &rule, &message);
+        }
+    }
+
+    fn collect_inline_reference_violations(
+        &self,
+        line_num: usize,
+        line: &str,
+        violations: &mut Vec<(Severity, usize, String, String)>,
+    ) {
+        // Regex pattern to match module::path::item patterns
+        // Look for patterns like std::error::Error, tokio::time::sleep, riptide_core::config
+        let inline_pattern =
+            regex::Regex::new(r"\b([a-zA-Z_][a-zA-Z0-9_]*(?:_[a-zA-Z_][a-zA-Z0-9_]*)*)::")
+                .expect("Invalid regex pattern");
+
+        for capture in inline_pattern.find_iter(line) {
+            let match_str = capture.as_str();
+            let module_name = match_str.trim_end_matches("::");
+
+            // Check if it's a standard library, external dependency, or workspace crate
+            let is_violation = STD_MODULES.iter().any(|&std_mod| module_name == std_mod)
+                || self
+                    .external_dependencies
+                    .iter()
+                    .any(|ext| module_name == ext || module_name.starts_with(&format!("{}_", ext)))
+                || self
+                    .workspace_crates
+                    .iter()
+                    .any(|ws| module_name.starts_with(ws));
+
+            if is_violation {
+                // Additional context checks to reduce false positives
+                let context = Self::get_context_around_match(line, capture.start());
+
+                // Skip if it's in a string literal, doc comment, or other acceptable context
+                if !Self::is_acceptable_inline_context(&context, line) {
+                    violations.push((
+                        Severity::Warning,
+                        line_num,
+                        "INLINE_MODULE_REFERENCE".to_string(),
+                        format!(
+                            "Inline module reference '{}' found. Consider importing at top of file instead",
+                            match_str
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    fn get_context_around_match(line: &str, start_pos: usize) -> &str {
+        let context_start = start_pos.saturating_sub(10);
+        let context_end = std::cmp::min(start_pos + 20, line.len());
+        &line[context_start..context_end]
+    }
+
+    fn is_acceptable_inline_context(context: &str, full_line: &str) -> bool {
+        // Skip string literals
+        if context.contains('"') || context.contains('\'') {
+            return true;
+        }
+
+        // Skip macro invocations that commonly use full paths
+        if full_line.trim_start().starts_with('#') {
+            return true;
+        }
+
+        // Skip certain acceptable patterns like error trait objects
+        if context.contains("dyn ") || context.contains("Box<dyn") {
+            return true;
+        }
+
+        // Skip FQTN (Fully Qualified Type Name) disambiguation cases
+        if context.contains('<') && context.contains('>') {
+            return true;
+        }
+
+        false
+    }
+
+    /// Detect workspace crates by parsing Cargo.toml files
+    fn detect_workspace_crates() -> Vec<String> {
+        let mut workspace_crates = Vec::new();
+
+        // Try to read workspace Cargo.toml
+        if let Ok(workspace_toml) = std::fs::read_to_string("Cargo.toml") {
+            if let Ok(parsed) = workspace_toml.parse::<toml::Value>() {
+                // Check for workspace members
+                if let Some(workspace) = parsed.get("workspace") {
+                    if let Some(members) = workspace.get("members") {
+                        if let Some(members_array) = members.as_array() {
+                            for member in members_array {
+                                if let Some(member_str) = member.as_str() {
+                                    // Extract crate name from path
+                                    let crate_name = member_str
+                                        .split('/')
+                                        .last()
+                                        .unwrap_or(member_str)
+                                        .replace('-', "_");
+                                    workspace_crates.push(crate_name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Also check package name in root Cargo.toml
+                if let Some(package) = parsed.get("package") {
+                    if let Some(name) = package.get("name") {
+                        if let Some(name_str) = name.as_str() {
+                            workspace_crates.push(name_str.replace('-', "_"));
+                        }
+                    }
+                }
+            }
+        }
+
+        workspace_crates
+    }
+
+    /// Detect external dependencies by parsing Cargo.toml files in the workspace
+    fn detect_external_dependencies() -> Vec<String> {
+        let mut dependencies = std::collections::HashSet::new();
+
+        // Parse workspace root Cargo.toml
+        if let Ok(content) = std::fs::read_to_string("Cargo.toml") {
+            Self::extract_dependencies_from_toml(&content, &mut dependencies);
+        }
+
+        // Parse each workspace member's Cargo.toml
+        if let Ok(workspace_toml) = std::fs::read_to_string("Cargo.toml") {
+            if let Ok(parsed) = workspace_toml.parse::<toml::Value>() {
+                if let Some(workspace) = parsed.get("workspace") {
+                    if let Some(members) = workspace.get("members") {
+                        if let Some(members_array) = members.as_array() {
+                            for member in members_array {
+                                if let Some(member_str) = member.as_str() {
+                                    let cargo_path = format!("{}/Cargo.toml", member_str);
+                                    if let Ok(member_content) = std::fs::read_to_string(&cargo_path)
+                                    {
+                                        Self::extract_dependencies_from_toml(
+                                            &member_content,
+                                            &mut dependencies,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        dependencies.into_iter().collect()
+    }
+
+    fn extract_dependencies_from_toml(
+        content: &str,
+        dependencies: &mut std::collections::HashSet<String>,
+    ) {
+        if let Ok(parsed) = content.parse::<toml::Value>() {
+            // Regular dependencies
+            if let Some(deps) = parsed.get("dependencies") {
+                Self::collect_dependency_names(deps, dependencies);
+            }
+
+            // Dev dependencies
+            if let Some(dev_deps) = parsed.get("dev-dependencies") {
+                Self::collect_dependency_names(dev_deps, dependencies);
+            }
+
+            // Build dependencies
+            if let Some(build_deps) = parsed.get("build-dependencies") {
+                Self::collect_dependency_names(build_deps, dependencies);
+            }
+
+            // Target-specific dependencies
+            if let Some(target) = parsed.get("target") {
+                if let Some(target_table) = target.as_table() {
+                    for (_, target_config) in target_table {
+                        if let Some(deps) = target_config.get("dependencies") {
+                            Self::collect_dependency_names(deps, dependencies);
+                        }
+                        if let Some(dev_deps) = target_config.get("dev-dependencies") {
+                            Self::collect_dependency_names(dev_deps, dependencies);
+                        }
+                        if let Some(build_deps) = target_config.get("build-dependencies") {
+                            Self::collect_dependency_names(build_deps, dependencies);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn collect_dependency_names(
+        deps: &toml::Value,
+        dependencies: &mut std::collections::HashSet<String>,
+    ) {
+        if let Some(deps_table) = deps.as_table() {
+            for (name, _) in deps_table {
+                // Convert kebab-case to snake_case for module names
+                let module_name = name.replace('-', "_");
+                dependencies.insert(module_name);
+            }
+        }
+    }
+
     fn extract_struct_field_with_underscore(&self, line: &str) -> Option<String> {
         let trimmed = line.trim();
 
@@ -1429,6 +1701,7 @@ mod tests {
         println!("  ✓ ABBREVIATIONS - Use full words instead of abbreviations (index not idx)");
         println!("  ✓ DISCARDED_STRUCT_FIELD - Remove unused _ prefixed struct fields");
         println!("  ✓ DISCARDED_PARAMETER - Document or use _ prefixed parameters");
+        println!("  ✓ INLINE_MODULE_REFERENCE - Import modules at top instead of inline usage");
         println!("");
         println!("Focus: Automatic consistency detection rather than hardcoded rules");
         println!("Focus: Safety, Performance, Developer Experience");
