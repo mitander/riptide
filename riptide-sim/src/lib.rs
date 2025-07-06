@@ -272,6 +272,275 @@ pub fn create_standard_streaming_simulation(
     Ok(sim)
 }
 
+/// Create development server components with simulation implementations.
+/// This function encapsulates all development mode setup logic.
+///
+/// # Errors
+/// - `SimulationError::Setup` - Failed to initialize simulation components
+/// - `SimulationError::FileSystem` - Failed to scan movies directory
+pub async fn create_development_components(
+    config: riptide_core::config::RiptideConfig,
+    movies_dir: Option<std::path::PathBuf>,
+) -> Result<riptide_core::server_components::ServerComponents> {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    use riptide_core::server_components::{ConversionProgress, ConversionStatus, ServerComponents};
+    use riptide_core::storage::FileLibraryManager;
+    use riptide_core::torrent::{InfoHash, PieceStore, spawn_torrent_engine};
+    use tokio::sync::RwLock;
+
+    // Development mode uses simulation components
+    let piece_store_sim = Arc::new(InMemoryPieceStore::new());
+
+    // Create a shared registry of simulated peer addresses
+    let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
+    let peer_registry_clone = peer_registry.clone();
+
+    // Create content-aware peer manager with realistic network characteristics
+    let realistic_peer_config = InMemoryPeerConfig {
+        message_delay_ms: 50,          // 10-100ms range from streaming environment
+        connection_failure_rate: 0.05, // 5% failure rate (realistic)
+        message_loss_rate: 0.001,      // 0.1% from streaming environment
+        max_connections: 100,          // Support for larger peer swarms
+        auto_keepalive: true,
+    };
+
+    let peer_manager_sim =
+        ContentAwarePeerManager::new(realistic_peer_config, piece_store_sim.clone());
+
+    // Create tracker that coordinates with the peer registry
+    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_coordinator(
+        tracker::ResponseConfig::default(),
+        move |info_hash| {
+            let registry = peer_registry_clone.lock().unwrap();
+            registry.get(info_hash).cloned().unwrap_or_default()
+        },
+    );
+
+    let engine = spawn_torrent_engine(config, peer_manager_sim, tracker_manager_sim);
+    let conversion_progress = Arc::new(RwLock::new(HashMap::new()));
+
+    // Initialize file library manager if movies directory provided
+    let manager_opt = if let Some(dir) = movies_dir.as_ref() {
+        let mut manager = FileLibraryManager::new();
+
+        // Quick scan to initialize the manager
+        match manager.scan_directory(dir).await {
+            Ok(count) => {
+                println!("Found {} movie files in {}", count, dir.display());
+
+                let movies: Vec<_> = manager.all_files().into_iter().cloned().collect();
+
+                // Initialize conversion progress tracking
+                {
+                    let mut progress = conversion_progress.write().await;
+                    for movie in &movies {
+                        progress.insert(
+                            movie.title.clone(),
+                            ConversionProgress {
+                                movie_title: movie.title.clone(),
+                                status: ConversionStatus::Pending,
+                                started_at: std::time::Instant::now(),
+                                completed_at: None,
+                                error_message: None,
+                            },
+                        );
+                    }
+                }
+
+                if !movies.is_empty() {
+                    println!("Starting background conversion service...");
+                    let piece_store_bg = piece_store_sim.clone();
+                    let peer_registry_bg = peer_registry.clone();
+                    let engine_bg = engine.clone();
+                    let progress_tracker = conversion_progress.clone();
+
+                    tokio::spawn(async move {
+                        start_background_conversions(
+                            movies,
+                            piece_store_bg,
+                            peer_registry_bg,
+                            engine_bg,
+                            progress_tracker,
+                        )
+                        .await;
+                    });
+                } else {
+                    println!("No movies found to convert.");
+                }
+
+                Some(Arc::new(RwLock::new(manager)))
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to scan movies directory: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(ServerComponents {
+        torrent_engine: engine,
+        movie_manager: manager_opt,
+        piece_store: Some(piece_store_sim as Arc<dyn PieceStore>),
+        conversion_progress: Some(conversion_progress),
+    })
+}
+
+/// Background conversion service that processes all movies without blocking server startup
+async fn start_background_conversions(
+    movies: Vec<riptide_core::storage::LibraryFile>,
+    piece_store: Arc<InMemoryPieceStore>,
+    peer_registry: Arc<
+        std::sync::Mutex<
+            std::collections::HashMap<riptide_core::torrent::InfoHash, Vec<std::net::SocketAddr>>,
+        >,
+    >,
+    torrent_engine: riptide_core::torrent::TorrentEngineHandle,
+    progress_tracker: Arc<
+        tokio::sync::RwLock<
+            std::collections::HashMap<String, riptide_core::server_components::ConversionProgress>,
+        >,
+    >,
+) {
+    use riptide_core::server_components::ConversionStatus;
+
+    println!(
+        "Converting {} movies to torrents in background...",
+        movies.len()
+    );
+
+    const MAX_CONCURRENT_CONVERSIONS: usize = 3;
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_CONVERSIONS));
+
+    let mut tasks = Vec::new();
+    for movie in movies {
+        let piece_store_task = piece_store.clone();
+        let peer_registry_task = peer_registry.clone();
+        let engine_task = torrent_engine.clone();
+        let progress_task = progress_tracker.clone();
+        let semaphore_permit = semaphore.clone();
+        let movie_title = movie.title.clone();
+
+        let task = tokio::spawn(async move {
+            let _permit = semaphore_permit.acquire().await.unwrap();
+
+            {
+                let mut progress = progress_task.write().await;
+                if let Some(p) = progress.get_mut(&movie_title) {
+                    p.status = ConversionStatus::Converting;
+                }
+            }
+
+            let result =
+                convert_single_movie(movie, piece_store_task, peer_registry_task, engine_task)
+                    .await;
+
+            {
+                let mut progress = progress_task.write().await;
+                if let Some(p) = progress.get_mut(&movie_title) {
+                    match result {
+                        Ok(()) => {
+                            p.status = ConversionStatus::Completed;
+                            p.completed_at = Some(std::time::Instant::now());
+                        }
+                        Err(ref e) => {
+                            p.status = ConversionStatus::Failed;
+                            p.error_message = Some(e.to_string());
+                            p.completed_at = Some(std::time::Instant::now());
+                            eprintln!("Failed to convert movie {movie_title}: {e}");
+                        }
+                    }
+                }
+            }
+
+            result
+        });
+        tasks.push(task);
+    }
+
+    let mut completed = 0;
+    let mut failed = 0;
+    for task in tasks {
+        match task.await {
+            Ok(Ok(())) => completed += 1,
+            Ok(Err(_)) => failed += 1,
+            Err(e) => {
+                eprintln!("Background conversion task panicked: {e}");
+                failed += 1;
+            }
+        }
+    }
+
+    println!("Background conversions completed: {completed} successful, {failed} failed");
+}
+
+/// Convert a single movie file to torrent in background (thread-safe)
+async fn convert_single_movie(
+    movie: riptide_core::storage::LibraryFile,
+    piece_store: Arc<InMemoryPieceStore>,
+    peer_registry: Arc<
+        std::sync::Mutex<
+            std::collections::HashMap<riptide_core::torrent::InfoHash, Vec<std::net::SocketAddr>>,
+        >,
+    >,
+    torrent_engine: riptide_core::torrent::TorrentEngineHandle,
+) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
+    use riptide_core::torrent::SimulationTorrentCreator;
+
+    println!("Converting {} to BitTorrent pieces...", movie.title);
+
+    let mut sim_creator = SimulationTorrentCreator::new();
+
+    let (metadata, pieces) = sim_creator
+        .create_with_pieces(
+            &movie.file_path,
+            vec!["http://development-tracker.riptide.local/announce".to_string()],
+        )
+        .await?;
+
+    let canonical_info_hash = metadata.info_hash;
+
+    torrent_engine
+        .add_torrent_metadata(metadata.clone())
+        .await?;
+    piece_store
+        .add_torrent_pieces(canonical_info_hash, pieces)
+        .await?;
+
+    // Generate mock peer addresses for simulation
+    let peer_count = 35 + (rand::random::<u32>() % 11); // 35-45 peers
+    let mut peer_addrs = Vec::new();
+    for i in 0..peer_count {
+        let addr = SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::new(192, 168, (i / 256) as u8, (i % 256) as u8),
+            6881 + (i as u16 % 1000),
+        ));
+        peer_addrs.push(addr);
+    }
+
+    {
+        let mut registry = peer_registry.lock().unwrap();
+        registry.insert(canonical_info_hash, peer_addrs.clone());
+    }
+
+    torrent_engine.start_download(canonical_info_hash).await?;
+
+    println!(
+        "✓ Converted {} ({} pieces, {} simulated peers)",
+        movie.title,
+        metadata.piece_hashes.len(),
+        peer_addrs.len()
+    );
+
+    Ok(())
+}
+
 /// Common simulation error type for convenience.
 pub type Result<T> = std::result::Result<T, SimulationError>;
 

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 use riptide_core::config::RiptideConfig;
+use riptide_core::server_components::ServerComponents;
 use riptide_core::torrent::{
     InfoHash, TcpPeerManager, TorrentEngineHandle, TorrentError, TrackerManager,
     spawn_torrent_engine,
@@ -62,6 +63,39 @@ pub enum Commands {
         /// Path to torrent file for simulation
         torrent: PathBuf,
     },
+}
+
+/// Create server components based on runtime mode.
+/// This function serves as the composition root for dependency injection.
+///
+/// # Errors
+/// - `RiptideError::Io` - Failed to scan movies directory in development mode
+pub async fn create_server_components(
+    config: RiptideConfig,
+    mode: RuntimeMode,
+    movies_dir: Option<PathBuf>,
+) -> Result<ServerComponents> {
+    match mode {
+        RuntimeMode::Production => {
+            // Production mode uses real network components
+            let peer_manager = TcpPeerManager::new_default();
+            let tracker_manager = TrackerManager::new(config.network.clone());
+            let engine = spawn_torrent_engine(config, peer_manager, tracker_manager);
+
+            Ok(ServerComponents {
+                torrent_engine: engine,
+                movie_manager: None,
+                piece_store: None,
+                conversion_progress: None,
+            })
+        }
+        RuntimeMode::Development => {
+            // Development mode: delegate to simulation crate for all setup
+            riptide_sim::create_development_components(config, movies_dir)
+                .await
+                .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))
+        }
+    }
 }
 
 /// Handle the CLI command
@@ -342,7 +376,11 @@ pub async fn start_simple_server() -> Result<()> {
 
     let config = RiptideConfig::default();
 
-    riptide_web::run_server(config, RuntimeMode::Development, None) // Default to development mode
+    // Create development components
+    let components =
+        create_server_components(config.clone(), RuntimeMode::Development, None).await?;
+
+    riptide_web::run_server(config, components)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -374,7 +412,11 @@ pub async fn start_server(
         }
     );
 
-    riptide_web::run_server(config, mode, movies_dir)
+    // Create pre-configured components using dependency injection
+    let components = create_server_components(config.clone(), mode, movies_dir).await?;
+
+    // Pass components to web layer (web layer is now agnostic of mode)
+    riptide_web::run_server(config, components)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 

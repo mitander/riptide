@@ -14,6 +14,7 @@ path = "src/main.rs"
 riptide-core = { workspace = true }
 riptide-web = { workspace = true }
 riptide-search = { workspace = true }
+riptide-sim = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }

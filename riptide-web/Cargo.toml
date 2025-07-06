@@ -9,7 +9,6 @@ description = "Web UI and API server for Riptide"
 [dependencies]
 riptide-core = { workspace = true }
 riptide-search = { workspace = true }
-riptide-sim = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
