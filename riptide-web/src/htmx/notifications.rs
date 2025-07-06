@@ -71,8 +71,60 @@ pub async fn live_ticker(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Renders global status banner for important system messages
-pub async fn status_banner(State(_state): State<AppState>) -> Html<String> {
-    // TODO: Implement real system status checking
-    // For now, return empty - banners will be shown for actual issues
-    Html("".to_string())
+pub async fn status_banner(State(state): State<AppState>) -> Html<String> {
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let engine_stats = state.torrent_engine.get_download_stats().await.unwrap();
+
+    let mut messages = Vec::new();
+
+    // Check for low disk space (placeholder - would need real disk space check)
+    let available_gb = 10.0; // Placeholder
+    if available_gb < 5.0 {
+        messages.push((
+            "warning",
+            format!("Low disk space: {available_gb:.1} GB remaining"),
+        ));
+    }
+
+    // Check for stalled downloads
+    let stalled_count = sessions
+        .iter()
+        .filter(|s| s.progress > 0.0 && s.progress < 1.0 && s.download_speed_bps == 0)
+        .count();
+    if stalled_count > 0 {
+        messages.push(("info", format!("{stalled_count} downloads appear stalled")));
+    }
+
+    // Check for completed downloads
+    let completed_count = sessions.iter().filter(|s| s.progress >= 1.0).count();
+    if completed_count > 0 {
+        messages.push(("success", format!("{completed_count} downloads completed")));
+    }
+
+    // Check for high activity
+    if engine_stats.bytes_downloaded > 100_000_000 {
+        // > 100MB
+        let gb_downloaded = engine_stats.bytes_downloaded as f64 / 1_073_741_824.0;
+        messages.push((
+            "info",
+            format!("{gb_downloaded:.1} GB downloaded this session"),
+        ));
+    }
+
+    if messages.is_empty() {
+        Html("".to_string())
+    } else {
+        let banners = messages
+            .iter()
+            .map(|(level, message)| {
+                format!(
+                    r#"<div class="bg-{level}-100 border-l-4 border-{level}-500 text-{level}-700 p-4 mb-2">
+                    <p class="font-medium">{message}</p>
+                </div>"#
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        Html(banners)
+    }
 }

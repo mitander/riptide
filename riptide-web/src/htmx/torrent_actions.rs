@@ -173,16 +173,44 @@ pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Renders torrent details modal
-pub async fn torrent_details(State(_state): State<AppState>) -> Html<String> {
-    // TODO: Implement torrent details fetching
-    Html(torrent::torrent_details(torrent::TorrentDetailsParams {
-        name: "Sample Movie 2024 1080p BluRay x264",
-        info_hash: "1234567890abcdef1234567890abcdef12345678",
-        total_size: 1_500_000_000, // 1.5 GB
-        downloaded: 750_000_000,   // 750 MB downloaded
-        uploaded: 200_000_000,     // 200 MB uploaded
-        ratio: 0.27,               // ratio
-        peers: 5,                  // peers
-        seeds: 12,                 // seeds
-    }))
+pub async fn torrent_details(State(state): State<AppState>) -> Html<String> {
+    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+
+    // For now, show details for the first session if any exist
+    // In a real implementation, this would take an info_hash parameter
+    if let Some(session) = sessions.first() {
+        let downloaded_bytes = (session.progress * session.total_size as f32) as u64;
+        let ratio = if session.bytes_downloaded > 0 {
+            session.bytes_uploaded as f64 / session.bytes_downloaded as f64
+        } else {
+            0.0
+        };
+
+        // Estimate peer/seed counts from completed pieces (rough approximation)
+        let completed_count = session.completed_pieces.iter().filter(|&&x| x).count();
+        let estimated_peers = std::cmp::min(completed_count / 10, 50) as u32;
+        let estimated_seeds = std::cmp::max(estimated_peers / 3, 1);
+
+        Html(torrent::torrent_details(torrent::TorrentDetailsParams {
+            name: &session.filename,
+            info_hash: &session.info_hash.to_string(),
+            total_size: session.total_size,
+            downloaded: downloaded_bytes,
+            uploaded: session.bytes_uploaded,
+            ratio,
+            peers: estimated_peers,
+            seeds: estimated_seeds,
+        }))
+    } else {
+        Html(torrent::torrent_details(torrent::TorrentDetailsParams {
+            name: "No active torrents",
+            info_hash: "0000000000000000000000000000000000000000",
+            total_size: 0,
+            downloaded: 0,
+            uploaded: 0,
+            ratio: 0.0,
+            peers: 0,
+            seeds: 0,
+        }))
+    }
 }
