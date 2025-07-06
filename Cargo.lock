@@ -1843,7 +1843,6 @@ name = "riptide-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "axum",
  "bencode-rs",
  "bytes",
  "cargo-husky",
@@ -1851,10 +1850,8 @@ dependencies = [
  "ffmpeg-next",
  "futures",
  "hex",
- "hyper",
  "magnet-url",
  "magneto",
- "mime_guess",
  "proptest",
  "rand",
  "rand_chacha",
@@ -1866,8 +1863,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
- "tower",
- "tower-http",
  "tracing",
  "url",
  "urlencoding",

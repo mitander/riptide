@@ -53,6 +53,7 @@ pub struct ConversionProgress {
     pub error_message: Option<String>,
 }
 
+/// Status of background movie conversion to torrent format.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum ConversionStatus {
     Pending,

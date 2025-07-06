@@ -280,18 +280,48 @@ pub enum RangeError {
     NotSatisfiable,
 }
 
+/// Determine MIME type and media status from file extension.
+/// Replaces mime_guess dependency with simple extension checking.
+fn determine_file_type(filename: &str) -> (Option<String>, bool) {
+    let extension = std::path::Path::new(filename)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_lowercase());
+
+    match extension.as_deref() {
+        // Video formats
+        Some("mp4") => (Some("video/mp4".to_string()), true),
+        Some("mkv") => (Some("video/x-matroska".to_string()), true),
+        Some("avi") => (Some("video/x-msvideo".to_string()), true),
+        Some("mov") => (Some("video/quicktime".to_string()), true),
+        Some("wmv") => (Some("video/x-ms-wmv".to_string()), true),
+        Some("flv") => (Some("video/x-flv".to_string()), true),
+        Some("webm") => (Some("video/webm".to_string()), true),
+        Some("m4v") => (Some("video/x-m4v".to_string()), true),
+
+        // Audio formats
+        Some("mp3") => (Some("audio/mpeg".to_string()), true),
+        Some("flac") => (Some("audio/flac".to_string()), true),
+        Some("wav") => (Some("audio/wav".to_string()), true),
+        Some("aac") => (Some("audio/aac".to_string()), true),
+        Some("ogg") => (Some("audio/ogg".to_string()), true),
+        Some("m4a") => (Some("audio/mp4".to_string()), true),
+
+        // Unknown or non-media
+        _ => (Some("application/octet-stream".to_string()), false),
+    }
+}
+
 impl FileInfo {
     /// Create FileInfo from torrent file metadata.
     pub fn from_torrent_file(name: String, size: u64, offset: u64) -> Self {
-        let mime_type = mime_guess::from_path(&name).first_raw();
-        let is_media =
-            mime_type.is_some_and(|mime| mime.starts_with("video/") || mime.starts_with("audio/"));
+        let (mime_type, is_media) = determine_file_type(&name);
 
         Self {
             name,
             size,
             offset,
-            mime_type: mime_type.map(|s| s.to_string()),
+            mime_type,
             is_media,
         }
     }
