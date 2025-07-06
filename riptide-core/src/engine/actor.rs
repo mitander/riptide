@@ -202,6 +202,29 @@ where
             let result = engine.stop_download(info_hash);
             let _ = responder.send(result);
         }
+
+        TorrentEngineCommand::ConfigureUploadManager {
+            info_hash,
+            piece_size,
+            total_bandwidth: _,
+            responder,
+        } => {
+            engine
+                .configure_upload_manager_for_streaming(info_hash, piece_size)
+                .await;
+            let _ = responder.send(Ok(()));
+        }
+
+        TorrentEngineCommand::UpdateStreamingPosition {
+            info_hash,
+            byte_position,
+            responder,
+        } => {
+            let result = engine
+                .update_streaming_position_coordinated(info_hash, byte_position)
+                .await;
+            let _ = responder.send(result);
+        }
     }
     true // Continue processing
 }

@@ -304,6 +304,63 @@ impl TorrentEngineHandle {
         rx.await.map_err(|_| TorrentError::EngineShutdown)?
     }
 
+    /// Configures upload manager for streaming optimization.
+    ///
+    /// Sets up upload throttling and bandwidth management parameters optimized
+    /// for streaming media content. This should be called when starting torrents
+    /// that will be used for streaming.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub async fn configure_upload_manager(
+        &self,
+        info_hash: InfoHash,
+        piece_size: u64,
+        total_bandwidth: u64,
+    ) -> Result<(), TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::ConfigureUploadManager {
+            info_hash,
+            piece_size,
+            total_bandwidth,
+            responder,
+        };
+
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineShutdown)?;
+
+        rx.await.map_err(|_| TorrentError::EngineShutdown)?
+    }
+
+    /// Updates streaming position for upload throttling.
+    ///
+    /// Informs the upload manager about the current streaming position so it
+    /// can adjust upload priorities to favor pieces needed for streaming.
+    ///
+    /// # Errors
+    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    pub async fn update_streaming_position(
+        &self,
+        info_hash: InfoHash,
+        byte_position: u64,
+    ) -> Result<(), TorrentError> {
+        let (responder, rx) = oneshot::channel();
+        let cmd = TorrentEngineCommand::UpdateStreamingPosition {
+            info_hash,
+            byte_position,
+            responder,
+        };
+
+        self.sender
+            .send(cmd)
+            .await
+            .map_err(|_| TorrentError::EngineShutdown)?;
+
+        rx.await.map_err(|_| TorrentError::EngineShutdown)?
+    }
+
     /// Checks if the engine actor is still running.
     ///
     /// Returns true if the sender channel is still open, indicating the

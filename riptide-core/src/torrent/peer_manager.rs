@@ -1,6 +1,5 @@
 //! Peer management for BitTorrent connections with real and simulated implementations
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -129,8 +128,24 @@ pub trait PeerManager: Send + Sync {
     /// - `TorrentError::PeerConnectionError` - Error during shutdown
     async fn shutdown(&mut self) -> Result<(), TorrentError>;
 
-    /// Allows downcasting for simulation-specific methods.
-    fn as_any_mut(&mut self) -> &mut dyn Any;
+    /// Configure upload manager for streaming optimization.
+    /// Returns Ok(()) if the implementation supports upload management,
+    /// or Ok(()) with no-op for implementations that don't need it.
+    async fn configure_upload_manager(
+        &mut self,
+        info_hash: InfoHash,
+        piece_size: u64,
+        total_bandwidth: u64,
+    ) -> Result<(), TorrentError>;
+
+    /// Update streaming position for upload throttling.
+    /// Returns Ok(()) if the implementation supports upload management,
+    /// or Ok(()) with no-op for implementations that don't need it.
+    async fn update_streaming_position(
+        &mut self,
+        info_hash: InfoHash,
+        byte_position: u64,
+    ) -> Result<(), TorrentError>;
 }
 
 /// Production peer manager using real TCP connections.
@@ -546,8 +561,36 @@ impl PeerManager for TcpPeerManager {
         Ok(())
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
+    async fn configure_upload_manager(
+        &mut self,
+        info_hash: InfoHash,
+        piece_size: u64,
+        total_bandwidth: u64,
+    ) -> Result<(), TorrentError> {
+        let upload_manager = self.upload_manager();
+        let mut upload_mgr = upload_manager.lock().await;
+
+        upload_mgr.update_available_bandwidth(total_bandwidth);
+        upload_mgr.update_streaming_position(info_hash, 0); // Start at beginning
+
+        tracing::info!(
+            "Configured streaming upload throttling for torrent {} with piece_size={}",
+            info_hash,
+            piece_size
+        );
+
+        Ok(())
+    }
+
+    async fn update_streaming_position(
+        &mut self,
+        info_hash: InfoHash,
+        byte_position: u64,
+    ) -> Result<(), TorrentError> {
+        let upload_manager = self.upload_manager();
+        let mut upload_mgr = upload_manager.lock().await;
+        upload_mgr.update_streaming_position(info_hash, byte_position);
+        Ok(())
     }
 }
 

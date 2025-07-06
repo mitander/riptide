@@ -8,6 +8,7 @@ pub mod config;
 pub mod engine;
 pub mod mode;
 pub mod network;
+pub mod server_components;
 pub mod storage;
 pub mod streaming;
 pub mod torrent;
@@ -15,6 +16,7 @@ pub mod torrent;
 // Re-export main types for convenient access
 pub use config::RiptideConfig;
 pub use mode::RuntimeMode;
+pub use server_components::{ConversionProgress, ConversionStatus, ServerComponents};
 pub use storage::{FileLibraryManager, FileStorage, LibraryFile, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
 pub use torrent::{EngineStats, TorrentCreator, TorrentEngineHandle, TorrentError};

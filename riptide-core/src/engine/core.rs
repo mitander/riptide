@@ -16,7 +16,7 @@ use crate::torrent::parsing::types::TorrentMetadata;
 use crate::torrent::tracker::{AnnounceEvent, AnnounceRequest, TrackerManagement};
 use crate::torrent::{
     AdaptivePiecePicker, AdaptiveStreamingPiecePicker, BencodeTorrentParser, InfoHash, PeerId,
-    PeerManager, PiecePicker, TcpPeerManager, TorrentError, TorrentParser,
+    PeerManager, PiecePicker, TorrentError, TorrentParser,
 };
 
 // Constants
@@ -838,21 +838,28 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
     /// Configures upload manager for streaming-optimized behavior.
     ///
-    /// This demonstrates the clean pattern: directly accessing the upload manager
-    /// through the peer manager's public interface without wrapper methods.
-    async fn configure_upload_manager_for_streaming(&self, info_hash: InfoHash, piece_size: u64) {
+    /// Uses the PeerManager trait interface to configure upload throttling
+    /// without requiring downcasting to specific implementation types.
+    pub async fn configure_upload_manager_for_streaming(
+        &self,
+        info_hash: InfoHash,
+        piece_size: u64,
+    ) {
         let mut peer_manager = self.peer_manager.write().await;
 
-        // Check if we have a TcpPeerManager that supports upload management
-        if let Some(tcp_peer_manager) = peer_manager.as_any_mut().downcast_mut::<TcpPeerManager>() {
-            let upload_manager = tcp_peer_manager.upload_manager();
-            let mut upload_mgr = upload_manager.lock().await;
+        let total_bandwidth = self.config.network.download_limit.unwrap_or(10_000_000); // 10MB/s default
 
-            // Configure streaming-optimized settings based on config
-            let total_bandwidth = self.config.network.download_limit.unwrap_or(10_000_000); // 10MB/s default
-            upload_mgr.update_available_bandwidth(total_bandwidth);
-            upload_mgr.update_streaming_position(info_hash, 0); // Start at beginning
-
+        // Use trait method instead of downcasting
+        if let Err(e) = peer_manager
+            .configure_upload_manager(info_hash, piece_size, total_bandwidth)
+            .await
+        {
+            tracing::warn!(
+                "Failed to configure upload manager for torrent {}: {}",
+                info_hash,
+                e
+            );
+        } else {
             tracing::info!(
                 "Configured streaming upload throttling for torrent {} with piece_size={}",
                 info_hash,
@@ -863,9 +870,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
     /// Updates streaming position across piece picker and upload manager.
     ///
-    /// This method shows the clean pattern: coordinating between components
-    /// by directly accessing their interfaces rather than through wrappers.
-    #[allow(dead_code)]
+    /// Coordinates between piece picker and upload manager using trait
+    /// interfaces to avoid implementation-specific coupling.
     pub async fn update_streaming_position_coordinated(
         &self,
         info_hash: InfoHash,
@@ -878,12 +884,16 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             picker.request_seek_position(byte_position, 10_000_000); // 10MB buffer
         }
 
-        // Update upload manager filtering - direct access, no wrappers
         let mut peer_manager = self.peer_manager.write().await;
-        if let Some(tcp_peer_manager) = peer_manager.as_any_mut().downcast_mut::<TcpPeerManager>() {
-            let upload_manager = tcp_peer_manager.upload_manager();
-            let mut upload_mgr = upload_manager.lock().await;
-            upload_mgr.update_streaming_position(info_hash, byte_position);
+        if let Err(e) = peer_manager
+            .update_streaming_position(info_hash, byte_position)
+            .await
+        {
+            tracing::warn!(
+                "Failed to update streaming position for torrent {}: {}",
+                info_hash,
+                e
+            );
         }
 
         Ok(())

@@ -1,6 +1,5 @@
 //! Mock implementations for testing the torrent engine.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -206,8 +205,21 @@ impl PeerManager for MockPeerManager {
         Ok(())
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
+    async fn configure_upload_manager(
+        &mut self,
+        _info_hash: InfoHash,
+        _piece_size: u64,
+        _total_bandwidth: u64,
+    ) -> Result<(), TorrentError> {
+        Ok(())
+    }
+
+    async fn update_streaming_position(
+        &mut self,
+        _info_hash: InfoHash,
+        _byte_position: u64,
+    ) -> Result<(), TorrentError> {
+        Ok(())
     }
 }
 

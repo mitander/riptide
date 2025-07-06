@@ -289,7 +289,6 @@ fn determine_file_type(filename: &str) -> (Option<String>, bool) {
         .map(|ext| ext.to_lowercase());
 
     match extension.as_deref() {
-        // Video formats
         Some("mp4") => (Some("video/mp4".to_string()), true),
         Some("mkv") => (Some("video/x-matroska".to_string()), true),
         Some("avi") => (Some("video/x-msvideo".to_string()), true),
@@ -298,16 +297,12 @@ fn determine_file_type(filename: &str) -> (Option<String>, bool) {
         Some("flv") => (Some("video/x-flv".to_string()), true),
         Some("webm") => (Some("video/webm".to_string()), true),
         Some("m4v") => (Some("video/x-m4v".to_string()), true),
-
-        // Audio formats
         Some("mp3") => (Some("audio/mpeg".to_string()), true),
         Some("flac") => (Some("audio/flac".to_string()), true),
         Some("wav") => (Some("audio/wav".to_string()), true),
         Some("aac") => (Some("audio/aac".to_string()), true),
         Some("ogg") => (Some("audio/ogg".to_string()), true),
         Some("m4a") => (Some("audio/mp4".to_string()), true),
-
-        // Unknown or non-media
         _ => (Some("application/octet-stream".to_string()), false),
     }
 }
