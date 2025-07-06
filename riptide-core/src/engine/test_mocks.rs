@@ -3,12 +3,15 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use tokio::sync::RwLock;
 
 use crate::torrent::tracker::{
-    AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, TrackerManagement,
+    AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse,
+    TrackerManagement,
 };
 use crate::torrent::{
     InfoHash, PeerId, PeerInfo, PeerManager, PeerMessage, PeerMessageEvent, TorrentError,
@@ -28,7 +31,7 @@ pub struct MockPeerManager {
     /// Track total bytes uploaded to peers
     bytes_uploaded: Arc<RwLock<u64>>,
     /// Track when uploads started for speed calculation
-    upload_start_time: std::time::Instant,
+    upload_start_time: Instant,
 }
 
 impl MockPeerManager {
@@ -40,7 +43,7 @@ impl MockPeerManager {
             pending_requests: Arc::new(RwLock::new(Vec::new())),
             simulate_piece_data: true,
             bytes_uploaded: Arc::new(RwLock::new(0)),
-            upload_start_time: std::time::Instant::now(),
+            upload_start_time: Instant::now(),
         }
     }
 
@@ -52,7 +55,7 @@ impl MockPeerManager {
             pending_requests: Arc::new(RwLock::new(Vec::new())),
             simulate_piece_data: false,
             bytes_uploaded: Arc::new(RwLock::new(0)),
-            upload_start_time: std::time::Instant::now(),
+            upload_start_time: Instant::now(),
         }
     }
 
@@ -139,7 +142,7 @@ impl PeerManager for MockPeerManager {
         let mut requests = self.pending_requests.write().await;
         if let Some((peer_address, message)) = requests.pop() {
             // Simulate realistic network delay for piece responses
-            tokio::time::sleep(std::time::Duration::from_millis(MOCK_NETWORK_DELAY_MS)).await;
+            tokio::time::sleep(Duration::from_millis(MOCK_NETWORK_DELAY_MS)).await;
 
             match message {
                 PeerMessage::Request {
@@ -161,9 +164,9 @@ impl PeerManager for MockPeerManager {
                         message: PeerMessage::Piece {
                             piece_index,
                             offset,
-                            data: bytes::Bytes::from(mock_data),
+                            data: Bytes::from(mock_data),
                         },
-                        received_at: std::time::Instant::now(),
+                        received_at: Instant::now(),
                     })
                 }
                 _ => {
@@ -171,13 +174,13 @@ impl PeerManager for MockPeerManager {
                     Ok(PeerMessageEvent {
                         peer_address,
                         message: PeerMessage::KeepAlive,
-                        received_at: std::time::Instant::now(),
+                        received_at: Instant::now(),
                     })
                 }
             }
         } else {
             // No pending requests - simulate realistic waiting period
-            tokio::time::sleep(std::time::Duration::from_millis(MOCK_WAIT_PERIOD_MS)).await;
+            tokio::time::sleep(Duration::from_millis(MOCK_WAIT_PERIOD_MS)).await;
             Err(TorrentError::PeerConnectionError {
                 reason: "No pending requests available".to_string(),
             })
@@ -346,7 +349,7 @@ mod tests {
             uploaded: 0,
             downloaded: 0,
             left: 1000,
-            event: crate::torrent::tracker::AnnounceEvent::Started,
+            event: AnnounceEvent::Started,
         };
 
         let result = manager
@@ -369,7 +372,7 @@ mod tests {
             uploaded: 0,
             downloaded: 0,
             left: 1000,
-            event: crate::torrent::tracker::AnnounceEvent::Started,
+            event: AnnounceEvent::Started,
         };
 
         let result = manager

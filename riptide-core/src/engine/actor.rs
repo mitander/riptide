@@ -6,7 +6,11 @@ use super::commands::TorrentEngineCommand;
 use super::core::TorrentEngine;
 use super::handle::TorrentEngineHandle;
 use crate::config::RiptideConfig;
-use crate::torrent::{PeerManager, TrackerManagement};
+#[cfg(test)]
+use crate::torrent::parsing::types::{TorrentFile, TorrentMetadata};
+#[cfg(test)]
+use crate::torrent::{MockPeerManager, MockTrackerManager};
+use crate::torrent::{PeerManager, TorrentError, TrackerManagement};
 
 /// Spawns the torrent engine actor and returns its handle.
 ///
@@ -76,7 +80,6 @@ async fn run_actor_loop<P, T>(
                     break;
                 }
             }
-            else => break,
         }
     }
 
@@ -117,7 +120,7 @@ where
             let result = engine
                 .session(info_hash)
                 .cloned()
-                .ok_or_else(|| crate::torrent::TorrentError::TorrentNotFound { info_hash });
+                .ok_or_else(|| TorrentError::TorrentNotFound { info_hash });
             let _ = responder.send(result);
         }
 
@@ -254,8 +257,8 @@ mod tests {
     #[tokio::test]
     async fn test_actor_spawn_and_basic_operations() {
         let config = RiptideConfig::default();
-        let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new();
+        let peer_manager = MockPeerManager::new();
+        let tracker_manager = MockTrackerManager::new();
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -282,8 +285,8 @@ mod tests {
     #[tokio::test]
     async fn test_actor_add_magnet_invalid() {
         let config = RiptideConfig::default();
-        let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new();
+        let peer_manager = MockPeerManager::new();
+        let tracker_manager = MockTrackerManager::new();
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -297,8 +300,8 @@ mod tests {
     #[tokio::test]
     async fn test_actor_get_nonexistent_session() {
         let config = RiptideConfig::default();
-        let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new();
+        let peer_manager = MockPeerManager::new();
+        let tracker_manager = MockTrackerManager::new();
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -313,9 +316,9 @@ mod tests {
     #[tokio::test]
     async fn test_real_download_basic_flow() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
 
         // Set up mock peers for the tracker manager
         let mock_peers = vec![
@@ -332,13 +335,13 @@ mod tests {
         let total_size = piece_count as u64 * piece_size as u64;
         let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-        let metadata = crate::torrent::parsing::types::TorrentMetadata {
-            info_hash: crate::torrent::InfoHash::new([1u8; 20]),
+        let metadata = TorrentMetadata {
+            info_hash: InfoHash::new([1u8; 20]),
             name: "test.bin".to_string(),
             total_length: total_size,
             piece_length: piece_size,
             piece_hashes,
-            files: vec![crate::torrent::parsing::types::TorrentFile {
+            files: vec![TorrentFile {
                 path: vec!["test.bin".to_string()],
                 length: total_size,
             }],
@@ -366,8 +369,8 @@ mod tests {
         let config = RiptideConfig::default();
 
         // Create tracker manager that fails announces
-        let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new_with_announce_failure();
+        let peer_manager = MockPeerManager::new();
+        let tracker_manager = MockTrackerManager::new_with_announce_failure();
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -377,13 +380,13 @@ mod tests {
         let total_size = piece_count as u64 * piece_size as u64;
         let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-        let metadata = crate::torrent::parsing::types::TorrentMetadata {
-            info_hash: crate::torrent::InfoHash::new([2u8; 20]),
+        let metadata = TorrentMetadata {
+            info_hash: InfoHash::new([2u8; 20]),
             name: "error_test.bin".to_string(),
             total_length: total_size,
             piece_length: piece_size,
             piece_hashes,
-            files: vec![crate::torrent::parsing::types::TorrentFile {
+            files: vec![TorrentFile {
                 path: vec!["error_test.bin".to_string()],
                 length: total_size,
             }],
@@ -399,7 +402,7 @@ mod tests {
         assert!(session.is_downloading);
 
         // Brief wait for download attempt
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Verify engine stats
         let stats = handle.get_download_stats().await.unwrap();
@@ -411,22 +414,22 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_torrent_management() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
         tracker_manager.set_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
         // Add multiple torrents
         let info_hash1 = handle
-            .add_torrent_metadata(crate::torrent::parsing::types::TorrentMetadata {
-                info_hash: crate::torrent::InfoHash::new([1u8; 20]),
+            .add_torrent_metadata(TorrentMetadata {
+                info_hash: InfoHash::new([1u8; 20]),
                 name: "torrent1.bin".to_string(),
                 total_length: 1024,
                 piece_length: 512,
                 piece_hashes: vec![[1u8; 20], [2u8; 20]],
-                files: vec![crate::torrent::parsing::types::TorrentFile {
+                files: vec![TorrentFile {
                     path: vec!["torrent1.bin".to_string()],
                     length: 1024,
                 }],
@@ -436,13 +439,13 @@ mod tests {
             .unwrap();
 
         let info_hash2 = handle
-            .add_torrent_metadata(crate::torrent::parsing::types::TorrentMetadata {
-                info_hash: crate::torrent::InfoHash::new([2u8; 20]),
+            .add_torrent_metadata(TorrentMetadata {
+                info_hash: InfoHash::new([2u8; 20]),
                 name: "torrent2.bin".to_string(),
                 total_length: 2048,
                 piece_length: 512,
                 piece_hashes: vec![[3u8; 20], [4u8; 20], [5u8; 20], [6u8; 20]],
-                files: vec![crate::torrent::parsing::types::TorrentFile {
+                files: vec![TorrentFile {
                     path: vec!["torrent2.bin".to_string()],
                     length: 2048,
                 }],
@@ -469,8 +472,8 @@ mod tests {
     #[tokio::test]
     async fn test_magnet_link_display_name_parsing() {
         let config = RiptideConfig::default();
-        let peer_manager = crate::torrent::MockPeerManager::new();
-        let tracker_manager = crate::torrent::MockTrackerManager::new();
+        let peer_manager = MockPeerManager::new();
+        let tracker_manager = MockTrackerManager::new();
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
         // Test magnet link with display name

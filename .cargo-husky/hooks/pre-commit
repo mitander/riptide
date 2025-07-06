@@ -8,5 +8,8 @@ cargo fmt --check
 echo '+cargo clippy --workspace -- -D warnings'
 cargo clippy --workspace -- -D warnings
 
+echo '+cargo clippy tests crate -- -D warnings'
+cd tests && cargo clippy -- -D warnings && cd ..
+
 echo '+cargo test tidy (style enforcement)'
 cd tests && cargo test tidy --quiet && cd ..

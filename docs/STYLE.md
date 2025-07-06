@@ -581,29 +581,131 @@ cargo run --release -p riptide-cli -- server &
 # Use profiling tools against running server
 ```
 
+## Automated Enforcement
+
+### Tidy Checker Integration
+
+The `cargo test --test tidy` command automatically enforces coding standards across the entire workspace:
+
+```bash
+# Run style consistency checks
+cargo test --test tidy -- --nocapture
+
+# Focus on specific violation types
+cargo test --test tidy -- --nocapture | grep "INLINE_MODULE_REFERENCE"
+```
+
+### Context-Aware Import Analysis
+
+The tidy checker uses intelligent heuristics to balance code clarity with semantic preservation:
+
+**Preserved inline patterns:**
+
+- `tokio::spawn` vs `std::thread::spawn` - async context critical
+- `serde_json::to_string` vs `serde_yaml::to_string` - format context valuable
+- `reqwest::Client::new()` - external crate context helpful
+- `riptide_core::config::RiptideConfig` - workspace context preserved
+
+**Import recommendations:**
+
+- `std::collections::HashMap` - universally recognized, import when used 3+ times
+- `std::sync::Arc` - common type, reduces verbosity
+- `std::time::Duration` - stdlib staple, always import
+
+**Smart frequency analysis:**
+
+- Counts usage across entire file
+- Workspace crates require 5+ uses before import recommendation
+- External crates evaluated based on context value
+
+### Violation Categories
+
+| Rule                      | Severity | Description                                  |
+| ------------------------- | -------- | -------------------------------------------- |
+| `CONTEXT_LOSS`            | Critical | Import would lose critical semantic context  |
+| `INLINE_MODULE_REFERENCE` | Warning  | Common type used frequently, consider import |
+| `IMPORT_ORGANIZATION`     | Warning  | Imports scattered throughout file            |
+| `MODULE_SIZE_LIMIT`       | Warning  | Module exceeds 500 lines                     |
+
+### Integration with Development
+
+```bash
+# Pre-commit hook automatically runs tidy checks
+git commit -m "feat: add streaming optimization"
+# → Triggers tidy check, blocks commit if critical violations
+
+# CI/CD pipeline enforces consistency
+# → All PRs must pass tidy checks before merge
+```
+
 ## Code Quality Standards
 
 ### Import Organization
 
+#### Context-Aware Import Strategy
+
+The choice between top-level imports and inline module references depends on **semantic clarity** and **context preservation**.
+
+**Always preserve context for ambiguous functions:**
+
 ```rust
-// Standard library
+// GOOD - Async context preserved
+tokio::spawn(async {
+    process_data().await;
+});
+
+// BAD - Context lost, could be thread::spawn
+use tokio::spawn;
+spawn(async { process_data().await; });
+
+// GOOD - Format context preserved
+let json = serde_json::to_string_pretty(&data)?;
+let yaml = serde_yaml::to_string(&data)?;
+
+// BAD - Format context lost
+use serde_json::to_string_pretty;
+use serde_yaml::to_string;
+let json = to_string_pretty(&data)?;
+let yaml = to_string(&data)?;
+```
+
+**Import universally recognized types:**
+
+```rust
+// Standard library (common types)
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
-// External crates (alphabetical)
+// External crates (clear, frequently used)
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
 // Internal workspace crates (dependency order)
 use riptide_core::config::RiptideConfig;
 use riptide_core::torrent::TorrentEngine;
 use riptide_search::MediaSearchService;
-use riptide_sim::{DeterministicSimulation, EventType};
 
 // Local modules (relative imports)
 use super::WebUIError;
 use crate::templates::TemplateEngine;
+
+// Usage examples
+let cache: HashMap<String, Arc<Data>> = HashMap::new();
+let timeout = Duration::from_secs(30);
+```
+
+**Smart usage-based rules:**
+
+```rust
+// Used once - inline acceptable
+let config = toml::from_str(&content)?;
+
+// Used multiple times - import at top
+use toml::from_str;
+let config = from_str(&config_content)?;
+let metadata = from_str(&metadata_content)?;
+let settings = from_str(&settings_content)?;
 ```
 
 ### Error Handling

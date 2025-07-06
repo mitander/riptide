@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::State;
-use axum::routing::{get, post};
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
 use riptide_core::streaming::{
@@ -25,7 +24,10 @@ use crate::handlers::{
     api_add_torrent, api_download_torrent, api_library, api_search, api_seek_torrent, api_settings,
     api_stats, api_torrents, stream_torrent, video_player_page,
 };
-use crate::htmx::{dashboard_activity, dashboard_downloads, dashboard_stats};
+use crate::htmx::{
+    add_torrent, dashboard_activity, dashboard_downloads, dashboard_stats, system_status,
+    torrent_list,
+};
 // Import new architecture modules
 use crate::pages::{dashboard_page, library_page, search_page, torrents_page};
 
@@ -83,30 +85,42 @@ pub async fn run_server(
 
     let app = Router::new()
         // Main pages (HTMX + Tailwind)
-        .route("/", get(dashboard_page))
-        .route("/torrents", get(torrents_page))
-        .route("/library", get(library_page))
-        .route("/search", get(search_page))
-        .route("/player/{info_hash}", get(video_player_page))
+        .route("/", axum::routing::get(dashboard_page))
+        .route("/torrents", axum::routing::get(torrents_page))
+        .route("/library", axum::routing::get(library_page))
+        .route("/search", axum::routing::get(search_page))
+        .route("/player/{info_hash}", axum::routing::get(video_player_page))
         // HTMX partial update endpoints
-        .route("/htmx/dashboard/stats", get(dashboard_stats))
-        .route("/htmx/dashboard/activity", get(dashboard_activity))
-        .route("/htmx/dashboard/downloads", get(dashboard_downloads))
-        .route("/htmx/torrents/list", get(crate::htmx::torrent_list))
-        .route("/htmx/torrents/add", post(crate::htmx::add_torrent))
-        .route("/htmx/system/status", get(crate::htmx::system_status))
+        .route("/htmx/dashboard/stats", axum::routing::get(dashboard_stats))
+        .route(
+            "/htmx/dashboard/activity",
+            axum::routing::get(dashboard_activity),
+        )
+        .route(
+            "/htmx/dashboard/downloads",
+            axum::routing::get(dashboard_downloads),
+        )
+        .route("/htmx/torrents/list", axum::routing::get(torrent_list))
+        .route("/htmx/torrents/add", axum::routing::post(add_torrent))
+        .route("/htmx/system/status", axum::routing::get(system_status))
         // Streaming endpoints
-        .route("/stream/{info_hash}", get(stream_torrent))
+        .route("/stream/{info_hash}", axum::routing::get(stream_torrent))
         // JSON API endpoints (for external clients)
-        .route("/api/stats", get(api_stats))
-        .route("/api/torrents", get(api_torrents))
-        .route("/api/torrents/add", get(api_add_torrent))
-        .route("/api/download", post(api_download_torrent))
-        .route("/api/library", get(api_library))
-        .route("/api/search", get(api_search))
-        .route("/api/settings", get(api_settings))
-        .route("/api/torrents/{info_hash}/seek", post(api_seek_torrent))
-        .route("/api/conversions/progress", get(api_conversion_progress))
+        .route("/api/stats", axum::routing::get(api_stats))
+        .route("/api/torrents", axum::routing::get(api_torrents))
+        .route("/api/torrents/add", axum::routing::get(api_add_torrent))
+        .route("/api/download", axum::routing::post(api_download_torrent))
+        .route("/api/library", axum::routing::get(api_library))
+        .route("/api/search", axum::routing::get(api_search))
+        .route("/api/settings", axum::routing::get(api_settings))
+        .route(
+            "/api/torrents/{info_hash}/seek",
+            axum::routing::post(api_seek_torrent),
+        )
+        .route(
+            "/api/conversions/progress",
+            axum::routing::get(api_conversion_progress),
+        )
         .nest_service("/static", ServeDir::new("riptide-web/static"))
         .layer(CorsLayer::permissive())
         .with_state(state);

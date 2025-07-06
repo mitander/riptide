@@ -120,6 +120,157 @@ const COMMON_VERBS: &[&str] = &[
 /// Standard library modules that are always available
 const STD_MODULES: &[&str] = &["std", "core", "alloc"];
 
+/// Functions that lose critical context when imported without module path
+const CONTEXT_CRITICAL_FUNCTIONS: &[&str] = &[
+    // Runtime/Threading context
+    "spawn",     // tokio::spawn vs std::thread::spawn
+    "sleep",     // tokio::time::sleep vs std::thread::sleep
+    "yield_now", // tokio::task::yield_now vs std::thread::yield_now
+    "block_on",  // tokio::runtime::block_on vs other runtimes
+    "timeout",   // tokio::time::timeout vs other timeout functions
+    "select",    // tokio::select vs other select macros
+    "join",      // tokio::join vs other join functions
+    "try_join",  // tokio::try_join vs other try_join functions
+    // Synchronization context
+    "lock",     // async vs sync lock operations
+    "try_lock", // async vs sync try_lock operations
+    "read",     // async vs sync read operations
+    "write",    // async vs sync write operations
+    "acquire",  // semaphore/permit context valuable
+    "release",  // semaphore/permit context valuable
+    // Network context
+    "connect", // network context valuable
+    "listen",  // network context valuable
+    "bind",    // network binding context valuable
+    "accept",  // network accept context valuable
+    "send",    // network/channel send context valuable
+    "recv",    // network/channel receive context valuable
+    "get",     // HTTP/request context valuable
+    "post",    // HTTP/request context valuable
+    "put",     // HTTP/request context valuable
+    "delete",  // HTTP/request context valuable
+    // Serialization/Parsing context
+    "parse",            // format-specific parsing context valuable
+    "serialize",        // format-specific serialization context valuable
+    "deserialize",      // format-specific deserialization context valuable
+    "to_string",        // format-specific conversion context valuable
+    "to_string_pretty", // format-specific pretty conversion context valuable
+    "from_str",         // format-specific parsing context valuable
+    "from_slice",       // format-specific parsing context valuable
+    "from_reader",      // format-specific parsing context valuable
+    "to_writer",        // format-specific writing context valuable
+    "to_vec",           // format-specific vector conversion context valuable
+    "encode",           // encoding context valuable
+    "decode",           // decoding context valuable
+    // Logging context (critical for debugging)
+    "debug", // tracing::debug vs other debug functions
+    "info",  // tracing::info vs other info functions
+    "warn",  // tracing::warn vs other warn functions
+    "error", // tracing::error vs other error functions
+    "trace", // tracing::trace vs other trace functions
+    "log",   // tracing::log vs other log functions
+    // File I/O context
+    "open",     // file opening context valuable
+    "create",   // file creation context valuable
+    "remove",   // file removal context valuable
+    "copy",     // file copy context valuable
+    "move",     // file move context valuable
+    "exists",   // file existence context valuable
+    "metadata", // file metadata context valuable
+    // Type construction context
+    "new",           // type context valuable for complex constructors
+    "default",       // type context valuable
+    "with_capacity", // container context valuable
+    "from_iter",     // iterator context valuable
+    "collect",       // collection context valuable when ambiguous
+    // Time/Date context
+    "now",            // time context valuable (Instant vs SystemTime vs Utc)
+    "elapsed",        // time measurement context valuable
+    "duration_since", // time duration context valuable
+    // Random/UUID context
+    "random",    // random generation context valuable
+    "gen",       // random generation context valuable
+    "gen_range", // random generation context valuable
+    "new_v4",    // UUID generation context valuable
+    // Compression context
+    "compress",   // compression algorithm context valuable
+    "decompress", // decompression algorithm context valuable
+    "encrypt",    // encryption algorithm context valuable
+    "decrypt",    // decryption algorithm context valuable
+    // Database/Storage context
+    "execute", // database execution context valuable
+    "query",   // database query context valuable
+    "fetch",   // database fetch context valuable
+    "insert",  // database insert context valuable
+    "update",  // database update context valuable
+    // Configuration context
+    "load",  // configuration loading context valuable
+    "save",  // configuration saving context valuable
+    "merge", // configuration merging context valuable
+];
+
+/// Patterns that should always preserve inline module context for semantic clarity
+const ALLOWED_INLINE_PATTERNS: &[&str] = &[
+    "tokio::",
+    "std::thread::",
+    "std::time::",
+    "serde_json::",
+    "serde_yaml::",
+    "reqwest::",
+    "regex::",
+    "tracing::",
+    "anyhow::",
+    "thiserror::",
+    "clap::",
+    "uuid::",
+    "chrono::",
+    "rand::",
+    "futures::",
+    "async_trait::",
+    "riptide_core::",
+    "riptide_web::",
+    "riptide_search::",
+    "riptide_sim::",
+    "riptide_cli::",
+];
+
+/// Patterns that should be imported at top level (universally recognized)
+const REQUIRE_IMPORT_PATTERNS: &[&str] = &[
+    "std::collections::HashMap",
+    "std::collections::BTreeMap",
+    "std::collections::HashSet",
+    "std::collections::BTreeSet",
+    "std::collections::VecDeque",
+    "std::sync::Arc",
+    "std::sync::Rc",
+    "std::sync::Mutex",
+    "std::sync::RwLock",
+    "std::time::Duration",
+    "std::time::Instant",
+    "std::time::SystemTime",
+    "std::fmt::Display",
+    "std::fmt::Debug",
+    "std::error::Error",
+    "std::result::Result",
+    "std::option::Option",
+    "std::boxed::Box",
+    "std::string::String",
+    "std::vec::Vec",
+];
+
+#[derive(Debug)]
+enum Recommendation {
+    PreferInline(String), // Keep inline with reason
+    PreferImport(String), // Import with reason
+}
+
+#[derive(Debug, Clone, Copy)]
+enum UsageType {
+    Function, // Function call (preserve context)
+    Type,     // Type usage (can import)
+    Unknown,  // Can't determine (conservative)
+}
+
 // --- Violation Tracking ---
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -675,6 +826,8 @@ impl StyleChecker {
         // Code organization
         self.check_test_naming_patterns();
         self.check_import_organization();
+        self.check_context_losing_imports();
+        self.check_bare_function_calls();
         self.check_inline_module_references();
 
         Ok(())
@@ -1177,12 +1330,232 @@ impl StyleChecker {
     }
 
     /// Check for inline module references that should be imports instead
+    fn check_context_losing_imports(&mut self) {
+        let mut violations = Vec::new();
+
+        for (line_num, line) in self.file_lines.iter().enumerate() {
+            let trimmed = line.trim();
+
+            // Skip comments and empty lines
+            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("///") {
+                continue;
+            }
+
+            // Check use statements
+            if trimmed.starts_with("use ") {
+                self.check_use_statement_for_context_loss(line_num + 1, trimmed, &mut violations);
+            }
+        }
+
+        // Add all violations after the loop
+        for (severity, line_num, rule, message) in violations {
+            self.add_violation(severity, line_num, &rule, &message);
+        }
+    }
+
+    fn check_use_statement_for_context_loss(
+        &self,
+        line_num: usize,
+        line: &str,
+        violations: &mut Vec<(Severity, usize, String, String)>,
+    ) {
+        // Parse use statement to extract imported items
+        let use_content = line
+            .strip_prefix("use ")
+            .unwrap_or("")
+            .trim_end_matches(';');
+
+        // Handle different import patterns
+        if use_content.contains('{') {
+            // Multiple imports: use module::{func1, func2}
+            self.check_multiple_imports(line_num, use_content, violations);
+        } else {
+            // Single import: use module::func
+            self.check_single_import(line_num, use_content, violations);
+        }
+    }
+
+    fn check_single_import(
+        &self,
+        line_num: usize,
+        import_path: &str,
+        violations: &mut Vec<(Severity, usize, String, String)>,
+    ) {
+        if let Some(function_name) = import_path.split("::").last() {
+            if CONTEXT_CRITICAL_FUNCTIONS.contains(&function_name) {
+                let module_path = import_path.rsplit_once("::").map(|(m, _)| m).unwrap_or("");
+                violations.push((
+                    Severity::Critical,
+                    line_num,
+                    "CONTEXT_LOSING_IMPORT".to_string(),
+                    format!(
+                        "Function '{}' loses critical context when imported from '{}' - use {}::{} instead",
+                        function_name, module_path, module_path, function_name
+                    ),
+                ));
+            }
+        }
+    }
+
+    fn check_multiple_imports(
+        &self,
+        line_num: usize,
+        import_content: &str,
+        violations: &mut Vec<(Severity, usize, String, String)>,
+    ) {
+        if let Some((module_path, items_part)) = import_content.split_once('{') {
+            let module_path = module_path.trim_end_matches("::").trim();
+            let items = items_part.trim_end_matches('}').trim();
+
+            for item in items.split(',') {
+                let item = item.trim();
+                if CONTEXT_CRITICAL_FUNCTIONS.contains(&item) {
+                    violations.push((
+                        Severity::Critical,
+                        line_num,
+                        "CONTEXT_LOSING_IMPORT".to_string(),
+                        format!(
+                            "Function '{}' loses critical context when imported from '{}' - use {}::{} instead",
+                            item, module_path, module_path, item
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    fn check_bare_function_calls(&mut self) {
+        // First, collect all imported context-critical functions
+        let mut imported_functions = std::collections::HashSet::new();
+
+        for line in &self.file_lines {
+            let trimmed = line.trim();
+            if trimmed.starts_with("use ") {
+                self.collect_imported_functions(trimmed, &mut imported_functions);
+            }
+        }
+
+        // Collect violations first to avoid borrowing issues
+        let mut violations = Vec::new();
+
+        // Then check for bare calls to these functions
+        for (line_num, line) in self.file_lines.iter().enumerate() {
+            let trimmed = line.trim();
+
+            // Skip comments, empty lines, and use statements
+            if trimmed.is_empty()
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("///")
+                || trimmed.starts_with("use ")
+            {
+                continue;
+            }
+
+            self.check_line_for_bare_calls(
+                line_num + 1,
+                line,
+                &imported_functions,
+                &mut violations,
+            );
+        }
+
+        // Add all violations after the loop
+        for (severity, line_num, rule, message) in violations {
+            self.add_violation(severity, line_num, &rule, &message);
+        }
+    }
+
+    fn collect_imported_functions(
+        &self,
+        use_statement: &str,
+        imported_functions: &mut std::collections::HashSet<String>,
+    ) {
+        let use_content = use_statement
+            .strip_prefix("use ")
+            .unwrap_or("")
+            .trim_end_matches(';');
+
+        if use_content.contains('{') {
+            // Multiple imports: use module::{func1, func2}
+            if let Some((_, items_part)) = use_content.split_once('{') {
+                let items = items_part.trim_end_matches('}').trim();
+                for item in items.split(',') {
+                    let item = item.trim();
+                    if CONTEXT_CRITICAL_FUNCTIONS.contains(&item) {
+                        imported_functions.insert(item.to_string());
+                    }
+                }
+            }
+        } else {
+            // Single import: use module::func
+            if let Some(function_name) = use_content.split("::").last() {
+                if CONTEXT_CRITICAL_FUNCTIONS.contains(&function_name) {
+                    imported_functions.insert(function_name.to_string());
+                }
+            }
+        }
+    }
+
+    fn check_line_for_bare_calls(
+        &self,
+        line_num: usize,
+        line: &str,
+        imported_functions: &std::collections::HashSet<String>,
+        violations: &mut Vec<(Severity, usize, String, String)>,
+    ) {
+        for function_name in imported_functions {
+            // Look for bare function calls (function_name followed by parentheses)
+            let call_pattern = format!("{}(", function_name);
+
+            if line.contains(&call_pattern) {
+                // Make sure it's not a module-qualified call
+                let module_qualified_pattern = format!("::{}", &call_pattern);
+                if !line.contains(&module_qualified_pattern) {
+                    violations.push((
+                        Severity::Critical,
+                        line_num,
+                        "BARE_CONTEXT_CRITICAL_CALL".to_string(),
+                        format!(
+                            "Function '{}' called without module context - this function should always include its module path for clarity",
+                            function_name
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
     fn check_inline_module_references(&mut self) {
         let mut violations_to_add = Vec::new();
         let mut in_import_section = false;
         let mut in_doc_comment = false;
         let mut in_multiline_comment = false;
+        let mut module_usage_counts = std::collections::HashMap::new();
 
+        // First pass: collect usage statistics
+        for line in &self.file_lines {
+            let trimmed = line.trim();
+            if trimmed.starts_with("use ")
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("///")
+            {
+                continue;
+            }
+
+            // Count module usage patterns
+            let inline_pattern =
+                regex::Regex::new(r"\b([a-zA-Z_][a-zA-Z0-9_]*(?:_[a-zA-Z_][a-zA-Z0-9_]*)*)::")
+                    .expect("Invalid regex pattern");
+
+            for capture in inline_pattern.find_iter(line) {
+                let module_name = capture.as_str().trim_end_matches("::");
+                *module_usage_counts
+                    .entry(module_name.to_string())
+                    .or_insert(0) += 1;
+            }
+        }
+
+        // Second pass: analyze each line for violations
         for (line_num, line) in self.file_lines.iter().enumerate() {
             let trimmed = line.trim();
 
@@ -1225,7 +1598,12 @@ impl StyleChecker {
             }
 
             // Check for inline module references
-            self.collect_inline_reference_violations(line_num + 1, line, &mut violations_to_add);
+            self.collect_inline_reference_violations(
+                line_num + 1,
+                line,
+                &mut violations_to_add,
+                &module_usage_counts,
+            );
         }
 
         // Add all violations after the loop
@@ -1239,19 +1617,42 @@ impl StyleChecker {
         line_num: usize,
         line: &str,
         violations: &mut Vec<(Severity, usize, String, String)>,
+        module_usage_counts: &std::collections::HashMap<String, usize>,
     ) {
         // Regex pattern to match module::path::item patterns
-        // Look for patterns like std::error::Error, tokio::time::sleep, riptide_core::config
         let inline_pattern =
             regex::Regex::new(r"\b([a-zA-Z_][a-zA-Z0-9_]*(?:_[a-zA-Z_][a-zA-Z0-9_]*)*)::")
                 .expect("Invalid regex pattern");
 
         for capture in inline_pattern.find_iter(line) {
             let match_str = capture.as_str();
+            let full_match_end = std::cmp::min(capture.end() + 30, line.len());
+            let full_match = &line[capture.start()..full_match_end];
             let module_name = match_str.trim_end_matches("::");
 
-            // Check if it's a standard library, external dependency, or workspace crate
-            let is_violation = STD_MODULES.iter().any(|&std_mod| module_name == std_mod)
+            // Check if this is an allowed inline pattern for semantic clarity
+            let is_context_preserving = ALLOWED_INLINE_PATTERNS
+                .iter()
+                .any(|&pattern| full_match.starts_with(pattern));
+
+            // Check if this should definitely be imported (common types)
+            let should_import = REQUIRE_IMPORT_PATTERNS
+                .iter()
+                .any(|&pattern| full_match.starts_with(pattern));
+
+            // Check if it contains context-critical functions
+            let has_context_critical_function = CONTEXT_CRITICAL_FUNCTIONS
+                .iter()
+                .any(|&func| full_match.contains(&format!("::{}", func)));
+
+            // Determine if this is a function call or type usage
+            let usage_type = self.detect_usage_type(line, capture.start(), full_match);
+
+            // Get usage count for this module
+            let usage_count = module_usage_counts.get(module_name).unwrap_or(&0);
+
+            // Check if it's a module we care about
+            let is_tracked_module = STD_MODULES.iter().any(|&std_mod| module_name == std_mod)
                 || self
                     .external_dependencies
                     .iter()
@@ -1261,21 +1662,40 @@ impl StyleChecker {
                     .iter()
                     .any(|ws| module_name.starts_with(ws));
 
-            if is_violation {
-                // Additional context checks to reduce false positives
+            if is_tracked_module {
                 let context = Self::get_context_around_match(line, capture.start());
 
                 // Skip if it's in a string literal, doc comment, or other acceptable context
-                if !Self::is_acceptable_inline_context(&context, line) {
-                    violations.push((
-                        Severity::Warning,
-                        line_num,
-                        "INLINE_MODULE_REFERENCE".to_string(),
-                        format!(
-                            "Inline module reference '{}' found. Consider importing at top of file instead",
-                            match_str
-                        ),
-                    ));
+                if Self::is_acceptable_inline_context(&context, line) {
+                    continue;
+                }
+
+                // Determine recommendation based on context and usage
+                let recommendation = self.analyze_import_context(
+                    module_name,
+                    full_match,
+                    *usage_count,
+                    is_context_preserving,
+                    has_context_critical_function,
+                    should_import,
+                    usage_type,
+                );
+
+                match recommendation {
+                    Recommendation::PreferImport(reason) => {
+                        violations.push((
+                            Severity::Warning,
+                            line_num,
+                            "INLINE_MODULE_REFERENCE".to_string(),
+                            format!(
+                                "Import '{}' at top of file - used {} times ({})",
+                                match_str, usage_count, reason
+                            ),
+                        ));
+                    }
+                    Recommendation::PreferInline(_reason) => {
+                        // Don't report - inline is preferred for context
+                    }
                 }
             }
         }
@@ -1308,7 +1728,151 @@ impl StyleChecker {
             return true;
         }
 
+        // Skip type annotations and return types
+        if context.contains(": ") || context.contains("-> ") {
+            return true;
+        }
+
+        // Skip match patterns
+        if full_line.trim_start().starts_with("Ok(") || full_line.trim_start().starts_with("Err(") {
+            return true;
+        }
+
         false
+    }
+
+    fn analyze_import_context(
+        &self,
+        module_name: &str,
+        _full_match: &str,
+        usage_count: usize,
+        is_context_preserving: bool,
+        has_context_critical_function: bool,
+        should_import: bool,
+        usage_type: UsageType,
+    ) -> Recommendation {
+        // Always preserve context for critical functions
+        if has_context_critical_function {
+            return Recommendation::PreferInline("Context-critical function".to_string());
+        }
+
+        // Always preserve context for explicitly allowed patterns
+        if is_context_preserving {
+            return Recommendation::PreferInline("Context-preserving pattern".to_string());
+        }
+
+        // Check if this is a workspace crate (preserve context unless very common)
+        let is_workspace_crate = self
+            .workspace_crates
+            .iter()
+            .any(|ws| module_name.starts_with(ws));
+
+        if is_workspace_crate {
+            match usage_type {
+                UsageType::Function => {
+                    // Always preserve context for workspace functions
+                    return Recommendation::PreferInline(
+                        "Workspace crate context valuable".to_string(),
+                    );
+                }
+                UsageType::Type => {
+                    // Only suggest imports for very frequently used types (5+ times)
+                    if usage_count >= 5 {
+                        return Recommendation::PreferImport(
+                            "Universally recognized type".to_string(),
+                        );
+                    } else {
+                        return Recommendation::PreferInline(
+                            "Workspace type context valuable".to_string(),
+                        );
+                    }
+                }
+                UsageType::Unknown => {
+                    // Conservative approach for unknown usage
+                    return Recommendation::PreferInline(
+                        "Workspace function context valuable".to_string(),
+                    );
+                }
+            }
+        }
+
+        // Import universally recognized types
+        if should_import {
+            return Recommendation::PreferImport("Workspace type used very frequently".to_string());
+        }
+
+        // Different thresholds for functions vs types
+        match usage_type {
+            UsageType::Function => {
+                // Functions always preserve context - never suggest imports
+                Recommendation::PreferInline("Usage context unclear".to_string())
+            }
+            UsageType::Type => {
+                // Types can be imported at lower threshold (max 2 uses inline)
+                if usage_count >= 3 {
+                    Recommendation::PreferImport("Used frequently".to_string())
+                } else {
+                    Recommendation::PreferInline("Function context valuable".to_string())
+                }
+            }
+            UsageType::Unknown => {
+                // Conservative approach for unknown usage
+                if usage_count >= 4 {
+                    Recommendation::PreferImport("Type used frequently".to_string())
+                } else {
+                    Recommendation::PreferInline("Type used infrequently".to_string())
+                }
+            }
+        }
+    }
+
+    fn detect_usage_type(&self, line: &str, start_pos: usize, _full_match: &str) -> UsageType {
+        // Look ahead in the line to determine usage type
+        let remaining_line = &line[start_pos..];
+
+        // Check for function call patterns
+        if remaining_line.contains("(") {
+            // Look for pattern like "module::function("
+            if let Some(paren_pos) = remaining_line.find('(') {
+                let before_paren = &remaining_line[..paren_pos];
+                if before_paren.split("::").last().map_or(false, |s| {
+                    s.chars().next().map_or(false, |c| c.is_lowercase())
+                }) {
+                    return UsageType::Function;
+                }
+            }
+        }
+
+        // Check for type patterns
+        if remaining_line.contains("::") {
+            let after_double_colon = remaining_line.split("::").last().unwrap_or("");
+            if after_double_colon
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_uppercase())
+            {
+                return UsageType::Type;
+            }
+        }
+
+        // Check context patterns for type usage
+        let context_before = if start_pos >= 20 {
+            &line[start_pos - 20..start_pos]
+        } else {
+            &line[..start_pos]
+        };
+
+        // Type annotation patterns
+        if context_before.contains(": ") || context_before.contains("-> ") {
+            return UsageType::Type;
+        }
+
+        // Variable declaration patterns
+        if context_before.contains("let ") || context_before.contains("const ") {
+            return UsageType::Type;
+        }
+
+        UsageType::Unknown
     }
 
     /// Detect workspace crates by parsing Cargo.toml files
@@ -1701,7 +2265,9 @@ mod tests {
         println!("  ✓ ABBREVIATIONS - Use full words instead of abbreviations (index not idx)");
         println!("  ✓ DISCARDED_STRUCT_FIELD - Remove unused _ prefixed struct fields");
         println!("  ✓ DISCARDED_PARAMETER - Document or use _ prefixed parameters");
-        println!("  ✓ INLINE_MODULE_REFERENCE - Import modules at top instead of inline usage");
+        println!(
+            "  ✓ INLINE_MODULE_REFERENCE - Smart inline detection: allows semantic clarity (tokio::spawn), requires imports for common types"
+        );
         println!("");
         println!("Focus: Automatic consistency detection rather than hardcoded rules");
         println!("Focus: Safety, Performance, Developer Experience");

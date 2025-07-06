@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tempfile::tempdir;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
-use tokio::time::timeout;
 
 use super::enhanced_peer_connection::EnhancedPeerConnection;
 use super::error_recovery::ErrorRecoveryManager;
@@ -213,8 +213,6 @@ impl BitTorrentTestHarness {
         should_choke: bool,
         response_delay: Duration,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
         // Handle handshake
         let mut handshake_buf = vec![0u8; 68];
         let _bytes_read = stream.read_exact(&mut handshake_buf).await?;
@@ -405,7 +403,7 @@ pub async fn test_piece_download_with_retry() -> Result<(), TorrentError> {
     assert_eq!(piece_0.status, PieceStatus::Pending);
 
     // Try to download piece 0
-    let result = timeout(
+    let result = tokio::time::timeout(
         Duration::from_secs(10),
         harness.downloader.download_piece(PieceIndex::new(0)),
     )
