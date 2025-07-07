@@ -67,6 +67,7 @@ pub mod simulated_peer_manager;
 pub mod streaming_integration_tests;
 pub mod tracker;
 pub mod tracker_manager;
+pub mod unified;
 
 // Re-export core types for convenience
 use std::collections::HashSet;
@@ -102,6 +103,9 @@ pub use scenarios::{
 pub use simulated_peer_manager::{InMemoryPeerConfig, InMemoryPeerManager};
 pub use tracker::{MockTracker, MockTrackerBuilder, SimulatedTrackerManager};
 pub use tracker_manager::TrackerManager;
+pub use unified::{
+    EventScheduler, PeerAction, SimulationError as UnifiedSimulationError, UnifiedSimulation,
+};
 
 /// Simulation environment for BitTorrent development.
 ///
@@ -301,7 +305,6 @@ pub async fn create_development_components(
         connection_failure_rate: 0.05, // 5% failure rate (realistic)
         message_loss_rate: 0.001,      // 0.1% from streaming environment
         max_connections: 100,          // Support for larger peer swarms
-        auto_keepalive: true,
     };
 
     let peer_manager_sim =

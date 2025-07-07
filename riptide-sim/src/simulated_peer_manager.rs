@@ -23,8 +23,6 @@ pub struct InMemoryPeerConfig {
     pub message_loss_rate: f64,
     /// Maximum number of simultaneous connections
     pub max_connections: usize,
-    /// Whether to generate automatic keep-alive messages
-    pub auto_keepalive: bool,
 }
 
 impl Default for InMemoryPeerConfig {
@@ -34,7 +32,6 @@ impl Default for InMemoryPeerConfig {
             connection_failure_rate: 0.0,
             message_loss_rate: 0.0,
             max_connections: 50,
-            auto_keepalive: true,
         }
     }
 }
@@ -336,32 +333,10 @@ impl PeerManager for InMemoryPeerManager {
             }
         }
 
-        // Simulate automatic responses for certain message types
-        match message {
-            PeerMessage::Interested => {
-                // Peer might respond with unchoke
-                if rand::random::<f64>() < 0.8 {
-                    self.simulate_peer_message(peer_address, PeerMessage::Unchoke)
-                        .await?;
-                }
-            }
-            PeerMessage::Request { piece_index, .. } => {
-                // Check if peer has this piece and respond
-                if self.peer_has_piece(peer_address, piece_index).await {
-                    // Simulate piece data response
-                    let piece_data = vec![0u8; 16384]; // Typical piece size
-                    let response = PeerMessage::Piece {
-                        piece_index,
-                        offset: 0,
-                        data: piece_data.into(),
-                    };
-                    self.simulate_peer_message(peer_address, response).await?;
-                }
-            }
-            _ => {
-                // Other messages don't typically generate automatic responses
-            }
-        }
+        // Messages are logged but do not generate automatic responses.
+        // Tests must explicitly control all peer interactions to prevent
+        // masking protocol bugs through auto-responses.
+        tracing::debug!("Message sent to peer {}: {:?}", peer_address, message);
 
         Ok(())
     }
