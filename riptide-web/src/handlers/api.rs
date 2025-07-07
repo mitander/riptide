@@ -150,6 +150,19 @@ pub async fn api_add_torrent(
     }
 }
 
+/// Query parameters for movie search with fuzzy matching
+#[derive(Deserialize)]
+pub struct MovieSearchQuery {
+    /// Search query (movie title)
+    pub q: String,
+    /// Enable fuzzy matching for typos (default: true)
+    pub fuzzy: Option<bool>,
+    /// Fuzzy match threshold 0.0-1.0 (default: 0.6)
+    pub threshold: Option<f64>,
+    /// Maximum results to return (default: 10)
+    pub limit: Option<usize>,
+}
+
 pub async fn api_search(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
@@ -182,6 +195,95 @@ pub async fn api_search(
         Err(e) => {
             tracing::error!("Search failed for query '{}': {}", query, e);
             Json(json!({"results": []}))
+        }
+    }
+}
+
+/// Enhanced movie search API with fuzzy matching and rich metadata
+pub async fn api_search_movies(
+    State(state): State<AppState>,
+    Query(params): Query<MovieSearchQuery>,
+) -> Json<serde_json::Value> {
+    if params.q.trim().is_empty() {
+        return Json(json!({
+            "movies": [],
+            "total": 0,
+            "query": params.q,
+            "fuzzy_enabled": false
+        }));
+    }
+
+    let fuzzy_enabled = params.fuzzy.unwrap_or(true);
+    let max_results = params.limit.unwrap_or(10);
+    let threshold = params.threshold.unwrap_or(0.6);
+
+    // Use the enhanced search functionality from the existing service
+    let search_result = state
+        .search_service
+        .search_movies_enhanced(&params.q, Some(threshold))
+        .await;
+
+    match search_result {
+        Ok(mut movies) => {
+            // Limit results
+            movies.truncate(max_results);
+
+            let movie_results: Vec<serde_json::Value> = movies
+                .into_iter()
+                .map(|movie| {
+                    // Get best torrent for quick streaming
+                    let best_torrent = movie.torrents.first();
+
+                    json!({
+                        "title": movie.title,
+                        "year": movie.year,
+                        "imdb_id": movie.imdb_id,
+                        "poster_url": movie.poster_url,
+                        "plot": movie.plot,
+                        "genre": movie.genre,
+                        "rating": movie.rating,
+                        "runtime": movie.runtime,
+                        "director": movie.director,
+                        "cast": movie.cast,
+                        "match_score": movie.match_score,
+                        "torrent_count": movie.torrents.len(),
+                        "best_quality": best_torrent.map(|t| format!("{:?}", t.quality)),
+                        "best_magnet": best_torrent.map(|t| &t.magnet_link),
+                        "best_size": best_torrent.map(|t| t.format_size()),
+                        "best_seeds": best_torrent.map(|t| t.seeders),
+                        "torrents": movie.torrents.into_iter().map(|torrent| json!({
+                            "name": torrent.name,
+                            "quality": format!("{:?}", torrent.quality),
+                            "size": torrent.format_size(),
+                            "seeders": torrent.seeders,
+                            "leechers": torrent.leechers,
+                            "magnet_link": torrent.magnet_link,
+                            "source": torrent.source,
+                            "priority_score": torrent.priority_score()
+                        })).collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+
+            Json(json!({
+                "movies": movie_results,
+                "total": movie_results.len(),
+                "query": params.q,
+                "fuzzy_enabled": fuzzy_enabled,
+                "threshold": threshold,
+                "search_type": "enhanced_with_fuzzy_matching"
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Enhanced search failed for query '{}': {}", params.q, e);
+            Json(json!({
+                "movies": [],
+                "total": 0,
+                "query": params.q,
+                "error": format!("Search failed: {e}"),
+                "fuzzy_enabled": fuzzy_enabled,
+                "threshold": threshold
+            }))
         }
     }
 }

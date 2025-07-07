@@ -169,6 +169,33 @@ impl MediaSearchService {
         Ok(results)
     }
 
+    /// Enhanced movie search with fuzzy matching and rich metadata.
+    ///
+    /// Provides intelligent search with typo correction, quality sorting,
+    /// and comprehensive IMDb metadata for streaming-optimized results.
+    ///
+    /// # Errors
+    /// - `MediaSearchError::SearchFailed` - Search operation failed
+    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    pub async fn search_movies_enhanced(
+        &self,
+        query: &str,
+        fuzzy_threshold: Option<f64>,
+    ) -> Result<Vec<crate::enhanced_search::MovieSearchResult>, MediaSearchError> {
+        // Create enhanced service with the same provider and metadata service
+        let enhanced_service = if self.is_development {
+            crate::enhanced_search::EnhancedMediaSearchService::new_development()
+        } else {
+            crate::enhanced_search::EnhancedMediaSearchService::with_fuzzy_threshold(
+                Box::new(crate::providers::MagnetoProvider::new()),
+                fuzzy_threshold.unwrap_or(0.6),
+            )
+        };
+
+        // Use typo correction for more robust search
+        enhanced_service.search_with_typo_correction(query).await
+    }
+
     /// Get detailed torrent results for media.
     ///
     /// # Errors

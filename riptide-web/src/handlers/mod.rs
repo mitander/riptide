@@ -8,8 +8,9 @@ pub mod streaming;
 
 // Re-export handler functions
 pub use api::{
-    AddTorrentQuery, DownloadRequest, SeekRequest, Stats, api_add_torrent, api_download_torrent,
-    api_library, api_search, api_seek_torrent, api_settings, api_stats, api_torrents,
+    AddTorrentQuery, DownloadRequest, MovieSearchQuery, SeekRequest, Stats, api_add_torrent,
+    api_download_torrent, api_library, api_search, api_search_movies, api_seek_torrent,
+    api_settings, api_stats, api_torrents,
 };
 pub use htmx::{
     add_torrent_htmx, dashboard_activity, dashboard_downloads, dashboard_stats, torrents_list,

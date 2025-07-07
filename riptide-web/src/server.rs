@@ -19,8 +19,8 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
 use crate::handlers::{
-    api_add_torrent, api_download_torrent, api_library, api_search, api_seek_torrent, api_settings,
-    api_stats, api_torrents, stream_torrent, video_player_page,
+    api_add_torrent, api_download_torrent, api_library, api_search, api_search_movies,
+    api_seek_torrent, api_settings, api_stats, api_torrents, stream_torrent, video_player_page,
 };
 use crate::htmx::{
     add_torrent, dashboard_activity, dashboard_downloads, dashboard_stats, system_status,
@@ -138,6 +138,7 @@ pub async fn run_server(
         .route("/api/download", axum::routing::post(api_download_torrent))
         .route("/api/library", axum::routing::get(api_library))
         .route("/api/search", axum::routing::get(api_search))
+        .route("/api/search/movies", axum::routing::get(api_search_movies))
         .route("/api/settings", axum::routing::get(api_settings))
         .route(
             "/api/torrents/{info_hash}/seek",

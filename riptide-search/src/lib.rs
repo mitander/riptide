@@ -1,7 +1,9 @@
 //! Riptide Search - Media search and discovery
 //!
-//! Provides search capabilities across multiple media sources.
+//! Provides search capabilities across multiple media sources with fuzzy matching
+//! and rich IMDb metadata integration for streaming-optimized movie discovery.
 
+pub mod enhanced_search;
 pub mod errors;
 pub mod metadata;
 pub mod providers;
@@ -9,6 +11,7 @@ pub mod service;
 pub mod types;
 
 // Re-export main types
+pub use enhanced_search::{EnhancedMediaSearchService, FuzzySearchConfig, MovieSearchResult};
 pub use errors::MediaSearchError;
 pub use metadata::{ImdbMetadataService, MediaMetadata};
 pub use service::MediaSearchService;

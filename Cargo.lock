@@ -1882,6 +1882,7 @@ dependencies = [
  "riptide-core",
  "serde",
  "serde_json",
+ "strsim",
  "thiserror",
  "tokio",
  "tracing",
