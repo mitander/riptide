@@ -6,6 +6,7 @@ Cargo.lock
 # Documentation (if not wanted in VCS)
 TODO.md
 CLAUDE.md
+PERFORMANCE_SOLUTION.md
 
 # TypeScript/Node.js
 node_modules/

@@ -54,6 +54,7 @@
 
 pub mod content_aware_peer_manager;
 pub mod deterministic;
+pub mod fast_dev_peer_manager;
 pub mod magneto_provider;
 pub mod media;
 pub mod network;
@@ -61,12 +62,14 @@ pub mod peer;
 pub mod peer_server;
 pub mod piece_store;
 pub mod scenarios;
+pub mod simulation_mode;
+pub mod streaming;
 pub mod streaming_integration_tests;
 pub mod tracker;
 pub mod tracker_manager;
 
 // Re-export core types for convenience
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -79,6 +82,7 @@ pub use deterministic::{
     ResourceUsage, SimulationError, SimulationEvent, SimulationMetrics, SimulationReport,
     SimulationState, StreamingInvariant, ThrottleDirection,
 };
+pub use fast_dev_peer_manager::{FastDevelopmentPeerManager, FastPeerManagerStats};
 pub use magneto_provider::{
     MockMagnetoProvider, MockMagnetoProviderBuilder, TorrentEntryParams,
     create_mock_magneto_client, create_streaming_test_client,
@@ -93,6 +97,9 @@ pub use riptide_core::config::SimulationConfig;
 pub use scenarios::{
     cascading_piece_failures_scenario, extreme_peer_churn_scenario, resource_exhaustion_scenario,
     severe_network_degradation_scenario, streaming_edge_cases, total_peer_failure_scenario,
+};
+pub use simulation_mode::{
+    NetworkConditions, SimulationConfigBuilder, SimulationMode, SimulationPeerManagerFactory,
 };
 pub use tracker::{ResponseConfig, SimulatedTrackerManager};
 pub use tracker_manager::PeerSeeder;
@@ -264,46 +271,24 @@ pub fn create_standard_streaming_simulation(
     Ok(sim)
 }
 
-/// Create development server components with simulation implementations.
-/// This function encapsulates all development mode setup logic.
-///
-/// # Errors
-/// - `SimulationError::Setup` - Failed to initialize simulation components
-/// - `SimulationError::FileSystem` - Failed to scan movies directory
-pub async fn create_development_components(
-    config: riptide_core::config::RiptideConfig,
+/// Create fast server components using FastDevelopmentPeerManager.
+async fn create_fast_server_components(
+    engine: riptide_core::torrent::TorrentEngineHandle,
+    piece_store_sim: Arc<InMemoryPieceStore>,
     movies_dir: Option<std::path::PathBuf>,
 ) -> Result<riptide_core::server_components::ServerComponents> {
     use std::collections::HashMap;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
+    use std::time::Instant;
 
     use riptide_core::server_components::{ConversionProgress, ConversionStatus, ServerComponents};
     use riptide_core::storage::FileLibraryManager;
-    use riptide_core::torrent::{InfoHash, PieceStore, spawn_torrent_engine};
+    use riptide_core::torrent::{InfoHash, PieceStore};
     use tokio::sync::RwLock;
 
-    let piece_store_sim = Arc::new(InMemoryPieceStore::new());
-
-    let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
-    let peer_registry_clone = peer_registry.clone();
-    let realistic_peer_config = InMemoryPeerConfig {
-        message_delay_ms: 50,          // 10-100ms range from streaming environment
-        connection_failure_rate: 0.05, // 5% failure rate (realistic)
-        message_loss_rate: 0.001,      // 0.1% from streaming environment
-        max_connections: 100,          // Support for larger peer swarms
-    };
-
-    let peer_manager_sim =
-        ContentAwarePeerManager::new(realistic_peer_config, piece_store_sim.clone());
-
-    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
-        tracker::ResponseConfig::default(),
-        peer_registry_clone,
-    );
-
-    let engine = spawn_torrent_engine(config, peer_manager_sim, tracker_manager_sim);
     let conversion_progress = Arc::new(RwLock::new(HashMap::new()));
+    let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
 
     let manager_opt = if let Some(dir) = movies_dir.as_ref() {
         let mut manager = FileLibraryManager::new();
@@ -331,7 +316,9 @@ pub async fn create_development_components(
                 }
 
                 if !movies.is_empty() {
-                    println!("Starting background conversion service...");
+                    println!(
+                        "Starting background conversion service with FastDevelopmentPeerManager..."
+                    );
                     let piece_store_bg = piece_store_sim.clone();
                     let peer_registry_bg = peer_registry.clone();
                     let engine_bg = engine.clone();
@@ -371,6 +358,177 @@ pub async fn create_development_components(
             riptide_core::streaming::SimulationFfmpegProcessor::new(),
         ),
     })
+}
+
+/// Create deterministic server components using ContentAwarePeerManager.
+async fn create_deterministic_server_components(
+    engine: riptide_core::torrent::TorrentEngineHandle,
+    piece_store_sim: Arc<InMemoryPieceStore>,
+    movies_dir: Option<std::path::PathBuf>,
+    peer_registry: Arc<Mutex<HashMap<riptide_core::torrent::InfoHash, Vec<std::net::SocketAddr>>>>,
+) -> Result<riptide_core::server_components::ServerComponents> {
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    use riptide_core::server_components::{ConversionProgress, ConversionStatus, ServerComponents};
+    use riptide_core::storage::FileLibraryManager;
+    use riptide_core::torrent::PieceStore;
+    use tokio::sync::RwLock;
+
+    let conversion_progress = Arc::new(RwLock::new(HashMap::new()));
+
+    let manager_opt = if let Some(dir) = movies_dir.as_ref() {
+        let mut manager = FileLibraryManager::new();
+
+        match manager.scan_directory(dir).await {
+            Ok(count) => {
+                println!("Found {} movie files in {}", count, dir.display());
+
+                let movies: Vec<_> = manager.all_files().into_iter().cloned().collect();
+
+                {
+                    let mut progress = conversion_progress.write().await;
+                    for movie in &movies {
+                        progress.insert(
+                            movie.title.clone(),
+                            ConversionProgress {
+                                movie_title: movie.title.clone(),
+                                status: ConversionStatus::Pending,
+                                started_at: Instant::now(),
+                                completed_at: None,
+                                error_message: None,
+                            },
+                        );
+                    }
+                }
+
+                if !movies.is_empty() {
+                    println!(
+                        "Starting background conversion service with ContentAwarePeerManager..."
+                    );
+                    let piece_store_bg = piece_store_sim.clone();
+                    let peer_registry_bg = peer_registry.clone();
+                    let engine_bg = engine.clone();
+                    let progress_tracker = conversion_progress.clone();
+
+                    tokio::spawn(async move {
+                        start_background_conversions(
+                            movies,
+                            piece_store_bg,
+                            peer_registry_bg,
+                            engine_bg,
+                            progress_tracker,
+                        )
+                        .await;
+                    });
+                } else {
+                    println!("No movies found to convert.");
+                }
+
+                Some(Arc::new(RwLock::new(manager)))
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to scan movies directory: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(ServerComponents {
+        torrent_engine: engine,
+        movie_manager: manager_opt,
+        piece_store: Some(piece_store_sim as Arc<dyn PieceStore>),
+        conversion_progress: Some(conversion_progress),
+        ffmpeg_processor: std::sync::Arc::new(
+            riptide_core::streaming::SimulationFfmpegProcessor::new(),
+        ),
+    })
+}
+
+/// Create fast development server components using FastDevelopmentPeerManager.
+/// This provides maximum performance (>50,000 Mbps) for streaming development.
+///
+/// # Errors
+/// - `SimulationError::Setup` - Failed to initialize simulation components
+/// - `SimulationError::FileSystem` - Failed to scan movies directory
+pub async fn create_fast_development_components(
+    config: riptide_core::config::RiptideConfig,
+    movies_dir: Option<std::path::PathBuf>,
+) -> Result<riptide_core::server_components::ServerComponents> {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    use riptide_core::torrent::{InfoHash, spawn_torrent_engine};
+
+    let piece_store_sim = Arc::new(InMemoryPieceStore::new());
+    let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
+
+    tracing::info!(
+        "Fast development components: Using FastDevelopmentPeerManager for maximum performance"
+    );
+    let peer_manager_sim = FastDevelopmentPeerManager::new(piece_store_sim.clone());
+
+    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
+        tracker::ResponseConfig::default(),
+        peer_registry.clone(),
+    );
+
+    let engine = spawn_torrent_engine(config, peer_manager_sim, tracker_manager_sim);
+    create_fast_server_components(engine, piece_store_sim, movies_dir).await
+}
+
+/// Create deterministic development server components using ContentAwarePeerManager.
+/// This provides deterministic, reproducible behavior for testing and bug reproduction.
+///
+/// # Errors
+/// - `SimulationError::Setup` - Failed to initialize simulation components
+/// - `SimulationError::FileSystem` - Failed to scan movies directory
+pub async fn create_deterministic_development_components(
+    config: riptide_core::config::RiptideConfig,
+    movies_dir: Option<std::path::PathBuf>,
+) -> Result<riptide_core::server_components::ServerComponents> {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    use riptide_core::torrent::{InfoHash, spawn_torrent_engine};
+
+    let piece_store_sim = Arc::new(InMemoryPieceStore::new());
+    let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
+
+    tracing::info!(
+        "Deterministic development components: Using ContentAwarePeerManager for testing"
+    );
+    let realistic_peer_config = InMemoryPeerConfig {
+        message_delay_ms: 1,          // Minimal delay for development
+        connection_failure_rate: 0.0, // No failures for development
+        message_loss_rate: 0.0,       // No loss for development
+        max_connections: 100,
+    };
+
+    let peer_manager_sim =
+        ContentAwarePeerManager::new(realistic_peer_config, piece_store_sim.clone());
+
+    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
+        tracker::ResponseConfig::default(),
+        peer_registry.clone(),
+    );
+
+    let engine = spawn_torrent_engine(config, peer_manager_sim, tracker_manager_sim);
+    create_deterministic_server_components(engine, piece_store_sim, movies_dir, peer_registry).await
+}
+
+/// Legacy function - now routes to fast development mode for backward compatibility.
+/// Use create_fast_development_components() or create_deterministic_development_components() directly.
+pub async fn create_development_components(
+    config: riptide_core::config::RiptideConfig,
+    movies_dir: Option<std::path::PathBuf>,
+) -> Result<riptide_core::server_components::ServerComponents> {
+    // Default to fast development for backward compatibility
+    create_fast_development_components(config, movies_dir).await
 }
 
 /// Background conversion service that processes all movies without blocking server startup

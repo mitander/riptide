@@ -448,7 +448,7 @@ impl DeterministicSimulation {
             // and to ensure simulation events have a non-zero duration, which helps avoid scheduling conflicts.
             let bytes_per_second = self.config.simulated_download_speed;
             let download_seconds = piece_size as f64 / bytes_per_second as f64;
-            let download_time = Duration::from_secs_f64(download_seconds.max(0.1));
+            let download_time = Duration::from_secs_f64(download_seconds.max(0.001)); // Remove artificial 100ms minimum that limits speed
             self.schedule_delayed(
                 piece_delay + download_time,
                 EventType::PieceComplete {

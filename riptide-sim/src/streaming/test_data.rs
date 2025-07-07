@@ -27,11 +27,11 @@ pub fn create_realistic_video_data(size: usize) -> Vec<u8> {
 pub fn create_simple_mock_data(pattern: &[u8], size: usize) -> Vec<u8> {
     let mut data = Vec::with_capacity(size);
     let pattern_len = pattern.len();
-    
+
     for i in 0..size {
         data.push(pattern[i % pattern_len]);
     }
-    
+
     data
 }
 
@@ -58,21 +58,21 @@ pub fn split_into_pieces(data: &[u8], piece_size: u32) -> Vec<TorrentPiece> {
 /// Useful for tests that need predictable piece verification behavior.
 pub fn create_sequential_pieces(count: u32, piece_size: usize) -> Vec<TorrentPiece> {
     let mut pieces = Vec::new();
-    
+
     for i in 0..count {
         let mut data = vec![0u8; piece_size];
         // Fill with index-based pattern
         for (j, byte) in data.iter_mut().enumerate() {
             *byte = ((i + j as u32) % 256) as u8;
         }
-        
+
         pieces.push(TorrentPiece {
             index: i,
             hash: [(i % 256) as u8; 20], // Simple deterministic hash
             data,
         });
     }
-    
+
     pieces
 }
 
@@ -97,7 +97,7 @@ mod tests {
     fn test_split_into_pieces_correct_count() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let pieces = split_into_pieces(&data, 3);
-        
+
         assert_eq!(pieces.len(), 3);
         assert_eq!(pieces[0].data, vec![1, 2, 3]);
         assert_eq!(pieces[1].data, vec![4, 5, 6]);
@@ -110,7 +110,7 @@ mod tests {
     #[test]
     fn test_sequential_pieces_deterministic() {
         let pieces = create_sequential_pieces(3, 4);
-        
+
         assert_eq!(pieces.len(), 3);
         assert_eq!(pieces[0].index, 0);
         assert_eq!(pieces[1].index, 1);

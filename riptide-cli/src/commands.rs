@@ -94,9 +94,16 @@ pub async fn create_server_components(
                 ffmpeg_processor,
             })
         }
-        RuntimeMode::Development => riptide_sim::create_development_components(config, movies_dir)
-            .await
-            .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string()))),
+        RuntimeMode::Simulation => {
+            riptide_sim::create_deterministic_development_components(config, movies_dir)
+                .await
+                .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))
+        }
+        RuntimeMode::Development => {
+            riptide_sim::create_fast_development_components(config, movies_dir)
+                .await
+                .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))
+        }
     }
 }
 
@@ -417,7 +424,13 @@ pub async fn start_server(
     println!("Starting Riptide media server...");
     println!("{:-<50}", "");
 
-    let config = RiptideConfig::default();
+    let config = if mode.is_development() {
+        let mut config = RiptideConfig::default();
+        config.simulation = riptide_core::config::SimulationConfig::ideal_streaming(42); // Use 10 MB/s for development
+        config
+    } else {
+        RiptideConfig::default()
+    };
 
     println!(
         "Running in {} mode - using {} data sources",
