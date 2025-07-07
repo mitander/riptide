@@ -9,7 +9,7 @@ use crate::server::AppState;
 /// Renders the main dashboard page with real-time components
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let engine_stats = state.engine().download_statistics().await.unwrap();
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Initial stats for server-side rendering
     let active_torrents = sessions.len();
@@ -88,9 +88,9 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
 
     // Live stats container with HTMX auto-refresh
     let live_stats = format!(
-        r#"<div id="dashboard-stats" 
-               hx-get="/htmx/dashboard/stats" 
-               hx-trigger="load, every 5s" 
+        r#"<div id="dashboard-stats"
+               hx-get="/htmx/dashboard/stats"
+               hx-trigger="load, every 5s"
                hx-swap="innerHTML">
             {}
         </div>"#,
@@ -128,8 +128,8 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let _recent_activity = layout::card(
         Some("Recent Activity"),
         r#"<div id="dashboard-activity"
-                   hx-get="/htmx/dashboard/activity" 
-                   hx-trigger="load, every 10s" 
+                   hx-get="/htmx/dashboard/activity"
+                   hx-trigger="load, every 10s"
                    hx-swap="innerHTML">
                 <div class="text-center py-8 text-gray-400">Loading activity...</div>
             </div>"#,
@@ -140,8 +140,8 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let active_downloads = layout::card(
         Some("Active Downloads"),
         r#"<div id="dashboard-downloads"
-                   hx-get="/htmx/dashboard/downloads" 
-                   hx-trigger="load, every 3s" 
+                   hx-get="/htmx/dashboard/downloads"
+                   hx-trigger="load, every 3s"
                    hx-swap="innerHTML">
                 <div class="text-center py-8 text-gray-400">Loading downloads...</div>
             </div>"#,
@@ -155,8 +155,8 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
         Some("System Status"),
         &format!(
             r#"<div id="system-metrics"
-                   hx-get="/htmx/system/metrics" 
-                   hx-trigger="load, every 30s" 
+                   hx-get="/htmx/system/metrics"
+                   hx-trigger="load, every 30s"
                    hx-swap="innerHTML">
                 <div class="space-y-3">
                     {}
@@ -174,9 +174,9 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     // Main layout
     let content = format!(
         r#"{}
-        
+
         {}
-        
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2 space-y-6">
                 {}
@@ -241,17 +241,17 @@ pub fn render_page(title: &str, active_nav: &str, content: &str) -> Html<String>
                 .htmx-indicator {{ opacity: 0; transition: opacity 0.3s; }}
                 .htmx-request .htmx-indicator {{ opacity: 1; }}
                 .htmx-request.htmx-indicator {{ opacity: 1; }}
-                
+
                 @keyframes pulse-green {{
                     0%, 100% {{ opacity: 1; }}
                     50% {{ opacity: 0.5; }}
                 }}
                 .status-pulse {{ animation: pulse-green 2s infinite; }}
-                
+
                 .fadeInDown {{
                     animation: fadeInDown 0.3s ease-out;
                 }}
-                
+
                 @keyframes fadeInDown {{
                     from {{ opacity: 0; transform: translateY(-10px); }}
                     to {{ opacity: 1; transform: translateY(0); }}
@@ -260,14 +260,14 @@ pub fn render_page(title: &str, active_nav: &str, content: &str) -> Html<String>
         </head>
         <body class="bg-gray-900 text-white min-h-screen font-sans">
             {}
-            
+
             <main class="max-w-7xl mx-auto px-4 py-8">
                 {}
             </main>
 
             <!-- Toast notification container -->
             <div id="toast-container" class="fixed top-4 right-4 space-y-2 z-50"></div>
-            
+
             <!-- Modal container -->
             <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"></div>
         </body>

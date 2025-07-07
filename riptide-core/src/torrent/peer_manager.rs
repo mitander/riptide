@@ -129,8 +129,13 @@ pub trait PeerManager: Send + Sync {
     async fn shutdown(&mut self) -> Result<(), TorrentError>;
 
     /// Configure upload manager for streaming optimization.
-    /// Returns Ok(()) if the implementation supports upload management,
-    /// or Ok(()) with no-op for implementations that don't need it.
+    ///
+    /// Implementations that support upload management should configure bandwidth
+    /// throttling based on streaming requirements. Mock implementations can
+    /// safely return Ok(()) as a no-op.
+    ///
+    /// # Errors
+    /// - `TorrentError::PeerConnectionError` - Configuration failed
     async fn configure_upload_manager(
         &mut self,
         info_hash: InfoHash,
@@ -139,8 +144,13 @@ pub trait PeerManager: Send + Sync {
     ) -> Result<(), TorrentError>;
 
     /// Update streaming position for upload throttling.
-    /// Returns Ok(()) if the implementation supports upload management,
-    /// or Ok(()) with no-op for implementations that don't need it.
+    ///
+    /// Implementations that support upload management should update their
+    /// throttling decisions based on current playback position. Mock
+    /// implementations can safely return Ok(()) as a no-op.
+    ///
+    /// # Errors
+    /// - `TorrentError::PeerConnectionError` - Update failed
     async fn update_streaming_position(
         &mut self,
         info_hash: InfoHash,

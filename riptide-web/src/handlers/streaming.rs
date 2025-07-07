@@ -50,6 +50,10 @@ fn determine_content_type(filename: &str) -> String {
     }
 }
 
+/// Streams torrent content with HTTP range support for video playback.
+///
+/// # Errors
+/// Returns StatusCode error if torrent not found, streaming fails, or range headers are invalid.
 pub async fn stream_torrent(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
@@ -61,7 +65,7 @@ pub async fn stream_torrent(
     };
 
     // Get torrent session
-    let session = match state.engine().get_session(info_hash).await {
+    let session = match state.engine().session_details(info_hash).await {
         Ok(session) => session,
         Err(_) => return Err(StatusCode::NOT_FOUND),
     };
@@ -505,6 +509,10 @@ fn estimate_available_bandwidth(range_length: u64) -> u64 {
     }
 }
 
+/// Returns list of local movies available for streaming.
+///
+/// # Errors
+/// Returns JSON error if movie library access fails.
 pub async fn api_local_movies(State(state): State<AppState>) -> Json<serde_json::Value> {
     if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
@@ -540,6 +548,10 @@ pub struct AddLocalMovieQuery {
     pub info_hash: String,
 }
 
+/// Adds a local movie to the library by info hash.
+///
+/// This endpoint allows adding a movie that exists locally to the managed
+/// library, making it available for streaming and metadata management.
 pub async fn api_add_local_movie(
     State(state): State<AppState>,
     Query(params): Query<AddLocalMovieQuery>,
@@ -633,7 +645,7 @@ pub async fn stream_local_movie(
     let (start, safe_end, safe_length) = validate_range_bounds(start, end, movie.size)?;
 
     // For local movies that have been added to the torrent engine, also update position
-    if let Ok(session) = state.engine().get_session(info_hash).await {
+    if let Ok(session) = state.engine().session_details(info_hash).await {
         update_playback_position_and_priority(&state, info_hash, start, safe_length, &session)
             .await;
     }

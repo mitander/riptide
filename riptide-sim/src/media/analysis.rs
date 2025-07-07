@@ -12,6 +12,10 @@ pub struct MediaAnalyzer;
 
 impl MediaAnalyzer {
     /// Analyzes movie folder to extract media information.
+    ///
+    /// # Errors
+    /// - Returns error if folder cannot be read or accessed
+    /// - Returns error if file metadata cannot be retrieved
     pub async fn analyze_movie_folder(
         folder_path: &Path,
     ) -> Result<MovieFolder, Box<dyn std::error::Error>> {

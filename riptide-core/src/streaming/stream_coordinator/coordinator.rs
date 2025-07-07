@@ -109,7 +109,7 @@ impl StreamCoordinator {
         let info_hash = InfoHash::new(info_hash);
 
         // Check if torrent exists in engine (optional validation)
-        if let Err(e) = self.torrent_engine.get_session(info_hash).await {
+        if let Err(e) = self.torrent_engine.session_details(info_hash).await {
             tracing::warn!(
                 "Torrent {} not found in engine during streaming: {}",
                 info_hash,
@@ -175,6 +175,9 @@ impl StreamCoordinator {
     }
 
     /// List all registered torrents.
+    ///
+    /// # Errors
+    /// Returns error if torrent registry access fails.
     pub async fn list_torrents(&self) -> Result<Vec<TorrentMetadata>, StreamingError> {
         let torrents = self.registered_torrents.read().await;
         Ok(torrents.values().cloned().collect())
@@ -309,7 +312,7 @@ impl StreamCoordinator {
         source: String,
     ) -> Result<TorrentMetadata, StreamingError> {
         // TODO: Replace mock with real implementation:
-        // let session = self._torrent_engine.get_session(info_hash).await??;
+        // let session = self._torrent_engine.session_details(info_hash).await??;
         // For now, create minimal metadata
 
         Ok(TorrentMetadata {

@@ -1,4 +1,4 @@
-//! Development tracker manager that provides BitTorrent tracker functionality
+//! Development peer seeder that provides BitTorrent tracker functionality
 //! for development mode by spawning real peer servers and coordinating them.
 
 use std::collections::HashMap;
@@ -14,17 +14,17 @@ use tokio::sync::RwLock;
 
 use crate::{InMemoryPieceStore, spawn_peer_servers_for_torrent};
 
-/// Tracker manager that spawns real peer servers for simulation
+/// Peer seeder that spawns real peer servers for simulation
 ///
 /// This provides a TrackerManagement implementation that looks like production
 /// to the engine but internally manages simulated peer servers.
-pub struct TrackerManager {
+pub struct PeerSeeder {
     piece_store: Arc<InMemoryPieceStore>,
     spawned_peers: Arc<RwLock<HashMap<InfoHash, Vec<SocketAddr>>>>,
 }
 
-impl TrackerManager {
-    /// Creates a new tracker manager for simulation
+impl PeerSeeder {
+    /// Creates a new peer seeder for simulation
     pub fn new(piece_store: Arc<InMemoryPieceStore>) -> Self {
         Self {
             piece_store,
@@ -32,7 +32,7 @@ impl TrackerManager {
         }
     }
 
-    /// Creates a tracker manager that shares peer registry with another instance
+    /// Creates a peer seeder that shares peer registry with another instance
     pub fn with_shared_peers(
         piece_store: Arc<InMemoryPieceStore>,
         shared_peers: Arc<RwLock<HashMap<InfoHash, Vec<SocketAddr>>>>,
@@ -69,7 +69,7 @@ impl TrackerManager {
 }
 
 #[async_trait]
-impl TrackerManagement for TrackerManager {
+impl TrackerManagement for PeerSeeder {
     /// Returns spawned peer addresses for announce requests
     async fn announce_to_trackers(
         &mut self,

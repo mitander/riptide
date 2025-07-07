@@ -17,6 +17,9 @@ use crate::{
 /// Tests streaming with poor network conditions.
 ///
 /// Verifies the system handles high latency and packet loss gracefully.
+///
+/// # Errors
+/// Returns error if simulation fails to complete or network configuration is invalid.
 pub fn severe_network_degradation_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::bandwidth_limited(1001);
     // Configure poor network conditions
@@ -31,6 +34,9 @@ pub fn severe_network_degradation_scenario() -> Result<SimulationReport, Simulat
 /// Tests streaming with unstable peer connections.
 ///
 /// Verifies the system maintains download progress when peers disconnect frequently.
+///
+/// # Errors
+/// Returns error if simulation fails to complete or peer configuration is invalid.
 pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::high_peer_churn(1002);
     config.max_simulated_peers = 25; // Connection limit
@@ -43,6 +49,9 @@ pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError
 /// Tests streaming with piece hash failures.
 ///
 /// Verifies the system retries failed pieces from different peers.
+///
+/// # Errors
+/// Returns error if simulation fails to complete or piece failure scenario configuration is invalid.
 pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::ideal_streaming(1003);
     // Configure some peers to provide corrupted data
@@ -57,6 +66,9 @@ pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, Simulatio
 /// Tests streaming with tight resource constraints.
 ///
 /// Verifies the system respects memory and connection limits.
+///
+/// # Errors
+/// Returns error if simulation fails to complete or resource constraint configuration is invalid.
 pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::ideal_streaming(1004);
     config.max_simulated_peers = 50; // Many peers to stress limits
@@ -77,7 +89,10 @@ pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationErro
 
 /// Tests streaming when all peers become unavailable.
 ///
-/// Verifies the system handles complete peer loss gracefully.
+/// Verifies the system handles complete peer isolation gracefully.
+///
+/// # Errors
+/// Returns error if simulation fails to complete or isolation scenario configuration is invalid.
 pub fn total_peer_failure_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::mixed_network_quality(1005);
     config.max_simulated_peers = 5; // Few peers so they can all fail

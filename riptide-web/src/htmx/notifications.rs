@@ -12,8 +12,11 @@ pub async fn toast_notification(message: String, toast_type: String) -> Html<Str
 }
 
 /// Renders system status information
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn system_status(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
     let active_count = sessions.len();
 
     let status_indicators = [
@@ -35,8 +38,11 @@ pub async fn system_status(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Renders a live ticker with current stats
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn live_ticker(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     let current_download_speed: u64 = sessions.iter().map(|s| s.download_speed_bps).sum();
     let current_upload_speed: u64 = sessions.iter().map(|s| s.upload_speed_bps).sum();
@@ -76,8 +82,11 @@ pub async fn live_ticker(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Renders global status banner for important system messages
+///
+/// # Panics
+/// Panics if engine communication fails or statistics are unavailable.
 pub async fn status_banner(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
     let engine_stats = state.engine().download_statistics().await.unwrap();
 
     let mut messages = Vec::new();

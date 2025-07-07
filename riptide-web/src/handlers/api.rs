@@ -40,6 +40,13 @@ pub struct SeekRequest {
     pub buffer_duration: Option<f64>,
 }
 
+/// Returns engine statistics as JSON.
+///
+/// Provides current download/upload statistics including active torrents,
+/// transfer speeds, and peer connection counts.
+///
+/// # Panics
+/// Panics if engine communication fails or statistics are unavailable.
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
     let stats = state.engine().download_statistics().await.unwrap();
 
@@ -51,8 +58,12 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
     })
 }
 
+/// Returns list of all active torrents as JSON.
+///
+/// Provides detailed information about each torrent including progress,
+/// download status, and metadata.
 pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Get movie manager data once outside the loop
     let movie_titles: HashMap<_, _> = if let Ok(movie_manager) = state.file_manager() {
@@ -120,6 +131,10 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
     }))
 }
 
+/// Adds a new torrent from magnet link.
+///
+/// Accepts a magnet link and adds the torrent to the engine for downloading.
+/// Returns the torrent's info hash on success.
 pub async fn api_add_torrent(
     State(state): State<AppState>,
     Query(params): Query<AddTorrentQuery>,
@@ -163,6 +178,10 @@ pub struct MovieSearchQuery {
     pub limit: Option<usize>,
 }
 
+/// Searches for torrents using the query string.
+///
+/// Performs a torrent search across configured providers and returns
+/// matching results with metadata and download links.
 pub async fn api_search(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
@@ -288,8 +307,12 @@ pub async fn api_search_movies(
     }
 }
 
+/// Returns the movie library as JSON.
+///
+/// Provides a list of all movies in the managed library with their
+/// metadata, file paths, and streaming information.
 pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     let mut library_items = Vec::new();
     let mut total_size = 0u64;
@@ -372,6 +395,10 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
     }))
 }
 
+/// Returns application settings as JSON.
+///
+/// Provides current configuration settings including download directory,
+/// connection limits, and feature toggles.
 pub async fn api_settings(State(_state): State<AppState>) -> Json<serde_json::Value> {
     Json(json!({
         "download_dir": "./downloads",
@@ -380,6 +407,10 @@ pub async fn api_settings(State(_state): State<AppState>) -> Json<serde_json::Va
     }))
 }
 
+/// Downloads a torrent file by info hash.
+///
+/// Retrieves the .torrent file content for the specified torrent,
+/// allowing clients to download the torrent file directly.
 pub async fn api_download_torrent(
     State(state): State<AppState>,
     Json(payload): Json<DownloadRequest>,
@@ -475,7 +506,7 @@ pub async fn api_seek_torrent(
     }
 
     // Get torrent session to calculate byte position
-    match state.engine().get_session(info_hash).await {
+    match state.engine().session_details(info_hash).await {
         Ok(session) => {
             // Estimate bitrate based on file size and assume typical video duration
             // This is a rough approximation - in production you'd want metadata parsing

@@ -31,7 +31,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     };
 
     // Get connected peers count (from active sessions)
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
     let connected_peers: usize = sessions
         .iter()
         .map(|session| session.completed_pieces.iter().filter(|&&x| x).count())
@@ -81,8 +81,11 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Renders recent activity feed as HTML fragment
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     let mut activities = Vec::new();
 
@@ -133,8 +136,11 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Renders active downloads preview as HTML fragment
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     let mut downloads = Vec::new();
 
@@ -231,7 +237,7 @@ pub async fn add_torrent_htmx(
 
 /// Renders torrent list for the torrents page with real-time updates
 pub async fn torrents_list(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Get movie manager data for better naming
     let movie_titles: std::collections::HashMap<_, _> =

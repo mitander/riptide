@@ -57,21 +57,21 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
 
     let content = format!(
         r#"{}
-        
+
         <div class="mb-8">
             {}
         </div>
-        
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div id="activity-feed" 
-                 hx-get="/htmx/dashboard/activity" 
+            <div id="activity-feed"
+                 hx-get="/htmx/dashboard/activity"
                  hx-trigger="load, every 10s"
                  hx-swap="innerHTML">
                 <div class="text-center py-8 text-gray-400">Loading activity...</div>
             </div>
-            
+
             <div id="downloads-panel"
-                 hx-get="/htmx/dashboard/downloads" 
+                 hx-get="/htmx/dashboard/downloads"
                  hx-trigger="load, every 5s"
                  hx-swap="innerHTML">
                 <div class="text-center py-8 text-gray-400">Loading downloads...</div>
@@ -88,9 +88,9 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     render_page("Dashboard", "dashboard", &content)
 }
 
-/// Renders the torrents management page  
+/// Renders the torrents management page
 pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Quick stats for header
     let total_torrents = sessions.len();
@@ -101,8 +101,8 @@ pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     let add_form = layout::card(
         Some("Add New Torrent"),
         &format!(
-            r#"<form hx-post="/htmx/torrents/add" 
-                      hx-target=".notification-area" 
+            r#"<form hx-post="/htmx/torrents/add"
+                      hx-target=".notification-area"
                       hx-swap="innerHTML"
                       hx-indicator=".add-spinner"
                       class="space-y-4">
@@ -133,8 +133,8 @@ pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
             "Active Torrents ({total_torrents} total, {downloading} downloading)"
         )),
         r#"<div id="torrents-list"
-                   hx-get="/htmx/torrents/list" 
-                   hx-trigger="load, every 5s" 
+                   hx-get="/htmx/torrents/list"
+                   hx-trigger="load, every 5s"
                    hx-swap="innerHTML">
                 <div class="text-center py-8 text-gray-400">Loading torrents...</div>
             </div>"#,
@@ -170,13 +170,13 @@ pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     // Main content
     let content = format!(
         r#"{}
-        
+
         <div class="mb-6">
             {}
         </div>
-        
+
         {}
-        
+
         {}"#,
         layout::page_header(
             "Torrent Management",
@@ -237,7 +237,7 @@ pub async fn video_player_page(
     };
 
     // Get torrent session for title
-    let title = match state.engine().get_session(info_hash).await {
+    let title = match state.engine().session_details(info_hash).await {
         Ok(session) => session.filename.clone(),
         Err(_) => {
             if let Ok(movie_manager) = state.file_manager() {
@@ -280,7 +280,7 @@ pub async fn video_player_page(
                     </div>
                 </div>
             </nav>
-            
+
             <!-- Main Content -->
             <main class="container">
                 {player_content}

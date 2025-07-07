@@ -154,6 +154,9 @@ impl SimulatedTrackerClient {
     ///
     /// Useful for testing scenarios with specific seeder/leecher ratios
     /// or simulating swarm evolution over time.
+    ///
+    /// # Panics
+    /// Panics if the swarm stats mutex is poisoned.
     pub fn configure_swarm_stats(
         &self,
         info_hash: InfoHash,
@@ -368,6 +371,9 @@ impl SimulatedTrackerManager {
     ///
     /// This allows the tracker to return peer addresses from a shared registry
     /// without complex async coordination or dangerous block_on calls.
+    ///
+    /// # Panics
+    /// Panics if the peer registry mutex is poisoned.
     pub fn with_peer_registry(
         config: ResponseConfig,
         peer_registry: Arc<std::sync::Mutex<HashMap<InfoHash, Vec<SocketAddr>>>>,
@@ -420,7 +426,7 @@ impl TrackerManagement for SimulatedTrackerManager {
 
     /// Simulates scraping statistics from trackers.
     ///
-    /// # Errors  
+    /// # Errors
     /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
     async fn scrape_from_trackers(
         &mut self,

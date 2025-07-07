@@ -122,6 +122,9 @@ impl DirectStreamingService {
     }
 
     /// Stop the streaming service gracefully.
+    ///
+    /// # Errors
+    /// Returns error if service shutdown fails or resources cannot be cleaned up.
     pub async fn stop(&mut self) -> Result<(), StreamingError> {
         Ok(())
     }

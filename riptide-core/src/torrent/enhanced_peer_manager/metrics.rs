@@ -162,7 +162,10 @@ impl ExponentialMovingAverage {
         self.value = self.alpha * new_value + (1.0 - self.alpha) * self.value;
     }
 
-    /// Current average value
+    /// Returns the current average value for testing purposes.
+    ///
+    /// This function is only available in test builds and provides
+    /// access to the internal averaged value for verification.
     #[cfg(test)]
     pub fn current_average(&self) -> f64 {
         self.value

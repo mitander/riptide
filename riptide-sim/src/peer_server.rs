@@ -31,6 +31,10 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     /// Starts the peer server and returns immediately
     ///
     /// The server runs in a background task and serves pieces to connecting peers
+    ///
+    /// # Errors
+    /// - Returns error if TCP listener cannot bind to the specified address
+    /// - Returns error if background task spawning fails
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(self.listen_address).await?;
         tracing::info!(

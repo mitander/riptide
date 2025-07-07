@@ -850,7 +850,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
         let total_bandwidth = self.config.network.download_limit.unwrap_or(10_000_000); // 10MB/s default
 
-        // Use trait method instead of downcasting
+        // Use trait method - implementations handle this appropriately
         if let Err(e) = peer_manager
             .configure_upload_manager(info_hash, piece_size, total_bandwidth)
             .await
@@ -886,6 +886,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         }
 
         let mut peer_manager = self.peer_manager.write().await;
+
+        // Use trait method - implementations handle this appropriately
         if let Err(e) = peer_manager
             .update_streaming_position(info_hash, byte_position)
             .await

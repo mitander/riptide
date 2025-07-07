@@ -227,7 +227,7 @@ pub async fn list_torrents(engine: TorrentEngineHandle) -> Result<()> {
     println!("Torrent List");
     println!("{:-<60}", "");
 
-    let sessions = engine.get_active_sessions().await?;
+    let sessions = engine.active_sessions().await?;
     let stats = engine.download_statistics().await?;
 
     if sessions.is_empty() {

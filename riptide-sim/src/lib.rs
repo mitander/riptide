@@ -95,7 +95,7 @@ pub use scenarios::{
     severe_network_degradation_scenario, streaming_edge_cases, total_peer_failure_scenario,
 };
 pub use tracker::{ResponseConfig, SimulatedTrackerManager};
-pub use tracker_manager::TrackerManager;
+pub use tracker_manager::PeerSeeder;
 
 /// Simulation environment for BitTorrent development.
 ///

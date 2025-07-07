@@ -9,7 +9,7 @@ use crate::server::AppState;
 
 /// Renders the torrents management page
 pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Quick stats for header
     let total_torrents = sessions.len();
@@ -20,8 +20,8 @@ pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     let add_form = layout::card(
         Some("Add New Torrent"),
         &format!(
-            r#"<form hx-post="/htmx/torrents/add" 
-                      hx-target=".notification-area" 
+            r#"<form hx-post="/htmx/torrents/add"
+                      hx-target=".notification-area"
                       hx-swap="innerHTML"
                       hx-indicator=".add-spinner"
                       class="space-y-4">
@@ -52,8 +52,8 @@ pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
             "Active Torrents ({total_torrents} total, {downloading} downloading)"
         )),
         r#"<div id="torrents-list"
-                   hx-get="/htmx/torrents/list" 
-                   hx-trigger="load, every 5s" 
+                   hx-get="/htmx/torrents/list"
+                   hx-trigger="load, every 5s"
                    hx-swap="innerHTML">
                 <div class="text-center py-8 text-gray-400">Loading torrents...</div>
             </div>"#,
@@ -89,13 +89,13 @@ pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     // Main content
     let content = format!(
         r#"{}
-        
+
         <div class="mb-6">
             {}
         </div>
-        
+
         {}
-        
+
         {}"#,
         layout::page_header(
             "Torrent Management",

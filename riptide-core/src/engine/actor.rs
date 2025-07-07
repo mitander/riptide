@@ -304,7 +304,7 @@ mod tests {
 
         // Test getting session for non-existent torrent
         let fake_hash = InfoHash::new([0u8; 20]);
-        let result = handle.get_session(fake_hash).await;
+        let result = handle.session_details(fake_hash).await;
         assert!(matches!(result, Err(TorrentError::TorrentNotFound { .. })));
 
         handle.shutdown().await.unwrap();
@@ -347,11 +347,11 @@ mod tests {
 
         // Add torrent and start download
         let info_hash = handle.add_torrent_metadata(metadata).await.unwrap();
-        let session = handle.get_session(info_hash).await.unwrap();
+        let session = handle.session_details(info_hash).await.unwrap();
         assert!(!session.is_downloading);
 
         handle.start_download(info_hash).await.unwrap();
-        let session = handle.get_session(info_hash).await.unwrap();
+        let session = handle.session_details(info_hash).await.unwrap();
         assert!(session.is_downloading);
 
         // Verify engine stats
@@ -395,7 +395,7 @@ mod tests {
         handle.start_download(info_hash).await.unwrap();
 
         // Verify download started but will fail
-        let session = handle.get_session(info_hash).await.unwrap();
+        let session = handle.session_details(info_hash).await.unwrap();
         assert!(session.is_downloading);
 
         // Brief wait for download attempt
@@ -452,7 +452,7 @@ mod tests {
             .unwrap();
 
         // Verify both torrents exist
-        let sessions = handle.get_active_sessions().await.unwrap();
+        let sessions = handle.active_sessions().await.unwrap();
         assert_eq!(sessions.len(), 2);
 
         // Start downloads
@@ -477,7 +477,7 @@ mod tests {
         let magnet_with_name = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Wallace+And+Gromit+Vengeance+Most+Fowl+2024+720p+WEB-DL+x264+BONE&tr=http://tracker.example.com/announce";
 
         let info_hash = handle.add_magnet(magnet_with_name).await.unwrap();
-        let session = handle.get_session(info_hash).await.unwrap();
+        let session = handle.session_details(info_hash).await.unwrap();
 
         // Verify the display name was parsed and used as filename
         assert_eq!(
@@ -489,7 +489,7 @@ mod tests {
         let magnet_without_name = "magnet:?xt=urn:btih:fedcba9876543210fedcba9876543210fedcba98&tr=http://tracker.example.com/announce";
 
         let info_hash2 = handle.add_magnet(magnet_without_name).await.unwrap();
-        let session2 = handle.get_session(info_hash2).await.unwrap();
+        let session2 = handle.session_details(info_hash2).await.unwrap();
 
         // Verify fallback name includes more of the hash for readability
         assert!(session2.filename.starts_with("Torrent_fedcba9876543210"));

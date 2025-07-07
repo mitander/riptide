@@ -552,18 +552,28 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
 
     async fn configure_upload_manager(
         &mut self,
-        _info_hash: InfoHash,
+        info_hash: InfoHash,
         _piece_size: u64,
         _total_bandwidth: u64,
     ) -> Result<(), TorrentError> {
+        tracing::debug!(
+            "ContentAwarePeerManager: configure_upload_manager called for {}",
+            info_hash
+        );
+        // No-op for simulation - no real bandwidth management needed
         Ok(())
     }
 
     async fn update_streaming_position(
         &mut self,
-        _info_hash: InfoHash,
+        info_hash: InfoHash,
         _byte_position: u64,
     ) -> Result<(), TorrentError> {
+        tracing::debug!(
+            "ContentAwarePeerManager: update_streaming_position called for {}",
+            info_hash
+        );
+        // No-op for simulation - no real bandwidth management needed
         Ok(())
     }
 }

@@ -28,9 +28,12 @@ fn format_elapsed_time(started_at: Instant) -> String {
 }
 
 /// Real-time dashboard statistics fragment
+///
+/// # Panics
+/// Panics if engine communication fails or statistics are unavailable.
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     let engine_stats = state.engine().download_statistics().await.unwrap();
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Calculate metrics
     let active_torrents = sessions.len();
@@ -125,8 +128,11 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Recent activity feed fragment
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     let mut activities = Vec::new();
 
@@ -189,8 +195,11 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Active downloads preview fragment
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Show only actively downloading torrents
     let active_downloads: Vec<_> = sessions
@@ -325,8 +334,11 @@ pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
 }
 
 /// Network status and peer information
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn network_status(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     let total_peers: usize = sessions
         .iter()

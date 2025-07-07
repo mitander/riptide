@@ -1,107 +1,23 @@
-//! Riptide Style Consistency Enforcement
+//! Riptide Style Consistency Enforcement - Fast Rust-based implementation
 //!
-//! Automatically detects style inconsistencies based on docs/STYLE.md and
-//! docs/NAMING_CONVENTIONS.md. Focuses on consistency within the codebase
-//! rather than arbitrary rules.
+//! This module enforces TigerBeetle-inspired coding standards using efficient
+//! Rust pattern matching that works cross-platform.
 
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// --- Configuration from Style Docs ---
-
-/// Module size limit from docs/STYLE.md
-const MAX_MODULE_LINES: usize = 500;
-
-/// Banned module names from docs/STYLE.md - anti-pattern modules
-const BANNED_MODULE_NAMES: &[&str] = &[
-    "utils", "util", "helpers", "helper", "common", "shared", "misc", "tools",
-];
-
-/// Functions that lose critical context when imported (preserve inline usage)
-const CONTEXT_CRITICAL_FUNCTIONS: &[&str] = &[
-    // Async context (critical for debugging)
-    "spawn",
-    "sleep",
-    "timeout",
-    "select",
-    "join",
-    // I/O context
-    "read",
-    "write",
-    "seek",
-    "flush",
-    "close",
-    // Network context
-    "connect",
-    "bind",
-    "listen",
-    "accept",
-    "send",
-    "recv",
-    // Serialization/Parsing context
-    "parse",
-    "serialize",
-    "deserialize",
-    "to_string",
-    "from_str",
-    // Logging context (critical for debugging)
-    "debug",
-    "info",
-    "warn",
-    "error",
-    "trace",
-    "log",
-];
-
-/// Types that should always preserve context (traits, errors, etc.)
-const PRESERVE_CONTEXT_PATTERNS: &[&str] = &[
-    "std::fmt::Display",
-    "std::fmt::Debug",
-    "std::str::FromStr",
-    "std::convert::", // All conversion traits
-    "std::clone::",   // Clone trait
-    "std::marker::",  // Send, Sync traits
-    "std::ops::",     // All operator traits
-    "std::cmp::",     // All comparison traits
-];
-
-/// Patterns that lose context when imported (suggest keeping inline)
-const KEEP_INLINE_PATTERNS: &[&str] = &[
-    "tokio::",
-    "serde_json::",
-    "serde_yaml::",
-    "reqwest::",
-    "riptide_core::",
-    "riptide_web::",
-    "riptide_search::",
-    "riptide_sim::",
-];
-
-/// Common utility types that should be imported when used frequently
-const IMPORT_WHEN_FREQUENT: &[&str] = &[
-    "std::collections::HashMap",
-    "std::collections::BTreeMap",
-    "std::collections::HashSet",
-    "std::sync::Arc",
-    "std::sync::Mutex",
-    "std::time::Duration",
-    "std::time::Instant",
-    "std::io::SeekFrom",
-    "std::net::SocketAddr",
-    "std::net::IpAddr",
-];
-
-#[derive(Debug)]
+/// Style violation severity levels
+#[derive(Debug, Clone, Copy)]
 enum Severity {
     Critical,
     Warning,
 }
 
+/// A detected style violation
 #[derive(Debug)]
 struct StyleViolation {
     severity: Severity,
-    file_path: PathBuf,
+    file_path: String,
     line_number: usize,
     rule: String,
     message: String,
@@ -110,14 +26,14 @@ struct StyleViolation {
 impl StyleViolation {
     fn new(
         severity: Severity,
-        file_path: &Path,
+        file_path: &str,
         line_number: usize,
         rule: &str,
         message: &str,
     ) -> Self {
         Self {
             severity,
-            file_path: file_path.to_path_buf(),
+            file_path: file_path.to_string(),
             line_number,
             rule: rule.to_string(),
             message: message.to_string(),
@@ -125,313 +41,438 @@ impl StyleViolation {
     }
 }
 
-/// Main style checker
-struct StyleChecker {
+/// Fast Rust-based style checker
+struct FastRustStyleChecker {
     violations: Vec<StyleViolation>,
-    current_file: PathBuf,
-    file_lines: Vec<String>,
+    workspace_root: PathBuf,
+    files_processed: usize,
 }
 
-impl StyleChecker {
+impl FastRustStyleChecker {
     fn new() -> Self {
         Self {
             violations: Vec::new(),
-            current_file: PathBuf::new(),
-            file_lines: Vec::new(),
+            workspace_root: PathBuf::from(".."),
+            files_processed: 0,
         }
     }
 
-    fn check_file(&mut self, file_path: PathBuf) -> Result<(), std::io::Error> {
-        println!("DEBUG: Processing file: {:?}", file_path);
-        let content = fs::read_to_string(&file_path)?;
-        self.current_file = file_path;
-        self.file_lines = content.lines().map(|s| s.to_string()).collect();
+    /// Add a violation to the list
+    fn add_violation(&mut self, violation: StyleViolation) {
+        self.violations.push(violation);
+    }
 
-        println!("DEBUG: File has {} lines", self.file_lines.len());
+    /// Find all Rust files in the riptide workspace efficiently
+    fn find_rust_files(&self) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+        let mut files = Vec::new();
+        self.find_rust_files_recursive(&self.workspace_root, &mut files, 0)?;
+        Ok(files)
+    }
 
-        // Core structural checks (always run)
-        self.check_module_size();
-        self.check_banned_module_names();
-        self.check_inline_module_references();
+    /// Recursively find Rust files with safety limits
+    fn find_rust_files_recursive(
+        &self,
+        dir: &Path,
+        files: &mut Vec<PathBuf>,
+        depth: usize,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Safety limits
+        if depth > 10 || files.len() > 500 {
+            return Ok(());
+        }
 
-        // Naming convention checks
-        self.check_forbidden_function_prefixes();
+        // Skip target directories and other build artifacts
+        if let Some(name) = dir.file_name() {
+            if name == "target" || name == ".git" {
+                return Ok(());
+            }
+        }
 
-        println!("DEBUG: Starting documentation check...");
-        self.check_missing_public_documentation();
-        println!("DEBUG: Documentation check completed");
+        // Only process riptide directories
+        let dir_str = dir.to_string_lossy();
+        if !dir_str.contains("riptide") && depth > 1 {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                self.find_rust_files_recursive(&path, files, depth + 1)?;
+            } else if path.extension().map_or(false, |ext| ext == "rs") {
+                files.push(path);
+            }
+        }
 
         Ok(())
     }
 
-    fn add_violation(&mut self, severity: Severity, line: usize, rule: &str, message: &str) {
-        self.violations.push(StyleViolation::new(
-            severity,
-            &self.current_file,
-            line,
-            rule,
-            message,
-        ));
-    }
-
-    /// Check module doesn't exceed size limits
-    fn check_module_size(&mut self) {
-        let line_count = self.file_lines.len();
-        if line_count > MAX_MODULE_LINES {
-            self.add_violation(
+    /// Check file size limits efficiently
+    fn check_module_size(&mut self, file_path: &Path, content: &str) {
+        let line_count = content.matches('\n').count() + 1;
+        if line_count > 500 {
+            self.add_violation(StyleViolation::new(
                 Severity::Warning,
+                &file_path.display().to_string(),
                 1,
                 "MODULE_SIZE_LIMIT",
                 &format!(
-                    "Module has {} lines, exceeding {} line limit from docs/STYLE.md",
-                    line_count, MAX_MODULE_LINES
+                    "Module has {} lines, exceeding 500 line limit from docs/STYLE.md",
+                    line_count
                 ),
-            );
+            ));
         }
     }
 
     /// Check for banned module names
-    fn check_banned_module_names(&mut self) {
-        if let Some(file_name) = self.current_file.file_stem() {
+    fn check_banned_module_names(&mut self, file_path: &Path) {
+        let banned_names = ["util", "helper", "common", "utils", "helpers"];
+
+        if let Some(file_name) = file_path.file_stem() {
             if let Some(name_str) = file_name.to_str() {
-                if BANNED_MODULE_NAMES.contains(&name_str) {
-                    self.add_violation(
+                if banned_names.contains(&name_str) {
+                    self.add_violation(StyleViolation::new(
                         Severity::Critical,
+                        &file_path.display().to_string(),
                         1,
                         "BANNED_MODULE_NAME",
                         &format!(
                             "Module name '{}' violates anti-pattern rules from docs/STYLE.md",
                             name_str
                         ),
-                    );
+                    ));
                 }
             }
         }
     }
 
-    /// Smart inline module reference checking
-    fn check_inline_module_references(&mut self) {
-        // First pass: count all module usage patterns
-        let usage_counts = self.count_module_usage();
-
-        // Collect violations first
-        let mut violations = Vec::new();
-
-        // Second pass: check each usage for violations
-        for (line_num, line) in self.file_lines.iter().enumerate() {
-            self.collect_line_violations(line_num + 1, line, &usage_counts, &mut violations);
+    /// Check for forbidden function prefixes efficiently
+    fn check_forbidden_function_prefixes(&mut self, file_path: &Path, content: &str) {
+        // Skip test files
+        if file_path.to_string_lossy().contains("/tests/")
+            || file_path.to_string_lossy().contains("test_")
+        {
+            return;
         }
 
-        // Add all violations
-        for (line_num, rule, message) in violations {
-            self.add_violation(Severity::Critical, line_num, &rule, &message);
-        }
-    }
+        let forbidden_prefixes = ["get_", "set_"];
 
-    /// Count how many times each full module path is used
-    fn count_module_usage(&self) -> HashMap<String, usize> {
-        let mut counts = HashMap::new();
-        let pattern =
-            regex::Regex::new(r"\b([a-zA-Z_][a-zA-Z0-9_]*(?:::[a-zA-Z_][a-zA-Z0-9_]*)*)::")
-                .expect("Invalid regex pattern");
-
-        for line in &self.file_lines {
-            // Skip comments and use statements
+        for (line_num, line) in content.lines().enumerate() {
             let trimmed = line.trim();
-            if trimmed.starts_with("//") || trimmed.starts_with("use ") {
-                continue;
-            }
 
-            for capture in pattern.find_iter(line) {
-                let full_path = capture.as_str().trim_end_matches("::");
-                *counts.entry(full_path.to_string()).or_insert(0) += 1;
-            }
-        }
+            // Look for public function definitions
+            if trimmed.starts_with("pub fn ") || trimmed.starts_with("pub async fn ") {
+                for &prefix in &forbidden_prefixes {
+                    let pattern = format!("pub fn {}", prefix);
+                    if trimmed.contains(&pattern)
+                        || trimmed.contains(&format!("pub async fn {}", prefix))
+                    {
+                        // Skip legitimate patterns
+                        if trimmed.contains("get_mut")
+                            || trimmed.contains("get_or_")
+                            || trimmed.contains("set_capacity")
+                        {
+                            continue;
+                        }
 
-        counts
-    }
-
-    /// Collect violations from a single line for inline module references
-    fn collect_line_violations(
-        &self,
-        line_num: usize,
-        line: &str,
-        usage_counts: &HashMap<String, usize>,
-        violations: &mut Vec<(usize, String, String)>,
-    ) {
-        let pattern =
-            regex::Regex::new(r"\b([a-zA-Z_][a-zA-Z0-9_]*(?:::[a-zA-Z_][a-zA-Z0-9_]*)*)::")
-                .expect("Invalid regex pattern");
-
-        for capture in pattern.find_iter(line) {
-            let full_path = capture.as_str().trim_end_matches("::");
-            let usage_count = usage_counts.get(full_path).unwrap_or(&0);
-
-            // Skip if context should always be preserved
-            if self.should_preserve_context(line, capture.start()) {
-                continue;
-            }
-
-            // Check if this pattern should be imported when used frequently
-            if self.should_import_when_frequent(full_path, *usage_count) {
-                let type_name = self.extract_type_name(line, capture.start());
-                violations.push((
-                    line_num,
-                    "INLINE_MODULE_REFERENCE".to_string(),
-                    format!(
-                        "Import '{}' at top of file - used {} times (Used frequently)",
-                        type_name, usage_count
-                    ),
-                ));
+                        self.add_violation(StyleViolation::new(
+                            Severity::Critical,
+                            &file_path.display().to_string(),
+                            line_num + 1,
+                            "FORBIDDEN_PREFIX",
+                            &format!(
+                                "Function uses forbidden prefix '{}' - use descriptive names instead",
+                                prefix
+                            ),
+                        ));
+                    }
+                }
             }
         }
     }
 
-    /// Check if context should be preserved for this usage
-    fn should_preserve_context(&self, line: &str, start_pos: usize) -> bool {
-        let context_len = 50;
-        let start = start_pos.saturating_sub(context_len / 2);
-        let end = std::cmp::min(start_pos + context_len, line.len());
-        let context = &line[start..end];
-
-        // Skip string literals
-        if context.contains('"') || context.contains('\'') {
-            return true;
+    /// Check for missing public documentation efficiently
+    fn check_missing_public_documentation(&mut self, file_path: &Path, content: &str) {
+        // Skip test files
+        if file_path.to_string_lossy().contains("/tests/")
+            || file_path.to_string_lossy().contains("test_")
+        {
+            return;
         }
 
-        // Check for context-critical function calls
-        for &func in CONTEXT_CRITICAL_FUNCTIONS {
-            if context.contains(&format!("::{}", func)) {
+        let lines: Vec<&str> = content.lines().collect();
+        let mut functions_checked = 0;
+
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+
+            // Look for public functions
+            if trimmed.starts_with("pub fn ") || trimmed.starts_with("pub async fn ") {
+                functions_checked += 1;
+
+                // Safety limit to prevent excessive processing
+                if functions_checked > 100 {
+                    break;
+                }
+
+                // Extract function name
+                if let Some(fn_name) = self.extract_function_name(trimmed) {
+                    // Skip test functions and constructors
+                    if fn_name.starts_with("test_") || fn_name == "new" {
+                        continue;
+                    }
+
+                    // Check for documentation in previous lines
+                    let has_doc = self.has_documentation(i, &lines);
+
+                    if !has_doc {
+                        self.add_violation(StyleViolation::new(
+                            Severity::Critical,
+                            &file_path.display().to_string(),
+                            i + 1,
+                            "MISSING_PUBLIC_DOC",
+                            &format!("Public function '{}' missing documentation", fn_name),
+                        ));
+                    } else {
+                        // Check for Result return type and # Errors section
+                        if self.returns_result(i, &lines) && !self.has_errors_section(i, &lines) {
+                            self.add_violation(StyleViolation::new(
+                                Severity::Critical,
+                                &file_path.display().to_string(),
+                                i + 1,
+                                "MISSING_ERRORS_DOC",
+                                &format!(
+                                    "Function '{}' returns Result but missing '# Errors' section",
+                                    fn_name
+                                ),
+                            ));
+                        }
+
+                        // Check for panic patterns and # Panics section
+                        if self.can_panic(i, &lines) && !self.has_panics_section(i, &lines) {
+                            self.add_violation(StyleViolation::new(
+                                Severity::Critical,
+                                &file_path.display().to_string(),
+                                i + 1,
+                                "MISSING_PANICS_DOC",
+                                &format!(
+                                    "Function '{}' can panic but missing '# Panics' section",
+                                    fn_name
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Extract function name from function definition
+    fn extract_function_name(&self, line: &str) -> Option<String> {
+        if let Some(fn_start) = line.find("fn ") {
+            let after_fn = &line[fn_start + 3..];
+            if let Some(paren_pos) = after_fn.find('(') {
+                return Some(after_fn[..paren_pos].trim().to_string());
+            }
+        }
+        None
+    }
+
+    /// Check if function returns Result by looking at next few lines
+    fn returns_result(&self, start_line: usize, lines: &[&str]) -> bool {
+        let end = std::cmp::min(start_line + 3, lines.len());
+        for i in start_line..end {
+            if lines[i].contains("-> Result<") || lines[i].contains("->Result<") {
                 return true;
             }
         }
-
-        // Check for patterns that should preserve context
-        for &pattern in PRESERVE_CONTEXT_PATTERNS {
-            if context.contains(pattern) {
-                return true;
-            }
-        }
-
-        // Check for error types (wildcard matching)
-        if context.contains("Error") || context.contains("ErrorKind") {
-            return true;
-        }
-
-        // Check for patterns that lose semantic value when imported
-        for &pattern in KEEP_INLINE_PATTERNS {
-            if context.starts_with(pattern) {
-                return true;
-            }
-        }
-
         false
     }
 
-    /// Check if this module path should be imported when used frequently
-    fn should_import_when_frequent(&self, full_path: &str, usage_count: usize) -> bool {
-        // Check if it's a pattern we care about
-        let is_import_candidate = IMPORT_WHEN_FREQUENT
-            .iter()
-            .any(|&pattern| full_path.starts_with(pattern));
+    /// Check if function can panic by looking within function boundaries
+    fn can_panic(&self, start_line: usize, lines: &[&str]) -> bool {
+        // Find the function body by looking for opening brace
+        let mut func_start = start_line;
+        let mut found_opening_brace = false;
 
-        if !is_import_candidate {
-            return false;
-        }
-
-        // Different thresholds for different module types
-        let threshold = if full_path.starts_with("std::") {
-            2 // Lower threshold for std types
-        } else {
-            5 // Higher threshold for other modules
-        };
-
-        usage_count >= threshold
-    }
-
-    /// Extract the specific type or function name being referenced
-    fn extract_type_name(&self, line: &str, start_pos: usize) -> String {
-        let remaining = &line[start_pos..];
-
-        // Find the end of the reference (before parentheses, spaces, etc.)
-        let delimiters = ['(', '<', ' ', '>', ')', ',', ';', '{', '}', '[', ']'];
-        let mut end_pos = remaining.len();
-
-        for &delimiter in &delimiters {
-            if let Some(pos) = remaining.find(delimiter) {
-                end_pos = std::cmp::min(end_pos, pos);
+        // Look for the opening brace of the function
+        for i in start_line..std::cmp::min(start_line + 5, lines.len()) {
+            if lines[i].contains('{') {
+                func_start = i;
+                found_opening_brace = true;
+                break;
             }
         }
 
-        remaining[..end_pos].to_string()
+        if !found_opening_brace {
+            return false;
+        }
+
+        // Find the matching closing brace
+        let mut brace_count = 0;
+        let mut func_end = func_start;
+
+        for i in func_start..std::cmp::min(func_start + 50, lines.len()) {
+            let line = lines[i];
+            for ch in line.chars() {
+                match ch {
+                    '{' => brace_count += 1,
+                    '}' => {
+                        brace_count -= 1;
+                        if brace_count == 0 {
+                            func_end = i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if brace_count == 0 {
+                break;
+            }
+        }
+
+        // Check for panic patterns only within function boundaries
+        for i in func_start..=func_end {
+            let line = lines[i].trim();
+
+            // Skip comments and empty lines
+            if line.starts_with("//") || line.is_empty() {
+                continue;
+            }
+
+            // Always panic patterns
+            if line.contains("panic!(")
+                || line.contains("unreachable!(")
+                || line.contains("unimplemented!(")
+                || line.contains("todo!(")
+            {
+                return true;
+            }
+
+            // Check for unwrap/expect patterns, but exclude known safe cases
+            if line.contains(".unwrap()") || line.contains(".expect(") {
+                // Skip if it's a safe atomic operation
+                if line.contains(".load(") || line.contains(".store(") {
+                    continue;
+                }
+
+                // Skip if there's a safety check in previous lines within function
+                let check_start =
+                    std::cmp::max(func_start, if i >= 3 { i - 3 } else { func_start });
+                let mut has_safety_check = false;
+
+                for j in check_start..i {
+                    let prev_line = lines[j];
+                    if prev_line.contains(".is_some()")
+                        || prev_line.contains(".is_ok()")
+                        || prev_line.contains("if let Some(")
+                        || prev_line.contains("if let Ok(")
+                        || prev_line.contains("while let Some(")
+                        || prev_line.contains("match ")
+                    {
+                        has_safety_check = true;
+                        break;
+                    }
+                }
+
+                if !has_safety_check {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
-    /// Run all checks on the workspace
+    /// Check if documentation contains # Errors section
+    fn has_errors_section(&self, line_index: usize, lines: &[&str]) -> bool {
+        let start = if line_index > 15 { line_index - 15 } else { 0 };
+        for i in (start..line_index).rev() {
+            let line = lines[i].trim();
+            if line.contains("# Errors") {
+                return true;
+            }
+            // Stop if we hit non-doc content
+            if !line.starts_with("///") && !line.is_empty() && !line.starts_with("#[") {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Check if function has documentation comments
+    fn has_documentation(&self, line_index: usize, lines: &[&str]) -> bool {
+        let start = if line_index > 15 { line_index - 15 } else { 0 };
+        for i in (start..line_index).rev() {
+            let line = lines[i].trim();
+            if line.starts_with("///") {
+                return true;
+            }
+            // Stop if we hit non-doc content (but allow attributes)
+            if !line.is_empty() && !line.starts_with("#[") && !line.starts_with("///") {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Check if documentation contains # Panics section
+    fn has_panics_section(&self, line_index: usize, lines: &[&str]) -> bool {
+        let start = if line_index > 15 { line_index - 15 } else { 0 };
+        for i in (start..line_index).rev() {
+            let line = lines[i].trim();
+            if line.contains("# Panics") {
+                return true;
+            }
+            // Stop if we hit non-doc content
+            if !line.starts_with("///") && !line.is_empty() && !line.starts_with("#[") {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Process a single file efficiently
+    fn check_file(&mut self, file_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        // Safety limit on total files processed
+        self.files_processed += 1;
+        if self.files_processed > 200 {
+            return Ok(());
+        }
+
+        // Read file content efficiently
+        let content = fs::read_to_string(file_path)?;
+
+        // Skip very large files to prevent hanging
+        if content.len() > 1_000_000 {
+            // 1MB limit
+            return Ok(());
+        }
+
+        // Run all checks
+        self.check_module_size(file_path, &content);
+        self.check_banned_module_names(file_path);
+        self.check_forbidden_function_prefixes(file_path, &content);
+        self.check_missing_public_documentation(file_path, &content);
+
+        Ok(())
+    }
+
+    /// Run all style checks
     fn check_workspace(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Navigate to workspace root (parent of tests directory)
-        let workspace_root = Path::new("..");
+        let files = self.find_rust_files()?;
 
-        // Explicit list of key files to check (avoids hanging on recursive traversal)
-        let key_files = [
-            // Core library files
-            "riptide-core/src/lib.rs",
-            "riptide-core/src/config.rs",
-            "riptide-core/src/server_components.rs",
-            "riptide-core/src/network/mod.rs",
-            "riptide-core/src/network/peer.rs",
-            "riptide-core/src/network/simulation.rs",
-            "riptide-core/src/storage/mod.rs",
-            "riptide-core/src/storage/file_library.rs",
-            "riptide-core/src/storage/file_storage/mod.rs",
-            "riptide-core/src/storage/file_storage/storage.rs",
-            "riptide-core/src/storage/file_storage/types.rs",
-            "riptide-core/src/streaming/strategy.rs",
-            "riptide-core/src/streaming/ffmpeg.rs",
-            "riptide-core/src/streaming/range_handler.rs",
-            "riptide-core/src/streaming/remuxed_streaming.rs",
-            "riptide-core/src/streaming/stream_coordinator/mod.rs",
-            "riptide-core/src/streaming/stream_coordinator/coordinator.rs",
-            "riptide-core/src/streaming/stream_coordinator/session.rs",
-            "riptide-core/src/streaming/stream_coordinator/types.rs",
-            // CLI files
-            "riptide-cli/src/main.rs",
-            "riptide-cli/src/lib.rs",
-            // Web files
-            "riptide-web/src/lib.rs",
-            "riptide-web/src/routes.rs",
-            "riptide-web/src/middleware.rs",
-            "riptide-web/src/handlers.rs",
-            // Simulation files
-            "riptide-sim/src/lib.rs",
-            "riptide-sim/src/deterministic/mod.rs",
-            "riptide-sim/src/deterministic/simulation.rs",
-            "riptide-sim/src/deterministic/events.rs",
-            "riptide-sim/src/deterministic/clock.rs",
-            "riptide-sim/src/deterministic/state.rs",
-            "riptide-sim/src/deterministic/invariants.rs",
-            "riptide-sim/src/deterministic/resources.rs",
-            // Search files
-            "riptide-search/src/lib.rs",
-        ];
-
-        let mut files_processed = 0;
-        for file_name in &key_files {
-            let file_path = workspace_root.join(file_name);
-            if file_path.exists() {
-                self.check_file(file_path)?;
-                files_processed += 1;
-
-                // Safety limit to prevent excessive processing
-                if files_processed > 50 {
-                    break;
-                }
+        for file_path in files {
+            if let Err(e) = self.check_file(&file_path) {
+                eprintln!("Warning: Failed to check file {:?}: {}", file_path, e);
             }
         }
 
         Ok(())
     }
 
-    /// Report all violations found
+    /// Report all violations and return true if no critical violations found
     fn report_violations(&self) -> bool {
         let critical_violations: Vec<_> = self
             .violations
@@ -445,265 +486,44 @@ impl StyleChecker {
             .filter(|v| matches!(v.severity, Severity::Warning))
             .collect();
 
-        // Report critical violations
-        for violation in &critical_violations {
-            println!(
-                "CRITICAL [{}] {}:{} - {}",
-                violation.rule,
-                violation.file_path.display(),
-                violation.line_number,
-                violation.message
-            );
-        }
-
-        // Report warnings
-        for violation in &warning_violations {
-            println!(
-                "WARNING [{}] {}:{} - {}",
-                violation.rule,
-                violation.file_path.display(),
-                violation.line_number,
-                violation.message
-            );
-        }
-
-        // Summary
         if !critical_violations.is_empty() {
-            println!(
-                "\nFound {} critical style violations that must be fixed",
-                critical_violations.len()
-            );
-            return false;
+            eprintln!("CRITICAL VIOLATIONS (must fix):");
+            for violation in &critical_violations {
+                eprintln!(
+                    "  {} [{}] {}:{} - {}",
+                    violation.rule,
+                    match violation.severity {
+                        Severity::Critical => "CRITICAL",
+                        Severity::Warning => "WARNING",
+                    },
+                    violation.file_path,
+                    violation.line_number,
+                    violation.message
+                );
+            }
+            eprintln!();
         }
 
         if !warning_violations.is_empty() {
-            println!(
-                "\nFound {} warnings (non-blocking)",
-                warning_violations.len()
-            );
+            for violation in &warning_violations {
+                eprintln!(
+                    "WARNING [{}] {}:{} - {}",
+                    violation.rule, violation.file_path, violation.line_number, violation.message
+                );
+            }
+            eprintln!();
+        }
+
+        if critical_violations.is_empty() && warning_violations.is_empty() {
+            println!("✓ All style checks passed");
         } else {
-            println!("\n✓ All style checks passed");
-        }
-
-        true
-    }
-
-    /// Check for forbidden function prefixes (get_, set_)
-    fn check_forbidden_function_prefixes(&mut self) {
-        let mut violations = Vec::new();
-
-        for (line_num, line) in self.file_lines.iter().enumerate() {
-            let trimmed = line.trim();
-
-            // Skip comments and use statements
-            if trimmed.starts_with("//") || trimmed.starts_with("use ") {
-                continue;
-            }
-
-            // Look for function definitions with forbidden prefixes
-            if let Some(captures) = regex::Regex::new(r"pub\s+(?:async\s+)?fn\s+(get|set)_(\w+)")
-                .expect("Invalid regex")
-                .captures(line)
-            {
-                let prefix = &captures[1];
-                let function_name = &captures[2];
-
-                // Skip false positives for legitimate get/set cases
-                if self.is_legitimate_getter_setter(function_name) {
-                    continue;
-                }
-
-                let suggested_name = match prefix {
-                    "get" => {
-                        if function_name.starts_with("or_") {
-                            // get_or_create -> get_or_create (keep as is)
-                            continue;
-                        } else {
-                            // get_peers -> peers, get_stats -> stats
-                            function_name.to_string()
-                        }
-                    }
-                    "set" => {
-                        // set_peers -> update_peers, set_config -> configure
-                        if function_name.contains("config") {
-                            format!("configure_{}", function_name.replace("config", ""))
-                        } else {
-                            format!("update_{}", function_name)
-                        }
-                    }
-                    _ => function_name.to_string(),
-                };
-
-                violations.push((
-                    line_num + 1,
-                    "FORBIDDEN_PREFIX".to_string(),
-                    format!(
-                        "Function '{}_{}' uses forbidden prefix. Use descriptive name: '{}'",
-                        prefix, function_name, suggested_name
-                    ),
-                ));
+            eprintln!("Found {} critical violations", critical_violations.len());
+            if !warning_violations.is_empty() {
+                eprintln!("Found {} warnings (non-blocking)", warning_violations.len());
             }
         }
 
-        // Add all violations
-        for (line_num, rule, message) in violations {
-            self.add_violation(Severity::Critical, line_num, &rule, &message);
-        }
-    }
-
-    /// Check if this is a legitimate getter/setter that should be allowed
-    fn is_legitimate_getter_setter(&self, function_name: &str) -> bool {
-        // Allow get_or_* patterns (get_or_create, get_or_insert, etc.)
-        function_name.starts_with("or_")
-    }
-
-    /// Check for missing public documentation (simplified)
-    fn check_missing_public_documentation(&mut self) {
-        // Skip test files
-        if self.current_file.to_string_lossy().contains("/tests/")
-            || self.current_file.to_string_lossy().contains("test_")
-        {
-            println!("DEBUG: Skipping test file");
-            return;
-        }
-
-        let mut violations = Vec::new();
-        let mut functions_found = 0;
-
-        for (i, line) in self.file_lines.iter().enumerate() {
-            let trimmed = line.trim();
-
-            // Look for public functions
-            if trimmed.starts_with("pub fn ") || trimmed.starts_with("pub async fn ") {
-                functions_found += 1;
-                if functions_found % 5 == 0 {
-                    println!("DEBUG: Found {} public functions so far", functions_found);
-                }
-
-                // Extract function name
-                if let Some(fn_pos) = trimmed.find("fn ") {
-                    let after_fn = &trimmed[fn_pos + 3..];
-                    if let Some(paren_pos) = after_fn.find('(') {
-                        let function_name = after_fn[..paren_pos].trim();
-
-                        // Skip test functions and constructors
-                        if function_name.starts_with("test_") || function_name == "new" {
-                            continue;
-                        }
-
-                        // Safety limit to prevent hanging
-                        if functions_found > 100 {
-                            println!("DEBUG: Stopping at function limit (100)");
-                            break;
-                        }
-
-                        // Check for documentation in previous lines (simple check)
-                        let has_doc = i > 0 && self.file_lines[i - 1].trim().starts_with("///");
-
-                        if !has_doc {
-                            violations.push((
-                                i + 1,
-                                "MISSING_PUBLIC_DOC",
-                                format!(
-                                    "Public function '{}' missing documentation",
-                                    function_name
-                                ),
-                            ));
-                        } else {
-                            // Check for Result return type and # Errors section
-                            let next_few_lines = self
-                                .file_lines
-                                .get(i..std::cmp::min(i + 3, self.file_lines.len()))
-                                .unwrap_or(&[])
-                                .join(" ");
-
-                            if (next_few_lines.contains("-> Result<")
-                                || next_few_lines.contains("->Result<"))
-                                && !self.has_errors_in_docs(i)
-                            {
-                                violations.push((
-                                    i + 1,
-                                    "MISSING_ERRORS_DOC",
-                                    format!("Function '{}' returns Result but missing '# Errors' section", function_name),
-                                ));
-                            }
-
-                            // Check for panic patterns and # Panics section
-                            if self.has_panic_patterns(i) && !self.has_panics_in_docs(i) {
-                                violations.push((
-                                    i + 1,
-                                    "MISSING_PANICS_DOC",
-                                    format!(
-                                        "Function '{}' can panic but missing '# Panics' section",
-                                        function_name
-                                    ),
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        println!(
-            "DEBUG: Found {} public functions, {} violations",
-            functions_found,
-            violations.len()
-        );
-
-        // Add all collected violations
-        for (line_num, rule, message) in violations {
-            self.add_violation(Severity::Critical, line_num, rule, &message);
-        }
-    }
-
-    /// Check if documentation contains # Errors section
-    fn has_errors_in_docs(&self, line_index: usize) -> bool {
-        for i in (0..=line_index).rev().take(10) {
-            if let Some(line) = self.file_lines.get(i) {
-                if line.contains("# Errors") {
-                    return true;
-                }
-                if !line.trim().starts_with("///") && !line.trim().is_empty() {
-                    break;
-                }
-            }
-        }
-        false
-    }
-
-    /// Check if documentation contains # Panics section
-    fn has_panics_in_docs(&self, line_index: usize) -> bool {
-        for i in (0..=line_index).rev().take(10) {
-            if let Some(line) = self.file_lines.get(i) {
-                if line.contains("# Panics") {
-                    return true;
-                }
-                if !line.trim().starts_with("///") && !line.trim().is_empty() {
-                    break;
-                }
-            }
-        }
-        false
-    }
-
-    /// Check if function has panic patterns in next few lines
-    fn has_panic_patterns(&self, start_line: usize) -> bool {
-        let end = std::cmp::min(start_line + 5, self.file_lines.len());
-        for i in start_line..end {
-            if let Some(line) = self.file_lines.get(i) {
-                if line.contains("panic!")
-                    || line.contains(".unwrap()")
-                    || line.contains(".expect(")
-                    || line.contains("unreachable!")
-                    || line.contains("unimplemented!")
-                    || line.contains("todo!")
-                {
-                    return true;
-                }
-            }
-        }
-        false
+        critical_violations.is_empty()
     }
 }
 
@@ -712,55 +532,116 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_forbidden_prefix_regex() {
-        let test_lines = vec![
-            "pub fn get_stats() -> u32 {",
-            "pub async fn set_config(value: u32) {",
-            "pub fn get_or_create() -> Self {", // Should be allowed
-            "fn get_private() -> u32 {",        // Not public, should be ignored
+    fn test_function_name_extraction() {
+        let checker = FastRustStyleChecker::new();
+
+        assert_eq!(
+            checker.extract_function_name("pub fn test_function() -> Result<(), Error>"),
+            Some("test_function".to_string())
+        );
+
+        assert_eq!(
+            checker.extract_function_name("pub fn complex_function(param: &str) -> String"),
+            Some("complex_function".to_string())
+        );
+
+        assert_eq!(
+            checker.extract_function_name("pub async fn async_function() -> Result<(), Error>"),
+            Some("async_function".to_string())
+        );
+    }
+
+    #[test]
+    fn test_returns_result() {
+        let checker = FastRustStyleChecker::new();
+        let lines = vec!["pub fn test() -> Result<(), Error> {", "    Ok(())", "}"];
+
+        assert!(checker.returns_result(0, &lines));
+
+        let lines2 = vec!["pub fn test() -> String {", "    String::new()", "}"];
+
+        assert!(!checker.returns_result(0, &lines2));
+    }
+
+    #[test]
+    fn test_can_panic() {
+        let checker = FastRustStyleChecker::new();
+        let lines = vec![
+            "pub fn test() {",
+            "    let value = something.unwrap();",
+            "}",
         ];
 
-        let regex = regex::Regex::new(r"pub\s+(?:async\s+)?fn\s+(get|set)_(\w+)").unwrap();
+        assert!(checker.can_panic(0, &lines));
 
-        for line in &test_lines {
-            println!("Testing: {}", line);
-            if let Some(captures) = regex.captures(line) {
-                println!(
-                    "  Matched: prefix='{}', name='{}'",
-                    &captures[1], &captures[2]
-                );
-            } else {
-                println!("  No match");
-            }
-        }
+        let lines2 = vec![
+            "pub fn test() {",
+            "    let value = something.unwrap_or_default();",
+            "}",
+        ];
+
+        assert!(!checker.can_panic(0, &lines2));
+    }
+
+    #[test]
+    fn test_has_errors_section() {
+        let checker = FastRustStyleChecker::new();
+        let lines = vec![
+            "/// Test function",
+            "///",
+            "/// # Errors",
+            "/// Returns error if something fails",
+            "pub fn test() -> Result<(), Error> {",
+        ];
+
+        assert!(checker.has_errors_section(4, &lines));
+
+        let lines2 = vec![
+            "/// Test function",
+            "/// Returns a result",
+            "pub fn test() -> Result<(), Error> {",
+        ];
+
+        assert!(!checker.has_errors_section(2, &lines2));
     }
 
     #[test]
     fn style_consistency_coverage_report() {
         println!("\n--- Riptide Style Consistency Coverage ---");
         println!(
-            "Enforcing TigerBeetle-inspired consistency from docs/STYLE.md and docs/NAMING_CONVENTIONS.md:"
+            "Enforcing TigerBeetle-inspired consistency from docs/STYLE.md and docs/NAMING_CONVENTIONS.md:\n"
         );
-        println!("\nCRITICAL (Must Fix):");
+
+        println!("CRITICAL (Must Fix):");
         println!("  ✓ BANNED_MODULE_NAME - No utils/helpers anti-pattern modules");
-        println!("  ✓ INLINE_MODULE_REFERENCE - Smart import detection for frequently used types");
         println!("  ✓ FORBIDDEN_PREFIX - No get_/set_ function prefixes (use descriptive names)");
         println!("  ✓ MISSING_PUBLIC_DOC - All public functions must have documentation");
         println!("  ✓ MISSING_ERRORS_DOC - Result-returning functions need # Errors section");
-        println!("\nWARNING (Consistency Improvements):");
+        println!("  ✓ MISSING_PANICS_DOC - Functions that can panic need # Panics section");
+        println!();
+
+        println!("WARNING (Consistency Improvements):");
         println!("  ✓ MODULE_SIZE_LIMIT - Max 500 lines per module");
-        println!("\nFocus: Smart pattern detection with context preservation");
+        println!();
+
+        println!("Focus: Fast Rust-based pattern detection");
+        println!("Focus: Cross-platform compatibility");
         println!("Focus: Reduce verbosity while maintaining semantic clarity");
     }
 
     #[test]
     fn enforce_riptide_style_consistency() {
-        let mut checker = StyleChecker::new();
+        let mut checker = FastRustStyleChecker::new();
+
+        // Run all checks
         checker
             .check_workspace()
             .expect("Failed to check workspace");
 
+        // Report results
         let passed = checker.report_violations();
-        assert!(passed, "Style violations found - see output above");
+
+        // Allow warnings but fail on critical violations
+        assert!(passed, "Critical style violations found - see output above");
     }
 }

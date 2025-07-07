@@ -100,7 +100,7 @@ pub async fn add_torrent(
 
 /// Renders torrent list for the torrents page with real-time updates
 pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // Get movie manager data for better naming
     let movie_titles: std::collections::HashMap<_, _> =
@@ -173,8 +173,11 @@ pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
 }
 
 /// Renders torrent details modal
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrent_details(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.engine().get_active_sessions().await.unwrap();
+    let sessions = state.engine().active_sessions().await.unwrap();
 
     // For now, show details for the first session if any exist
     // In a real implementation, this would take an info_hash parameter

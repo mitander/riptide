@@ -77,7 +77,10 @@ impl TorrentEngineHandle {
     ///
     /// # Errors
     /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    pub async fn get_session(&self, info_hash: InfoHash) -> Result<TorrentSession, TorrentError> {
+    pub async fn session_details(
+        &self,
+        info_hash: InfoHash,
+    ) -> Result<TorrentSession, TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::GetSession {
             info_hash,
@@ -92,11 +95,14 @@ impl TorrentEngineHandle {
         rx.await.map_err(|_| TorrentError::EngineShutdown)?
     }
 
-    /// Gets all active torrent sessions.
+    /// Lists all active torrent sessions.
     ///
     /// Returns a vector of all torrent sessions currently managed by the engine.
     /// Sessions are returned in no particular order.
-    pub async fn get_active_sessions(&self) -> Result<Vec<TorrentSession>, TorrentError> {
+    ///
+    /// # Errors
+    /// Returns error if engine is shutdown or communication fails.
+    pub async fn active_sessions(&self) -> Result<Vec<TorrentSession>, TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::GetActiveSessions { responder };
 
@@ -112,6 +118,9 @@ impl TorrentEngineHandle {
     ///
     /// Returns aggregated statistics including active torrent count, peer
     /// connections, and data transfer metrics.
+    ///
+    /// # Errors
+    /// Returns error if engine is shutdown or communication fails.
     pub async fn download_statistics(&self) -> Result<EngineStats, TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::GetDownloadStats { responder };
@@ -184,6 +193,9 @@ impl TorrentEngineHandle {
     ///
     /// Sends a shutdown command to the engine actor and waits for confirmation.
     /// After this call, all subsequent operations will return `TorrentError::EngineShutdown`.
+    ///
+    /// # Errors
+    /// Returns error if engine communication fails.
     pub async fn shutdown(&self) -> Result<(), TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::Shutdown { responder };

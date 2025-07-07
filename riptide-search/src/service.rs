@@ -75,6 +75,10 @@ impl MediaSearchService {
     }
 
     /// Creates new media search service with mock provider for testing.
+    ///
+    /// This constructor initializes the service with a mock provider that
+    /// returns predefined test data, allowing for deterministic testing
+    /// without external API dependencies.
     #[cfg(test)]
     pub fn new_with_mock() -> Self {
         Self {
@@ -200,7 +204,7 @@ impl MediaSearchService {
     ///
     /// # Errors
     /// - `MediaSearchError::SearchFailed` - Failed to retrieve torrent details
-    pub async fn get_media_torrents(
+    pub async fn media_torrents(
         &self,
         media_title: &str,
     ) -> Result<Vec<TorrentResult>, MediaSearchError> {
