@@ -21,7 +21,7 @@ pub struct DownloadStats {
 
 /// Renders the main dashboard page
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
-    let stats = state.torrent_engine.get_download_stats().await.unwrap();
+    let stats = state.engine().get_download_stats().await.unwrap();
 
     // Quick stats cards
     let stats_cards = [
@@ -90,7 +90,7 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
 
 /// Renders the torrents management page  
 pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Quick stats for header
     let total_torrents = sessions.len();
@@ -229,7 +229,7 @@ pub async fn video_player_page(
     };
 
     // Check if this is a torrent or local movie
-    let is_local = if let Some(ref movie_manager) = state.movie_manager {
+    let is_local = if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         manager.file_by_hash(info_hash).is_some()
     } else {
@@ -237,10 +237,10 @@ pub async fn video_player_page(
     };
 
     // Get torrent session for title
-    let title = match state.torrent_engine.get_session(info_hash).await {
+    let title = match state.engine().get_session(info_hash).await {
         Ok(session) => session.filename.clone(),
         Err(_) => {
-            if let Some(ref movie_manager) = state.movie_manager {
+            if let Ok(movie_manager) = state.file_manager() {
                 let manager = movie_manager.read().await;
                 manager
                     .file_by_hash(info_hash)

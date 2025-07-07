@@ -41,7 +41,7 @@ pub struct SeekRequest {
 }
 
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
-    let stats = state.torrent_engine.get_download_stats().await.unwrap();
+    let stats = state.engine().get_download_stats().await.unwrap();
 
     Json(Stats {
         total_torrents: stats.active_torrents as u32,
@@ -52,10 +52,10 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 }
 
 pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Get movie manager data once outside the loop
-    let movie_titles: HashMap<_, _> = if let Some(ref movie_manager) = state.movie_manager {
+    let movie_titles: HashMap<_, _> = if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         manager
             .all_files()
@@ -128,10 +128,10 @@ pub async fn api_add_torrent(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    match state.torrent_engine.add_magnet(&params.magnet).await {
+    match state.engine().add_magnet(&params.magnet).await {
         Ok(info_hash) => {
             // Start downloading immediately after adding
-            match state.torrent_engine.start_download(info_hash).await {
+            match state.engine().start_download(info_hash).await {
                 Ok(()) => Ok(Json(json!({
                     "success": true,
                     "message": "Torrent added and download started",
@@ -187,7 +187,7 @@ pub async fn api_search(
 }
 
 pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     let mut library_items = Vec::new();
     let mut total_size = 0u64;
@@ -196,7 +196,7 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
     let mut local_info_hashes = HashSet::new();
 
     // Add local movies to library first (they have better metadata)
-    if let Some(ref movie_manager) = state.movie_manager {
+    if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         for movie in manager.all_files() {
             local_info_hashes.insert(movie.info_hash);
@@ -289,10 +289,10 @@ pub async fn api_download_torrent(
         })));
     }
 
-    match state.torrent_engine.add_magnet(&payload.magnet_link).await {
+    match state.engine().add_magnet(&payload.magnet_link).await {
         Ok(info_hash) => {
             // Start downloading immediately after adding
-            match state.torrent_engine.start_download(info_hash).await {
+            match state.engine().start_download(info_hash).await {
                 Ok(()) => Ok(Json(json!({
                     "success": true,
                     "message": "Download started successfully",
@@ -373,7 +373,7 @@ pub async fn api_seek_torrent(
     }
 
     // Get torrent session to calculate byte position
-    match state.torrent_engine.get_session(info_hash).await {
+    match state.engine().get_session(info_hash).await {
         Ok(session) => {
             // Estimate bitrate based on file size and assume typical video duration
             // This is a rough approximation - in production you'd want metadata parsing
@@ -398,7 +398,7 @@ pub async fn api_seek_torrent(
 
             // Signal the torrent engine to prioritize pieces around this position
             match state
-                .torrent_engine
+                .engine()
                 .seek_to_position(info_hash, byte_position as u64, buffer_size_bytes as u64)
                 .await
             {

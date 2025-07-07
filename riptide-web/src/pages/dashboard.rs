@@ -8,8 +8,8 @@ use crate::server::AppState;
 
 /// Renders the main dashboard page with real-time components
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
-    let engine_stats = state.torrent_engine.get_download_stats().await.unwrap();
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let engine_stats = state.engine().get_download_stats().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Initial stats for server-side rendering
     let active_torrents = sessions.len();
@@ -19,7 +19,7 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let upload_speed = (engine_stats.bytes_uploaded as f64) / 1_048_576.0;
     let total_downloaded = (engine_stats.bytes_downloaded as f64) / 1_073_741_824.0;
 
-    let library_size = if let Some(ref movie_manager) = state.movie_manager {
+    let library_size = if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         manager.all_files().len()
     } else {

@@ -61,7 +61,7 @@ pub async fn stream_torrent(
     };
 
     // Get torrent session
-    let session = match state.torrent_engine.get_session(info_hash).await {
+    let session = match state.engine().get_session(info_hash).await {
         Ok(session) => session,
         Err(_) => return Err(StatusCode::NOT_FOUND),
     };
@@ -196,7 +196,7 @@ async fn read_original_data(
     start: u64,
     length: u64,
 ) -> Result<Vec<u8>, StatusCode> {
-    if let Some(ref piece_store) = state.piece_store {
+    if let Ok(piece_store) = state.piece_store() {
         let piece_reader =
             create_piece_reader_from_trait_object(Arc::clone(piece_store), session.piece_size);
 
@@ -220,7 +220,7 @@ async fn read_original_data(
                 Ok(vec![0u8; length as usize])
             }
         }
-    } else if let Some(ref movie_manager) = state.movie_manager {
+    } else if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         manager
             .read_file_segment(info_hash, start, length)
@@ -249,7 +249,7 @@ async fn convert_file_to_mp4(
 
     // Perform conversion
     match state
-        .ffmpeg_processor
+        .ffmpeg_processor()
         .remux_to_mp4(&temp_input, &output_path, &config)
         .await
     {
@@ -304,7 +304,7 @@ async fn reconstruct_original_file(
     ));
 
     // Read entire file from piece store
-    let total_data = if let Some(ref piece_store) = state.piece_store {
+    let total_data = if let Ok(piece_store) = state.piece_store() {
         let piece_reader =
             create_piece_reader_from_trait_object(Arc::clone(piece_store), session.piece_size);
 
@@ -315,7 +315,7 @@ async fn reconstruct_original_file(
                 tracing::error!("Failed to read full file from piece store: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?
-    } else if let Some(ref movie_manager) = state.movie_manager {
+    } else if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         manager
             .read_file_segment(info_hash, 0, session.total_size)
@@ -401,7 +401,7 @@ async fn update_playback_position_and_priority(
     // Seek to the current position to prioritize pieces around this location
     // This will mark urgent priority for pieces immediately needed for playback
     if let Err(e) = state
-        .torrent_engine
+        .engine()
         .seek_to_position(info_hash, current_position, buffer_size)
         .await
     {
@@ -418,7 +418,7 @@ async fn update_playback_position_and_priority(
     let estimated_bandwidth = estimate_available_bandwidth(range_length);
 
     if let Err(e) = state
-        .torrent_engine
+        .engine()
         .update_buffer_strategy(info_hash, playback_speed, estimated_bandwidth)
         .await
     {
@@ -506,7 +506,7 @@ fn estimate_available_bandwidth(range_length: u64) -> u64 {
 }
 
 pub async fn api_local_movies(State(state): State<AppState>) -> Json<serde_json::Value> {
-    if let Some(ref movie_manager) = state.movie_manager {
+    if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         let movies: Vec<serde_json::Value> = manager
             .all_files()
@@ -544,7 +544,7 @@ pub async fn api_add_local_movie(
     State(state): State<AppState>,
     Query(params): Query<AddLocalMovieQuery>,
 ) -> Json<serde_json::Value> {
-    if let Some(ref movie_manager) = state.movie_manager {
+    if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
 
         // Parse the info hash
@@ -558,10 +558,10 @@ pub async fn api_add_local_movie(
                     urlencoding::encode(&movie.title)
                 );
 
-                match state.torrent_engine.add_magnet(&magnet).await {
+                match state.engine().add_magnet(&magnet).await {
                     Ok(hash) => {
                         // Start downloading immediately
-                        match state.torrent_engine.start_download(hash).await {
+                        match state.engine().start_download(hash).await {
                             Ok(()) => Json(json!({
                                 "success": true,
                                 "message": format!("Added local movie: {}", movie.title),
@@ -611,7 +611,7 @@ pub async fn stream_local_movie(
     };
 
     // Check if we have a local movie manager
-    let movie_manager = match state.movie_manager.as_ref() {
+    let movie_manager = match state.file_manager().ok() {
         Some(manager) => manager,
         None => return Err(StatusCode::NOT_FOUND),
     };
@@ -633,7 +633,7 @@ pub async fn stream_local_movie(
     let (start, safe_end, safe_length) = validate_range_bounds(start, end, movie.size)?;
 
     // For local movies that have been added to the torrent engine, also update position
-    if let Ok(session) = state.torrent_engine.get_session(info_hash).await {
+    if let Ok(session) = state.engine().get_session(info_hash).await {
         update_playback_position_and_priority(&state, info_hash, start, safe_length, &session)
             .await;
     }

@@ -34,12 +34,70 @@ pub enum ConversionStatus {
 }
 
 /// Pre-configured server components for dependency injection.
+///
+/// Contains all runtime services needed by the web server. Services are created
+/// based on runtime mode (Production vs Development) and passed to the web layer
+/// which remains completely mode-agnostic.
 pub struct ServerComponents {
     pub torrent_engine: TorrentEngineHandle,
     pub movie_manager: Option<Arc<RwLock<FileLibraryManager>>>,
     pub piece_store: Option<Arc<dyn PieceStore>>,
     pub conversion_progress: Option<Arc<RwLock<HashMap<String, ConversionProgress>>>>,
     pub ffmpeg_processor: Arc<dyn FfmpegProcessor>,
+}
+
+impl ServerComponents {
+    /// Get the torrent engine handle.
+    pub fn engine(&self) -> &TorrentEngineHandle {
+        &self.torrent_engine
+    }
+
+    /// Get the file manager if available (Development mode only).
+    ///
+    /// # Errors
+    /// Returns `ServiceError::NotAvailable` if file manager is not available in this mode.
+    pub fn file_manager(&self) -> Result<&Arc<RwLock<FileLibraryManager>>, ServiceError> {
+        self.movie_manager
+            .as_ref()
+            .ok_or(ServiceError::NotAvailable(
+                "File manager not available in this mode",
+            ))
+    }
+
+    /// Get the piece store if available (Development mode only).
+    ///
+    /// # Errors  
+    /// Returns `ServiceError::NotAvailable` if piece store is not available in this mode.
+    pub fn piece_store(&self) -> Result<&Arc<dyn PieceStore>, ServiceError> {
+        self.piece_store.as_ref().ok_or(ServiceError::NotAvailable(
+            "Piece store not available in this mode",
+        ))
+    }
+
+    /// Get conversion progress tracker if available (Development mode only).
+    ///
+    /// # Errors
+    /// Returns `ServiceError::NotAvailable` if conversion tracking is not available in this mode.
+    pub fn conversion_progress(
+        &self,
+    ) -> Result<&Arc<RwLock<HashMap<String, ConversionProgress>>>, ServiceError> {
+        self.conversion_progress
+            .as_ref()
+            .ok_or(ServiceError::NotAvailable(
+                "Conversion tracking not available in this mode",
+            ))
+    }
+
+    /// Get the FFmpeg processor for transcoding operations.
+    pub fn ffmpeg_processor(&self) -> &Arc<dyn FfmpegProcessor> {
+        &self.ffmpeg_processor
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ServiceError {
+    #[error("Service not available: {0}")]
+    NotAvailable(&'static str),
 }
 
 fn serialize_instant<S>(instant: &std::time::Instant, serializer: S) -> Result<S::Ok, S::Error>

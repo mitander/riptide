@@ -20,10 +20,10 @@ pub struct AddTorrentForm {
 
 /// Renders the dashboard stats section as HTML fragment
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
-    let stats = state.torrent_engine.get_download_stats().await.unwrap();
+    let stats = state.engine().get_download_stats().await.unwrap();
 
     // Get library size
-    let library_size = if let Some(ref movie_manager) = state.movie_manager {
+    let library_size = if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         manager.all_files().len()
     } else {
@@ -31,7 +31,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     };
 
     // Get connected peers count (from active sessions)
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
     let connected_peers: usize = sessions
         .iter()
         .map(|session| session.completed_pieces.iter().filter(|&&x| x).count())
@@ -82,7 +82,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
 
 /// Renders recent activity feed as HTML fragment
 pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     let mut activities = Vec::new();
 
@@ -134,7 +134,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
 
 /// Renders active downloads preview as HTML fragment
 pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     let mut downloads = Vec::new();
 
@@ -189,10 +189,10 @@ pub async fn add_torrent_htmx(
         ));
     }
 
-    match state.torrent_engine.add_magnet(&form.magnet).await {
+    match state.engine().add_magnet(&form.magnet).await {
         Ok(info_hash) => {
             // Start downloading immediately after adding
-            match state.torrent_engine.start_download(info_hash).await {
+            match state.engine().start_download(info_hash).await {
                 Ok(()) => Ok(Html(format!(
                     r#"<div class="add-result success">✅ Torrent added successfully! Download started for {}</div>"#,
                     &info_hash.to_string()[..8]
@@ -231,11 +231,11 @@ pub async fn add_torrent_htmx(
 
 /// Renders torrent list for the torrents page with real-time updates
 pub async fn torrents_list(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Get movie manager data for better naming
     let movie_titles: std::collections::HashMap<_, _> =
-        if let Some(ref movie_manager) = state.movie_manager {
+        if let Ok(movie_manager) = state.file_manager() {
             let manager = movie_manager.read().await;
             manager
                 .all_files()

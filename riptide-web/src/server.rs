@@ -43,14 +43,56 @@ pub struct ConvertedFile {
 /// All services are provided by CLI dependency injection - web layer is mode-agnostic.
 #[derive(Clone)]
 pub struct AppState {
-    pub torrent_engine: TorrentEngineHandle,
+    pub services: Arc<ServerComponents>,
     pub search_service: MediaSearchService,
-    pub movie_manager: Option<Arc<RwLock<FileLibraryManager>>>,
-    pub piece_store: Option<Arc<dyn PieceStore>>,
-    pub ffmpeg_processor: Arc<dyn FfmpegProcessor>,
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
-    pub conversion_progress: Arc<RwLock<HashMap<String, ConversionProgress>>>,
     pub server_started_at: std::time::Instant,
+}
+
+impl AppState {
+    /// Get the torrent engine handle.
+    pub fn engine(&self) -> &TorrentEngineHandle {
+        self.services.engine()
+    }
+
+    /// Get the file manager if available (Development mode only).
+    ///
+    /// # Errors
+    /// Returns error if file manager is not available in this mode.
+    pub fn file_manager(
+        &self,
+    ) -> Result<&Arc<RwLock<FileLibraryManager>>, riptide_core::server_components::ServiceError>
+    {
+        self.services.file_manager()
+    }
+
+    /// Get the piece store if available (Development mode only).
+    ///
+    /// # Errors  
+    /// Returns error if piece store is not available in this mode.
+    pub fn piece_store(
+        &self,
+    ) -> Result<&Arc<dyn PieceStore>, riptide_core::server_components::ServiceError> {
+        self.services.piece_store()
+    }
+
+    /// Get conversion progress tracker if available (Development mode only).
+    ///
+    /// # Errors
+    /// Returns error if conversion tracking is not available in this mode.
+    pub fn conversion_progress(
+        &self,
+    ) -> Result<
+        &Arc<RwLock<HashMap<String, ConversionProgress>>>,
+        riptide_core::server_components::ServiceError,
+    > {
+        self.services.conversion_progress()
+    }
+
+    /// Get the FFmpeg processor for transcoding operations.
+    pub fn ffmpeg_processor(&self) -> &Arc<dyn FfmpegProcessor> {
+        self.services.ffmpeg_processor()
+    }
 }
 
 pub async fn run_server(
@@ -59,18 +101,11 @@ pub async fn run_server(
     search_service: MediaSearchService,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conversion_cache = Arc::new(RwLock::new(HashMap::new()));
-    let conversion_progress = components
-        .conversion_progress
-        .unwrap_or_else(|| Arc::new(RwLock::new(HashMap::new())));
 
     let state = AppState {
-        torrent_engine: components.torrent_engine,
+        services: Arc::new(components),
         search_service,
-        movie_manager: components.movie_manager,
-        piece_store: components.piece_store,
-        ffmpeg_processor: components.ffmpeg_processor,
         conversion_cache,
-        conversion_progress,
         server_started_at: std::time::Instant::now(),
     };
 
@@ -126,6 +161,11 @@ pub async fn run_server(
 async fn api_conversion_progress(
     State(state): State<AppState>,
 ) -> axum::Json<HashMap<String, ConversionProgress>> {
-    let progress = state.conversion_progress.read().await;
-    axum::Json(progress.clone())
+    match state.conversion_progress() {
+        Ok(progress_tracker) => {
+            let progress = progress_tracker.read().await;
+            axum::Json(progress.clone())
+        }
+        Err(_) => axum::Json(HashMap::new()),
+    }
 }

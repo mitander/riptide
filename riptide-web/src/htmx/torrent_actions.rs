@@ -50,10 +50,10 @@ pub async fn add_torrent(
         ));
     }
 
-    match state.torrent_engine.add_magnet(&form.magnet).await {
+    match state.engine().add_magnet(&form.magnet).await {
         Ok(info_hash) => {
             // Start downloading immediately after adding
-            match state.torrent_engine.start_download(info_hash).await {
+            match state.engine().start_download(info_hash).await {
                 Ok(()) => Html(activity::notification_toast(
                     &format!(
                         "✅ Torrent added successfully! Download started for {}",
@@ -100,11 +100,11 @@ pub async fn add_torrent(
 
 /// Renders torrent list for the torrents page with real-time updates
 pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Get movie manager data for better naming
     let movie_titles: std::collections::HashMap<_, _> =
-        if let Some(ref movie_manager) = state.movie_manager {
+        if let Ok(movie_manager) = state.file_manager() {
             let manager = movie_manager.read().await;
             manager
                 .all_files()
@@ -174,7 +174,7 @@ pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
 
 /// Renders torrent details modal
 pub async fn torrent_details(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // For now, show details for the first session if any exist
     // In a real implementation, this would take an info_hash parameter

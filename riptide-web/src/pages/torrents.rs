@@ -9,7 +9,7 @@ use crate::server::AppState;
 
 /// Renders the torrents management page
 pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Quick stats for header
     let total_torrents = sessions.len();

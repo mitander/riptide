@@ -29,8 +29,8 @@ fn format_elapsed_time(started_at: Instant) -> String {
 
 /// Real-time dashboard statistics fragment
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
-    let engine_stats = state.torrent_engine.get_download_stats().await.unwrap();
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let engine_stats = state.engine().get_download_stats().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Calculate metrics
     let active_torrents = sessions.len();
@@ -50,7 +50,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     };
     let total_downloaded = (engine_stats.bytes_downloaded as f64) / 1_073_741_824.0;
 
-    let library_size = if let Some(ref movie_manager) = state.movie_manager {
+    let library_size = if let Ok(movie_manager) = state.file_manager() {
         let manager = movie_manager.read().await;
         manager.all_files().len()
     } else {
@@ -126,7 +126,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
 
 /// Recent activity feed fragment
 pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     let mut activities = Vec::new();
 
@@ -190,7 +190,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
 
 /// Active downloads preview fragment
 pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Show only actively downloading torrents
     let active_downloads: Vec<_> = sessions
@@ -326,7 +326,7 @@ pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
 
 /// Network status and peer information
 pub async fn network_status(State(state): State<AppState>) -> Html<String> {
-    let sessions = state.torrent_engine.get_active_sessions().await.unwrap();
+    let sessions = state.engine().get_active_sessions().await.unwrap();
 
     let total_peers: usize = sessions
         .iter()
