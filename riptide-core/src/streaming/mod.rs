@@ -4,10 +4,12 @@
 //! peer management system for streaming performance.
 
 pub mod ffmpeg;
+pub mod file_assembler;
 pub mod file_reconstruction;
 pub mod piece_reader;
 pub mod range_handler;
 pub mod remuxed_streaming;
+pub mod storage_cache;
 pub mod strategy;
 pub mod strategy_manager;
 pub mod stream_coordinator;
@@ -18,12 +20,16 @@ pub use ffmpeg::{
     FfmpegProcessor, ProductionFfmpegProcessor, RemuxingOptions, RemuxingResult,
     SimulationFfmpegProcessor,
 };
+pub use file_assembler::{CacheStats, FileAssembler, FileAssemblerError, PieceFileAssembler};
 pub use file_reconstruction::FileReconstructor;
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
 pub use remuxed_streaming::{RemuxedStreaming, RemuxingConfig};
+pub use storage_cache::{
+    CacheEntry, CacheKey, CacheStatistics, StorageCache, StorageCacheConfig, StorageCacheError,
+};
 pub use strategy::{
     ContainerDetector, ContainerFormat, StreamingError as StrategyError, StreamingResult,
     StreamingStrategy,
