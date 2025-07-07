@@ -37,19 +37,6 @@ fn detect_container_format(filename: &str) -> ContainerFormat {
     }
 }
 
-/// Determine output MIME type for browser streaming
-fn determine_content_type(filename: &str) -> String {
-    let format = detect_container_format(filename);
-
-    // For non-browser-compatible formats, we'll serve as MP4 after remuxing
-    if format.is_browser_compatible() {
-        format.mime_type().to_string()
-    } else {
-        // Non-compatible formats (MKV, AVI, etc.) will be remuxed to MP4
-        "video/mp4".to_string()
-    }
-}
-
 /// Streams torrent content with HTTP range support for video playback.
 ///
 /// # Errors
@@ -117,12 +104,25 @@ pub async fn stream_torrent(
     // This automatically prioritizes pieces around the requested range for optimal streaming
     update_playback_position_and_priority(&state, info_hash, start, safe_length, &session).await;
 
-    // Check if container format needs remuxing and handle conversion
+    // Detect container format and determine if conversion is needed
+    let container_format = detect_container_format(&session.filename);
+    tracing::info!(
+        "Streaming request for {}: format={:?}, browser_compatible={}",
+        session.filename,
+        container_format,
+        container_format.is_browser_compatible()
+    );
+
+    // Use conversion logic for browser compatibility
     let (video_data, actual_file_size) =
         video_data_with_conversion(&state, info_hash, &session, start, safe_length).await?;
 
-    // Determine MIME type from filename
-    let content_type = determine_content_type(&session.filename);
+    // For converted files, always use MP4 MIME type
+    let content_type = if container_format.is_browser_compatible() {
+        container_format.mime_type().to_string()
+    } else {
+        "video/mp4".to_string() // Converted files are always MP4
+    };
 
     build_range_response(
         &headers,
@@ -848,17 +848,5 @@ mod tests {
             detect_container_format("unknown.xyz"),
             ContainerFormat::Unknown
         ));
-    }
-
-    #[test]
-    fn test_determine_content_type() {
-        // Browser-compatible formats should return their native MIME type
-        assert_eq!(determine_content_type("movie.mp4"), "video/mp4");
-        assert_eq!(determine_content_type("video.webm"), "video/webm");
-
-        // Non-compatible formats should indicate MP4 (after remuxing)
-        assert_eq!(determine_content_type("film.mkv"), "video/mp4");
-        assert_eq!(determine_content_type("clip.avi"), "video/mp4");
-        assert_eq!(determine_content_type("unknown.xyz"), "video/mp4");
     }
 }
