@@ -59,14 +59,11 @@ pub mod media;
 pub mod network;
 pub mod peer;
 pub mod peer_server;
-pub mod piece_reconstruction;
 pub mod piece_store;
 pub mod scenarios;
-pub mod simulated_peer_manager;
 pub mod streaming_integration_tests;
 pub mod tracker;
 pub mod tracker_manager;
-pub mod unified;
 
 // Re-export core types for convenience
 use std::collections::HashSet;
@@ -74,7 +71,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub use content_aware_peer_manager::ContentAwarePeerManager;
+pub use content_aware_peer_manager::{ContentAwarePeerManager, InMemoryPeerConfig};
 pub use deterministic::{
     BandwidthInvariant, DataIntegrityInvariant, DeterministicClock, DeterministicRng,
     DeterministicSimulation, EventPriority, EventType, Invariant, InvariantViolation,
@@ -90,27 +87,22 @@ pub use media::{MediaStreamingSimulation, MovieFolder, StreamingResult};
 pub use network::{NetworkSimulator, NetworkSimulatorBuilder};
 pub use peer::{MockPeer, MockPeerBuilder};
 pub use peer_server::{BitTorrentPeerServer, spawn_peer_servers_for_torrent};
-pub use piece_reconstruction::{PieceReconstructionService, ReconstructionProgress, VerifiedPiece};
 pub use piece_store::InMemoryPieceStore;
 // Re-export config from core for convenience
 pub use riptide_core::config::SimulationConfig;
 pub use scenarios::{
-    ScenarioResult, ScenarioResults, ScenarioRunner, SimulationScenarios, StreamingScenario,
-    StressScenario, streaming_edge_cases,
+    cascading_piece_failures_scenario, extreme_peer_churn_scenario, resource_exhaustion_scenario,
+    severe_network_degradation_scenario, streaming_edge_cases, total_peer_failure_scenario,
 };
-pub use simulated_peer_manager::{InMemoryPeerConfig, InMemoryPeerManager};
-pub use tracker::{MockTracker, MockTrackerBuilder, SimulatedTrackerManager};
+pub use tracker::{ResponseConfig, SimulatedTrackerManager};
 pub use tracker_manager::TrackerManager;
-pub use unified::{
-    EventScheduler, PeerAction, SimulationError as UnifiedSimulationError, UnifiedSimulation,
-};
 
 /// Simulation environment for BitTorrent development.
 ///
 /// Combines mock tracker, network simulator, and peer pool for
 /// comprehensive testing of BitTorrent functionality.
 pub struct SimulationEnvironment {
-    pub tracker: MockTracker,
+    pub tracker: SimulatedTrackerManager,
     pub network: NetworkSimulator,
     pub peers: Vec<MockPeer>,
 }
@@ -125,7 +117,7 @@ impl SimulationEnvironment {
     /// Creates a new simulation environment with sensible defaults.
     pub fn new() -> Self {
         Self {
-            tracker: MockTracker::new(),
+            tracker: SimulatedTrackerManager::new(),
             network: NetworkSimulator::new(),
             peers: Vec::new(),
         }

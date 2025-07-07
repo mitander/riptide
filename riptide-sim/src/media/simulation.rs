@@ -8,7 +8,7 @@ use riptide_core::torrent::PieceIndex;
 
 use super::analysis::MediaAnalyzer;
 use super::results::StreamingResult;
-use super::types::{MediaFileType, MovieFolder, StreamingBuffer, StreamingPriority};
+use super::types::{MediaFileType, MovieFolder, StreamingPriority};
 use crate::EventPriority;
 use crate::deterministic::{DeterministicSimulation, EventType};
 
@@ -20,8 +20,6 @@ pub struct MediaStreamingSimulation {
     piece_to_file_map: HashMap<PieceIndex, usize>, // Maps pieces to file indices
     #[allow(dead_code)]
     playback_position: Duration,
-    #[allow(dead_code)]
-    buffer_state: StreamingBuffer,
 }
 
 impl MediaStreamingSimulation {
@@ -58,7 +56,6 @@ impl MediaStreamingSimulation {
             piece_size,
             piece_to_file_map,
             playback_position: Duration::ZERO,
-            buffer_state: StreamingBuffer::default(),
         })
     }
 

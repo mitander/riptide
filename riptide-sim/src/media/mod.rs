@@ -11,9 +11,7 @@ mod types;
 pub use analysis::MediaAnalyzer;
 pub use results::StreamingResult;
 pub use simulation::MediaStreamingSimulation;
-pub use types::{
-    MediaFile, MediaFileType, MovieFolder, StreamingBuffer, StreamingPriority, StreamingProfile,
-};
+pub use types::{MediaFile, MediaFileType, MovieFolder, StreamingPriority, StreamingProfile};
 
 #[cfg(test)]
 mod tests {

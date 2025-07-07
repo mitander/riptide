@@ -15,7 +15,29 @@ use riptide_core::torrent::{
 };
 use tokio::sync::{Mutex, RwLock, mpsc};
 
-use super::simulated_peer_manager::InMemoryPeerConfig;
+/// Configuration for in-memory peer behavior
+#[derive(Debug, Clone)]
+pub struct InMemoryPeerConfig {
+    /// Base delay for message responses in milliseconds
+    pub message_delay_ms: u64,
+    /// Probability of connection failure (0.0 to 1.0)
+    pub connection_failure_rate: f64,
+    /// Probability of message loss (0.0 to 1.0)
+    pub message_loss_rate: f64,
+    /// Maximum number of simultaneous connections
+    pub max_connections: usize,
+}
+
+impl Default for InMemoryPeerConfig {
+    fn default() -> Self {
+        Self {
+            message_delay_ms: 1, // Minimal delay for development speed
+            connection_failure_rate: 0.0,
+            message_loss_rate: 0.0,
+            max_connections: 50,
+        }
+    }
+}
 
 /// Simulated peer with content awareness
 #[derive(Debug, Clone)]
@@ -95,7 +117,6 @@ pub struct ContentAwarePeerManager<P: PieceStore> {
     peers: Arc<RwLock<HashMap<SocketAddr, ContentAwarePeer>>>,
     message_receiver: Arc<Mutex<mpsc::Receiver<PeerMessageEvent>>>,
     message_sender: mpsc::Sender<PeerMessageEvent>,
-    #[allow(dead_code)]
     next_peer_address: Arc<Mutex<u32>>,
 }
 
@@ -230,7 +251,6 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
     }
 
     /// Generates deterministic peer address for testing
-    #[allow(dead_code)]
     async fn generate_peer_address(&self) -> SocketAddr {
         let mut counter = self.next_peer_address.lock().await;
         let address_int = *counter;

@@ -79,27 +79,3 @@ impl Default for StreamingProfile {
         }
     }
 }
-
-/// Streaming buffer state tracking.
-#[derive(Debug, Clone)]
-pub struct StreamingBuffer {
-    #[allow(dead_code)]
-    pub(crate) buffered_duration: Duration,
-    #[allow(dead_code)]
-    pub(crate) critical_pieces: Vec<riptide_core::torrent::PieceIndex>, // Pieces needed for immediate playback
-    #[allow(dead_code)]
-    pub(crate) prefetch_pieces: Vec<riptide_core::torrent::PieceIndex>, // Pieces for future playback
-    #[allow(dead_code)]
-    pub(crate) subtitle_pieces: Vec<riptide_core::torrent::PieceIndex>, // Subtitle data pieces
-}
-
-impl Default for StreamingBuffer {
-    fn default() -> Self {
-        Self {
-            buffered_duration: Duration::ZERO,
-            critical_pieces: Vec::new(),
-            prefetch_pieces: Vec::new(),
-            subtitle_pieces: Vec::new(),
-        }
-    }
-}

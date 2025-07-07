@@ -1,17 +1,13 @@
-//! Pre-built simulation scenarios for common BitTorrent testing patterns.
+//! Edge case scenarios for BitTorrent streaming simulation.
 //!
-//! Provides ready-to-use simulation scenarios that reproduce specific
-//! network conditions and edge cases for systematic testing.
+//! Provides focused test scenarios that verify system behavior under
+//! challenging network conditions and edge cases.
 
-pub mod builders;
-pub mod runner;
-pub mod types;
-
-// Re-export main types
-pub use builders::SimulationScenarios;
-pub use runner::{ScenarioResult, ScenarioResults, ScenarioRunner};
-pub use types::{StreamingScenario, StressScenario};
-
-// Re-export from existing modules
 pub mod streaming_edge_cases;
 pub mod streaming_invariants;
+
+// Re-export the essential scenario functions
+pub use streaming_edge_cases::{
+    cascading_piece_failures_scenario, extreme_peer_churn_scenario, resource_exhaustion_scenario,
+    severe_network_degradation_scenario, total_peer_failure_scenario,
+};

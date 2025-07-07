@@ -154,7 +154,6 @@ impl SimulatedTrackerClient {
     ///
     /// Useful for testing scenarios with specific seeder/leecher ratios
     /// or simulating swarm evolution over time.
-    #[allow(dead_code)]
     pub fn configure_swarm_stats(
         &self,
         info_hash: InfoHash,
@@ -178,14 +177,12 @@ impl SimulatedTrackerClient {
     ///
     /// Enables testing error handling paths and recovery behavior
     /// without relying on actual network failures.
-    #[allow(dead_code)]
     pub fn simulate_failure(&mut self, failure_message: String) {
         self.response_config.failure_message = Some(failure_message);
         self.response_config.failure_rate = 1.0;
     }
 
     /// Resets tracker to normal operation after simulated failure.
-    #[allow(dead_code)]
     pub fn reset_to_normal(&mut self) {
         self.response_config.failure_message = None;
         self.response_config.failure_rate = 0.0;
@@ -195,7 +192,6 @@ impl SimulatedTrackerClient {
     ///
     /// Useful for verifying announce frequency and retry behavior
     /// in deterministic tests.
-    #[allow(dead_code)]
     pub fn announce_count(&self) -> u32 {
         self.announce_count.load(Ordering::Relaxed)
     }
