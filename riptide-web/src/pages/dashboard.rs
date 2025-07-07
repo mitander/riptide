@@ -101,17 +101,17 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let quick_actions = layout::grid(
         "grid-cols-1 md:grid-cols-3",
         r#"<a href="/search" class="group bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-riptide-500 transition-colors">
-                <div class="text-3xl mb-3">🔍</div>
+                <div class="text-3xl mb-3"><i class="fas fa-search"></i></div>
                 <h3 class="text-white font-semibold mb-2">Search Content</h3>
                 <p class="text-gray-400 text-sm">Find movies, TV shows, and more</p>
             </a>
             <a href="/torrents" class="group bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-riptide-500 transition-colors">
-                <div class="text-3xl mb-3">⬇️</div>
+                <div class="text-3xl mb-3"><i class="fas fa-download"></i></div>
                 <h3 class="text-white font-semibold mb-2">Manage Downloads</h3>
                 <p class="text-gray-400 text-sm">View progress and control torrents</p>
             </a>
             <a href="/library" class="group bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-riptide-500 transition-colors">
-                <div class="text-3xl mb-3">📚</div>
+                <div class="text-3xl mb-3"><i class="fas fa-film"></i></div>
                 <h3 class="text-white font-semibold mb-2">Browse Library</h3>
                 <p class="text-gray-400 text-sm">Stream your downloaded content</p>
             </a>"#,
@@ -217,6 +217,8 @@ pub fn render_page(title: &str, active_nav: &str, content: &str) -> Html<String>
             <title>{} - Riptide</title>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link rel="stylesheet" href="/static/css/main.css">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
             <script src="https://cdn.tailwindcss.com"></script>
             <script src="https://unpkg.com/htmx.org@1.9.10"></script>
             <script>

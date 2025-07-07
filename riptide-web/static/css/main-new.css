@@ -1,0 +1,23 @@
+/* Riptide Media Server - Modular CSS */
+
+/* Base styles and reset */
+@import url('base.css');
+
+/* Components */
+@import url('components/navigation.css');
+@import url('components/cards.css');
+@import url('components/forms.css');
+@import url('components/buttons.css');
+
+/* Page-specific styles */
+@import url('pages/dashboard.css');
+@import url('pages/search.css');
+@import url('pages/torrents.css');
+@import url('pages/library.css');
+@import url('pages/video-player.css');
+
+/* Utility classes */
+@import url('utils.css');
+
+/* HTMX and interaction styles */
+@import url('htmx.css');

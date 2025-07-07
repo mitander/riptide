@@ -114,14 +114,77 @@ pub async fn stream_torrent(
     );
 
     // Use conversion logic for browser compatibility
-    let (video_data, actual_file_size) =
-        video_data_with_conversion(&state, info_hash, &session, start, safe_length).await?;
+    let (video_data, actual_file_size) = if container_format.is_browser_compatible() {
+        tracing::info!(
+            "Direct streaming for browser-compatible format: {:?}",
+            container_format
+        );
+        // Direct streaming - no conversion needed
+        let data = read_original_data(&state, info_hash, &session, start, safe_length).await?;
+        (data, session.total_size)
+    } else {
+        tracing::info!(
+            "Non-browser-compatible format {:?} - attempting conversion",
+            container_format
+        );
 
-    // For converted files, always use MP4 MIME type
+        // Check if we have enough data for conversion
+        let progress_percent = (session
+            .completed_pieces
+            .iter()
+            .filter(|&&completed| completed)
+            .count() as f64
+            / session.completed_pieces.len() as f64)
+            * 100.0;
+
+        // Different formats need different amounts of data for successful conversion
+        let required_percent = match container_format {
+            ContainerFormat::Avi => 5.0,  // Temporarily lowered for testing
+            ContainerFormat::Mkv => 15.0, // MKV can work with less data
+            _ => 10.0,                    // Default for other formats
+        };
+
+        if progress_percent < required_percent {
+            tracing::warn!(
+                "{:?} file only {:.1}% downloaded - need at least {:.1}% for conversion",
+                container_format,
+                progress_percent,
+                required_percent
+            );
+            return Err(StatusCode::TOO_EARLY); // 425 Too Early - not enough data for conversion
+        }
+
+        tracing::info!(
+            "{:?} file {:.1}% downloaded - sufficient for conversion attempt",
+            container_format,
+            progress_percent
+        );
+
+        // Format needs conversion - try conversion with fallback
+        match video_data_with_conversion(&state, info_hash, &session, start, safe_length).await {
+            Ok((data, size)) => {
+                tracing::info!("Conversion successful for {}", session.filename);
+                (data, size)
+            }
+            Err(conversion_error) => {
+                tracing::error!(
+                    "Conversion failed for {}: {:?}. Cannot serve incompatible format to browser.",
+                    session.filename,
+                    conversion_error
+                );
+                // For now, return error instead of serving incompatible format
+                // TODO: Add progressive download support for original formats
+                return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+            }
+        }
+    };
+
+    // Set MIME type based on what we're actually serving
     let content_type = if container_format.is_browser_compatible() {
         container_format.mime_type().to_string()
     } else {
-        "video/mp4".to_string() // Converted files are always MP4
+        // Non-browser-compatible formats should be converted to MP4
+        "video/mp4".to_string()
     };
 
     build_range_response(
@@ -144,54 +207,96 @@ async fn video_data_with_conversion(
     start: u64,
     length: u64,
 ) -> Result<(Vec<u8>, u64), StatusCode> {
+    // This function only handles conversion of non-browser-compatible formats
     let container_format = detect_container_format(&session.filename);
-
-    tracing::info!(
-        "Container format for {}: {:?}, is_browser_compatible: {}",
+    tracing::debug!(
+        "Attempting conversion for {} ({:?} format)",
         session.filename,
-        container_format,
-        container_format.is_browser_compatible()
+        container_format
     );
 
-    if container_format.is_browser_compatible() {
-        // Direct streaming for MP4, WebM, etc. - no conversion needed
-        let video_data = read_original_data(state, info_hash, session, start, length).await?;
-        Ok((video_data, session.total_size))
-    } else {
-        // Format needs conversion (MKV -> MP4, etc.)
-        tracing::debug!(
-            "Container format {:?} needs conversion for browser compatibility",
-            container_format
-        );
+    // Check cache first
+    {
+        let cache = state.conversion_cache.read().await;
+        if let Some(converted) = cache.get(&info_hash) {
+            tracing::debug!("Using cached converted file for {}", info_hash);
+            let video_data = read_converted_data(&converted.output_path, start, length).await?;
+            return Ok((video_data, converted.size));
+        }
+    }
 
-        // Check cache first
-        {
-            let cache = state.conversion_cache.read().await;
-            if let Some(converted) = cache.get(&info_hash) {
-                tracing::debug!("Using cached converted file for {}", info_hash);
-                let video_data = read_converted_data(&converted.output_path, start, length).await?;
-                return Ok((video_data, converted.size));
+    // Not in cache - attempt conversion
+    tracing::debug!("Converting {} to MP4", session.filename);
+
+    match convert_file_to_mp4(state, info_hash, session).await {
+        Ok(converted_path) => {
+            // Verify the converted file actually exists and has valid size
+            match tokio::fs::metadata(&converted_path).await {
+                Ok(metadata) => {
+                    let converted_size = metadata.len();
+                    if converted_size > 0 {
+                        tracing::info!("Verified converted file: {} bytes", converted_size);
+                        let video_data =
+                            read_converted_data(&converted_path, start, length).await?;
+                        Ok((video_data, converted_size))
+                    } else {
+                        tracing::error!("Converted file is empty: {}", converted_path.display());
+                        Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Converted file not found: {} - {}",
+                        converted_path.display(),
+                        e
+                    );
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
             }
         }
+        Err(conversion_error) => {
+            tracing::error!(
+                "Conversion failed for {}: {:?}. Trying simple remux fallback.",
+                session.filename,
+                conversion_error
+            );
 
-        // Not in cache - need to convert
-        tracing::debug!(
-            "Converting {} from {:?} to MP4",
-            session.filename,
-            container_format
-        );
-        let converted_path = convert_file_to_mp4(state, info_hash, session).await?;
+            // Fallback: attempt simple remuxing with ffmpeg if available
+            match attempt_simple_remux(state, info_hash, session).await {
+                Ok(converted_path) => {
+                    tracing::info!("Simple remux successful for {}", session.filename);
+                    let video_data = read_converted_data(&converted_path, start, length).await?;
 
-        // Get the converted file size from cache
-        let cache = state.conversion_cache.read().await;
-        let converted_size = cache
-            .get(&info_hash)
-            .map(|c| c.size)
-            .unwrap_or(session.total_size);
+                    // Cache the simple conversion
+                    let file_size = tokio::fs::metadata(&converted_path)
+                        .await
+                        .map(|m| m.len())
+                        .unwrap_or(session.total_size);
 
-        // Read from converted file
-        let video_data = read_converted_data(&converted_path, start, length).await?;
-        Ok((video_data, converted_size))
+                    let converted = ConvertedFile {
+                        output_path: converted_path,
+                        size: file_size,
+                        created_at: std::time::Instant::now(),
+                    };
+
+                    {
+                        let mut cache = state.conversion_cache.write().await;
+                        cache.insert(info_hash, converted);
+                    }
+
+                    Ok((video_data, file_size))
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "Both conversion and simple remux failed for {}. Cannot convert to browser-compatible format.",
+                        session.filename
+                    );
+
+                    // Return error - let caller handle fallback
+                    Err(StatusCode::UNSUPPORTED_MEDIA_TYPE)
+                }
+            }
+        }
     }
 }
 
@@ -504,11 +609,11 @@ fn estimate_available_bandwidth(range_length: u64) -> u64 {
     // Larger ranges suggest the client can handle more data
 
     if range_length >= 2 * 1024 * 1024 {
-        5_000_000 // 5 MB/s for large range requests
+        10_000_000 // 10 MB/s for large range requests (matches simulation speed)
     } else if range_length >= 512 * 1024 {
-        2_000_000 // 2 MB/s for medium range requests
+        5_000_000 // 5 MB/s for medium range requests
     } else {
-        1_000_000 // 1 MB/s for small range requests
+        2_000_000 // 2 MB/s for small range requests
     }
 }
 
@@ -848,5 +953,54 @@ mod tests {
             detect_container_format("unknown.xyz"),
             ContainerFormat::Unknown
         ));
+    }
+}
+
+/// Simple ffmpeg-based remuxing as fallback when full conversion fails
+async fn attempt_simple_remux(
+    state: &AppState,
+    info_hash: InfoHash,
+    session: &riptide_core::engine::TorrentSession,
+) -> Result<std::path::PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    // First, reconstruct the original file
+    let temp_input = reconstruct_original_file(state, info_hash, session)
+        .await
+        .map_err(|e| format!("Failed to reconstruct file: {e:?}"))?;
+
+    // Create output path
+    let temp_dir = std::env::temp_dir();
+    let output_path = temp_dir.join(format!("{info_hash}_remuxed.mp4"));
+
+    tracing::info!(
+        "Attempting simple remux of {} to {}",
+        temp_input.display(),
+        output_path.display()
+    );
+
+    // Use ffmpeg directly for simple container remuxing
+    let output = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-i",
+            temp_input.to_str().unwrap(),
+            "-c",
+            "copy", // Copy streams without re-encoding
+            "-f",
+            "mp4", // Force MP4 container
+            "-y",  // Overwrite output file
+            output_path.to_str().unwrap(),
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute ffmpeg: {e}"))?;
+
+    // Clean up input file
+    let _ = tokio::fs::remove_file(&temp_input).await;
+
+    if output.status.success() {
+        tracing::info!("Successfully remuxed {} to MP4", session.filename);
+        Ok(output_path)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("FFmpeg failed: {stderr}").into())
     }
 }
