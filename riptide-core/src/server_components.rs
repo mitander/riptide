@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::storage::FileLibraryManager;
+use crate::streaming::FfmpegProcessor;
 use crate::torrent::{PieceStore, TorrentEngineHandle};
 
 /// Progress tracking for background movie conversions.
@@ -33,12 +34,12 @@ pub enum ConversionStatus {
 }
 
 /// Pre-configured server components for dependency injection.
-/// This struct contains all components that vary between production and development modes.
 pub struct ServerComponents {
     pub torrent_engine: TorrentEngineHandle,
     pub movie_manager: Option<Arc<RwLock<FileLibraryManager>>>,
     pub piece_store: Option<Arc<dyn PieceStore>>,
     pub conversion_progress: Option<Arc<RwLock<HashMap<String, ConversionProgress>>>>,
+    pub ffmpeg_processor: Arc<dyn FfmpegProcessor>,
 }
 
 fn serialize_instant<S>(instant: &std::time::Instant, serializer: S) -> Result<S::Ok, S::Error>

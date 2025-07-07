@@ -1,6 +1,7 @@
 //! File library management for local media content
 
 use std::collections::HashMap;
+use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 
 use crate::torrent::InfoHash;
@@ -160,7 +161,7 @@ impl FileLibraryManager {
             use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
             let mut file_handle = tokio::fs::File::open(&file.file_path).await?;
-            file_handle.seek(std::io::SeekFrom::Start(start)).await?;
+            file_handle.seek(SeekFrom::Start(start)).await?;
 
             let mut buffer = vec![0u8; length as usize];
             let bytes_read = file_handle.read(&mut buffer).await?;

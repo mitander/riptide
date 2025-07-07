@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use riptide_core::torrent::tracker::{
@@ -73,7 +74,7 @@ impl Default for SwarmStats {
             complete: 10,
             incomplete: 25,
             downloaded: 100,
-            last_announce: std::time::Instant::now(),
+            last_announce: Instant::now(),
         }
     }
 }
@@ -168,7 +169,7 @@ impl SimulatedTrackerClient {
                 complete,
                 incomplete,
                 downloaded,
-                last_announce: std::time::Instant::now(),
+                last_announce: Instant::now(),
             },
         );
     }
@@ -222,7 +223,7 @@ impl SimulatedTrackerClient {
             }
         }
 
-        swarm_stats.last_announce = std::time::Instant::now();
+        swarm_stats.last_announce = Instant::now();
     }
 }
 

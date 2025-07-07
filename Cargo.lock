@@ -1922,6 +1922,7 @@ dependencies = [
  "regex",
  "reqwest",
  "riptide-core",
+ "riptide-search",
  "riptide-sim",
  "riptide-web",
  "serde_json",

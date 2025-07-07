@@ -8,13 +8,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::State;
+use riptide_core::FileLibraryManager;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
-use riptide_core::streaming::{
-    FfmpegProcessor, ProductionFfmpegProcessor, SimulationFfmpegProcessor,
-};
+use riptide_core::streaming::FfmpegProcessor;
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
-use riptide_core::{FileLibraryManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -41,7 +39,8 @@ pub struct ConvertedFile {
     pub created_at: std::time::Instant,
 }
 
-/// Unified app state that works with both production and simulation engines
+/// Unified app state that works with both production and simulation engines.
+/// All services are provided by CLI dependency injection - web layer is mode-agnostic.
 #[derive(Clone)]
 pub struct AppState {
     pub torrent_engine: TorrentEngineHandle,
@@ -55,18 +54,10 @@ pub struct AppState {
 }
 
 pub async fn run_server(
-    config: RiptideConfig,
+    _config: RiptideConfig,
     components: ServerComponents,
+    search_service: MediaSearchService,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Create services based on runtime mode (determined from config)
-    let search_service = MediaSearchService::from_runtime_mode(config.runtime_mode);
-
-    // Initialize FFmpeg processor based on runtime mode
-    let ffmpeg_processor: Arc<dyn FfmpegProcessor> = match config.runtime_mode {
-        RuntimeMode::Production => Arc::new(ProductionFfmpegProcessor::new(None)),
-        RuntimeMode::Development => Arc::new(SimulationFfmpegProcessor::new()),
-    };
-
     let conversion_cache = Arc::new(RwLock::new(HashMap::new()));
     let conversion_progress = components
         .conversion_progress
@@ -77,7 +68,7 @@ pub async fn run_server(
         search_service,
         movie_manager: components.movie_manager,
         piece_store: components.piece_store,
-        ffmpeg_processor,
+        ffmpeg_processor: components.ffmpeg_processor,
         conversion_cache,
         conversion_progress,
         server_started_at: std::time::Instant::now(),

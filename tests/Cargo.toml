@@ -15,6 +15,7 @@ toml = "0.8"
 riptide-core = { workspace = true }
 riptide-web = { workspace = true }
 riptide-sim = { workspace = true }
+riptide-search = { workspace = true }
 
 [[test]]
 name = "tidy"

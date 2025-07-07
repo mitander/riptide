@@ -5,11 +5,13 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::ServerComponents;
+use riptide_core::streaming::{FfmpegProcessor, ProductionFfmpegProcessor};
 use riptide_core::torrent::{
     InfoHash, TcpPeerManager, TorrentEngineHandle, TorrentError, TrackerManager,
     spawn_torrent_engine,
 };
 use riptide_core::{Result, RiptideError, RuntimeMode};
+use riptide_search::MediaSearchService;
 use tokio::fs;
 
 /// Available CLI commands
@@ -81,11 +83,15 @@ pub async fn create_server_components(
             let tracker_manager = TrackerManager::new(config.network.clone());
             let engine = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
+            let ffmpeg_processor: std::sync::Arc<dyn FfmpegProcessor> =
+                std::sync::Arc::new(ProductionFfmpegProcessor::new(None));
+
             Ok(ServerComponents {
                 torrent_engine: engine,
                 movie_manager: None,
                 piece_store: None,
                 conversion_progress: None,
+                ffmpeg_processor,
             })
         }
         RuntimeMode::Development => riptide_sim::create_development_components(config, movies_dir)
@@ -374,8 +380,9 @@ pub async fn start_simple_server() -> Result<()> {
 
     let components =
         create_server_components(config.clone(), RuntimeMode::Development, None).await?;
+    let search_service = MediaSearchService::from_runtime_mode(RuntimeMode::Development);
 
-    riptide_web::run_server(config, components)
+    riptide_web::run_server(config, components, search_service)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -408,8 +415,9 @@ pub async fn start_server(
     );
 
     let components = create_server_components(config.clone(), mode, movies_dir).await?;
+    let search_service = MediaSearchService::from_runtime_mode(mode);
 
-    riptide_web::run_server(config, components)
+    riptide_web::run_server(config, components, search_service)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 

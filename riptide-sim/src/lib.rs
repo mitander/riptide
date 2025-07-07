@@ -70,7 +70,8 @@ pub mod tracker_manager;
 
 // Re-export core types for convenience
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub use content_aware_peer_manager::ContentAwarePeerManager;
@@ -334,7 +335,7 @@ pub async fn create_development_components(
                             ConversionProgress {
                                 movie_title: movie.title.clone(),
                                 status: ConversionStatus::Pending,
-                                started_at: std::time::Instant::now(),
+                                started_at: Instant::now(),
                                 completed_at: None,
                                 error_message: None,
                             },
@@ -379,6 +380,9 @@ pub async fn create_development_components(
         movie_manager: manager_opt,
         piece_store: Some(piece_store_sim as Arc<dyn PieceStore>),
         conversion_progress: Some(conversion_progress),
+        ffmpeg_processor: std::sync::Arc::new(
+            riptide_core::streaming::SimulationFfmpegProcessor::new(),
+        ),
     })
 }
 
@@ -387,9 +391,7 @@ async fn start_background_conversions(
     movies: Vec<riptide_core::storage::LibraryFile>,
     piece_store: Arc<InMemoryPieceStore>,
     peer_registry: Arc<
-        std::sync::Mutex<
-            std::collections::HashMap<riptide_core::torrent::InfoHash, Vec<std::net::SocketAddr>>,
-        >,
+        Mutex<std::collections::HashMap<riptide_core::torrent::InfoHash, Vec<SocketAddr>>>,
     >,
     torrent_engine: riptide_core::torrent::TorrentEngineHandle,
     progress_tracker: Arc<
@@ -437,12 +439,12 @@ async fn start_background_conversions(
                     match result {
                         Ok(()) => {
                             p.status = ConversionStatus::Completed;
-                            p.completed_at = Some(std::time::Instant::now());
+                            p.completed_at = Some(Instant::now());
                         }
                         Err(ref e) => {
                             p.status = ConversionStatus::Failed;
                             p.error_message = Some(e.to_string());
-                            p.completed_at = Some(std::time::Instant::now());
+                            p.completed_at = Some(Instant::now());
                             eprintln!("Failed to convert movie {movie_title}: {e}");
                         }
                     }
@@ -475,9 +477,7 @@ async fn convert_single_movie(
     movie: riptide_core::storage::LibraryFile,
     piece_store: Arc<InMemoryPieceStore>,
     peer_registry: Arc<
-        std::sync::Mutex<
-            std::collections::HashMap<riptide_core::torrent::InfoHash, Vec<std::net::SocketAddr>>,
-        >,
+        Mutex<std::collections::HashMap<riptide_core::torrent::InfoHash, Vec<SocketAddr>>>,
     >,
     torrent_engine: riptide_core::torrent::TorrentEngineHandle,
 ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {

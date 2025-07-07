@@ -29,8 +29,13 @@ async fn test_development_mode_full_simulation_loop() {
                 riptide_sim::create_development_components(config.clone(), Some(movies_dir_clone))
                     .await
                     .unwrap();
+            // Create search service for dependency injection
+            use riptide_core::RuntimeMode;
+            use riptide_search::MediaSearchService;
+            let search_service = MediaSearchService::from_runtime_mode(RuntimeMode::Development);
+
             // The server will run in the background. We don't need to await its completion
-            let _ = run_server(config, components).await;
+            let _ = run_server(config, components, search_service).await;
         });
     });
 
