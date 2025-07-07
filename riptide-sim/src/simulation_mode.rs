@@ -1,7 +1,7 @@
 //! Simulation mode configuration for different testing scenarios
 //!
 //! Provides flexible simulation backends for different use cases:
-//! - Deterministic: For bug reproduction and long-running tests  
+//! - Deterministic: For bug reproduction and long-running tests
 //! - Development: For fast iteration and streaming development
 //! - Hybrid: Combines both approaches for comprehensive testing
 
@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use riptide_core::torrent::PieceStore;
 
-use crate::{ContentAwarePeerManager, FastDevelopmentPeerManager, InMemoryPeerConfig};
+use crate::dev_peer_manager::DevPeerManager;
+use crate::{InMemoryPeerConfig, SimPeerManager};
 
 /// Simulation mode configuration for different testing scenarios.
 #[derive(Debug, Clone)]
@@ -59,7 +60,7 @@ pub struct NetworkConditions {
     pub base_delay_ms: u64,
     /// Probability of message loss (0.0 to 1.0)
     pub message_loss_rate: f64,
-    /// Probability of connection failure (0.0 to 1.0)  
+    /// Probability of connection failure (0.0 to 1.0)
     pub connection_failure_rate: f64,
     /// Bandwidth limit per peer (bytes per second)
     pub bandwidth_limit: Option<u64>,
@@ -209,20 +210,17 @@ impl SimulationPeerManagerFactory {
     ) -> Box<dyn riptide_core::torrent::PeerManager> {
         match mode {
             SimulationMode::Deterministic { peer_config, .. } => {
-                tracing::info!("Creating ContentAwarePeerManager for deterministic simulation");
-                Box::new(ContentAwarePeerManager::new(
-                    peer_config.clone(),
-                    piece_store,
-                ))
+                tracing::info!("Creating SimPeerManager for deterministic simulation");
+                Box::new(SimPeerManager::new(peer_config.clone(), piece_store))
             }
             SimulationMode::Development { .. } => {
-                tracing::info!("Creating FastDevelopmentPeerManager for development speed");
-                Box::new(FastDevelopmentPeerManager::new(piece_store))
+                tracing::info!("Creating DevPeerManager for realistic streaming speed");
+                Box::new(DevPeerManager::new(piece_store))
             }
             SimulationMode::Hybrid { .. } => {
                 // For now, start with fast mode. In future, implement actual hybrid logic.
-                tracing::info!("Creating FastDevelopmentPeerManager for hybrid mode (fast phase)");
-                Box::new(FastDevelopmentPeerManager::new(piece_store))
+                tracing::info!("Creating DevPeerManager for hybrid mode (fast phase)");
+                Box::new(DevPeerManager::new(piece_store))
             }
         }
     }
@@ -257,7 +255,7 @@ impl SimulationConfigBuilder {
         }
     }
 
-    /// Start building development configuration.  
+    /// Start building development configuration.
     pub fn development() -> Self {
         Self {
             mode: SimulationMode::development(),

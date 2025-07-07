@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use riptide_sim::{
-    ContentAwarePeerManager, FastDevelopmentPeerManager, InMemoryPieceStore, NetworkConditions,
+    DevPeerManager, InMemoryPieceStore, NetworkConditions, SimPeerManager,
     SimulationConfigBuilder, SimulationMode, SimulationPeerManagerFactory
 };
 use riptide_core::torrent::{InfoHash, TorrentPiece, PeerManager, PieceIndex};
@@ -41,12 +41,12 @@ async fn deterministic_simulation_example() -> Result<(), Box<dyn std::error::Er
 
     // Test deterministic behavior
     let start = Instant::now();
-    
+
     // Connect to a few peers (this will have simulated delays)
     for i in 0..5 {
         let addr = format!("192.168.1.{}:6881", i + 1).parse()?;
         let peer_id = riptide_core::torrent::PeerId::generate();
-        
+
         println!("Connecting to peer {} (may have delays/failures)...", addr);
         match peer_manager.connect_peer(addr, info_hash, peer_id).await {
             Ok(()) => println!("  ✓ Connected successfully"),
@@ -70,7 +70,7 @@ async fn fast_development_mode_example() -> Result<(), Box<dyn std::error::Error
 
     // Configure fast development mode
     let mode = SimulationMode::development();
-    
+
     let piece_store = Arc::new(InMemoryPieceStore::new());
     let info_hash = InfoHash::new([2u8; 20]);
 
@@ -89,12 +89,12 @@ async fn fast_development_mode_example() -> Result<(), Box<dyn std::error::Error
 
     // Test high-performance behavior
     let start = Instant::now();
-    
+
     // Connect to many peers (should be instant)
     for i in 0..20 {
         let addr = format!("10.0.0.{}:6881", i + 1).parse()?;
         let peer_id = riptide_core::torrent::PeerId::generate();
-        
+
         peer_manager.connect_peer(addr, info_hash, peer_id).await?;
     }
 
@@ -106,28 +106,28 @@ async fn fast_development_mode_example() -> Result<(), Box<dyn std::error::Error
     // Benchmark piece serving performance
     let download_start = Instant::now();
     let mut total_bytes = 0u64;
-    
+
     for i in 0..100 {
         // Simulate downloading 100 pieces
         let piece_data = simulate_piece_download(&mut peer_manager, info_hash, i).await?;
         total_bytes += piece_data.len() as u64;
     }
-    
+
     let download_time = download_start.elapsed();
     let throughput_mbps = (total_bytes * 8) as f64 / (download_time.as_secs_f64() * 1_000_000.0);
-    
+
     println!("Downloaded 100 pieces:");
     println!("  Time: {:?}", download_time);
     println!("  Data: {:.1} MB", total_bytes as f64 / 1_048_576.0);
     println!("  Throughput: {:.1} Mbps", throughput_mbps);
     println!("Expected: >100 Mbps for fast development mode");
-    
+
     if throughput_mbps > 100.0 {
         println!("  ✅ Performance target met!");
     } else {
         println!("  ⚠️  Performance below target");
     }
-    
+
     Ok(())
 }
 
@@ -135,7 +135,7 @@ async fn fast_development_mode_example() -> Result<(), Box<dyn std::error::Error
 async fn mode_selection_guide() {
     println!("\n=== Mode Selection Guide ===");
     println!();
-    
+
     println!("🐞 Use DETERMINISTIC mode when:");
     println!("  - Reproducing bug reports");
     println!("  - Testing edge cases (network failures, peer churn)");
@@ -143,7 +143,7 @@ async fn mode_selection_guide() {
     println!("  - Running regression tests");
     println!("  - Need reproducible results");
     println!();
-    
+
     println!("🚀 Use DEVELOPMENT mode when:");
     println!("  - Developing streaming features");
     println!("  - Testing HTTP range requests");
@@ -151,14 +151,14 @@ async fn mode_selection_guide() {
     println!("  - Benchmarking performance");
     println!("  - Need maximum speed");
     println!();
-    
+
     println!("🔄 Use HYBRID mode when:");
     println!("  - Comprehensive test suites");
     println!("  - CI/CD pipelines");
     println!("  - Load testing with realistic conditions");
     println!("  - Progressive testing scenarios");
     println!();
-    
+
     println!("Environment variable control:");
     println!("  export RIPTIDE_MODE=deterministic  # Force deterministic");
     println!("  export RIPTIDE_MODE=development    # Force development");
@@ -173,7 +173,7 @@ async fn performance_comparison() -> Result<(), Box<dyn std::error::Error>> {
 
     let piece_store = Arc::new(InMemoryPieceStore::new());
     let test_pieces = create_test_torrent_data(50);
-    
+
     // Test both modes with same data
     let scenarios = vec![
         ("Deterministic (Ideal Network)", SimulationConfigBuilder::deterministic(12345)
@@ -184,22 +184,22 @@ async fn performance_comparison() -> Result<(), Box<dyn std::error::Error>> {
             .build()),
         ("Development Mode", SimulationMode::development()),
     ];
-    
+
     for (name, mode) in scenarios {
         println!("Testing: {}", name);
-        
+
         let info_hash = InfoHash::new([rand::random(); 20]);
         piece_store.add_torrent_pieces(info_hash, test_pieces.clone()).await?;
-        
+
         let mut peer_manager = SimulationPeerManagerFactory::create_peer_manager(&mode, piece_store.clone());
-        
+
         // Connect peers
         let addr = "127.0.0.1:6881".parse()?;
         let peer_id = riptide_core::torrent::PeerId::generate();
-        
+
         let start = Instant::now();
         let _ = peer_manager.connect_peer(addr, info_hash, peer_id).await;
-        
+
         // Download 10 pieces
         let mut total_bytes = 0u64;
         for i in 0..10 {
@@ -207,20 +207,20 @@ async fn performance_comparison() -> Result<(), Box<dyn std::error::Error>> {
                 total_bytes += data.len() as u64;
             }
         }
-        
+
         let duration = start.elapsed();
         let throughput_mbps = if duration.as_secs_f64() > 0.0 {
             (total_bytes * 8) as f64 / (duration.as_secs_f64() * 1_000_000.0)
         } else {
             0.0
         };
-        
+
         println!("  Duration: {:?}", duration);
         println!("  Throughput: {:.1} Mbps", throughput_mbps);
         println!("  Expected: {:.0} Mbps", mode.expected_throughput_mbps());
         println!();
     }
-    
+
     Ok(())
 }
 
@@ -251,17 +251,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Riptide Dual-Mode Simulation Example");
     println!("=====================================");
     println!();
-    
+
     // Demonstrate both modes
     deterministic_simulation_example().await?;
     fast_development_mode_example().await?;
-    
+
     // Show how to choose the right mode
     mode_selection_guide().await;
-    
+
     // Performance comparison
     performance_comparison().await?;
-    
+
     println!("=== Summary ===");
     println!();
     println!("✅ Both simulation modes available");
@@ -275,6 +275,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  2. Use deterministic mode for bug reports and edge case testing");
     println!("  3. Integrate both modes into your CI/CD pipeline");
     println!("  4. Set RIPTIDE_MODE environment variable to control default behavior");
-    
+
     Ok(())
 }

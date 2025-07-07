@@ -52,9 +52,8 @@
 //! - **Invariant System**: Runtime validation of protocol correctness
 //! - **Metrics Collection**: Detailed performance and behavior analysis
 
-pub mod content_aware_peer_manager;
 pub mod deterministic;
-pub mod fast_dev_peer_manager;
+pub mod dev_peer_manager;
 pub mod magneto_provider;
 pub mod media;
 pub mod network;
@@ -62,6 +61,7 @@ pub mod peer;
 pub mod peer_server;
 pub mod piece_store;
 pub mod scenarios;
+pub mod sim_peer_manager;
 pub mod simulation_mode;
 pub mod streaming;
 pub mod streaming_integration_tests;
@@ -74,7 +74,6 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub use content_aware_peer_manager::{ContentAwarePeerManager, InMemoryPeerConfig};
 pub use deterministic::{
     BandwidthInvariant, DataIntegrityInvariant, DeterministicClock, DeterministicRng,
     DeterministicSimulation, EventPriority, EventType, Invariant, InvariantViolation,
@@ -82,7 +81,7 @@ pub use deterministic::{
     ResourceUsage, SimulationError, SimulationEvent, SimulationMetrics, SimulationReport,
     SimulationState, StreamingInvariant, ThrottleDirection,
 };
-pub use fast_dev_peer_manager::{FastDevelopmentPeerManager, FastPeerManagerStats};
+pub use dev_peer_manager::{DevPeerManager, DevPeerManagerStats};
 pub use magneto_provider::{
     MockMagnetoProvider, MockMagnetoProviderBuilder, TorrentEntryParams,
     create_mock_magneto_client, create_streaming_test_client,
@@ -98,6 +97,7 @@ pub use scenarios::{
     cascading_piece_failures_scenario, extreme_peer_churn_scenario, resource_exhaustion_scenario,
     severe_network_degradation_scenario, streaming_edge_cases, total_peer_failure_scenario,
 };
+pub use sim_peer_manager::{InMemoryPeerConfig, SimPeerManager};
 pub use simulation_mode::{
     NetworkConditions, SimulationConfigBuilder, SimulationMode, SimulationPeerManagerFactory,
 };
@@ -271,7 +271,7 @@ pub fn create_standard_streaming_simulation(
     Ok(sim)
 }
 
-/// Create fast server components using FastDevelopmentPeerManager.
+/// Create fast server components using DevPeerManager.
 async fn create_fast_server_components(
     engine: riptide_core::torrent::TorrentEngineHandle,
     piece_store_sim: Arc<InMemoryPieceStore>,
@@ -316,9 +316,7 @@ async fn create_fast_server_components(
                 }
 
                 if !movies.is_empty() {
-                    println!(
-                        "Starting background conversion service with FastDevelopmentPeerManager..."
-                    );
+                    println!("Starting background conversion service with DevPeerManager...");
                     let piece_store_bg = piece_store_sim.clone();
                     let peer_registry_bg = peer_registry.clone();
                     let engine_bg = engine.clone();
@@ -447,8 +445,8 @@ async fn create_deterministic_server_components(
     })
 }
 
-/// Create fast development server components using FastDevelopmentPeerManager.
-/// This provides maximum performance (>50,000 Mbps) for streaming development.
+/// Create fast development server components using DevPeerManager.
+/// This provides realistic streaming performance (5-10 MB/s) for development.
 ///
 /// # Errors
 /// - `SimulationError::Setup` - Failed to initialize simulation components
@@ -467,9 +465,9 @@ pub async fn create_fast_development_components(
     let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
 
     tracing::info!(
-        "Fast development components: Using FastDevelopmentPeerManager for maximum performance"
+        "Fast development components: Using DevPeerManager for realistic streaming performance"
     );
-    let peer_manager_sim = FastDevelopmentPeerManager::new(piece_store_sim.clone());
+    let peer_manager_sim = DevPeerManager::new(piece_store_sim.clone());
 
     let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
         tracker::ResponseConfig::default(),
@@ -499,9 +497,7 @@ pub async fn create_deterministic_development_components(
     let piece_store_sim = Arc::new(InMemoryPieceStore::new());
     let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
 
-    tracing::info!(
-        "Deterministic development components: Using ContentAwarePeerManager for testing"
-    );
+    tracing::info!("Deterministic development components: Using SimPeerManager for testing");
     let realistic_peer_config = InMemoryPeerConfig {
         message_delay_ms: 1,          // Minimal delay for development
         connection_failure_rate: 0.0, // No failures for development
@@ -509,8 +505,7 @@ pub async fn create_deterministic_development_components(
         max_connections: 100,
     };
 
-    let peer_manager_sim =
-        ContentAwarePeerManager::new(realistic_peer_config, piece_store_sim.clone());
+    let peer_manager_sim = SimPeerManager::new(realistic_peer_config, piece_store_sim.clone());
 
     let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
         tracker::ResponseConfig::default(),

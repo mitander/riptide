@@ -1,7 +1,7 @@
-//! Content-aware simulated peer manager for true content distribution simulation
+//! Simulation peer manager for deterministic BitTorrent protocol testing.
 //!
-//! Extends basic simulation with actual piece data serving, enabling end-to-end
-//! content distribution testing from real files to reconstructed streams.
+//! Provides deterministic, reproducible simulation with configurable network conditions.
+//! Used for bug reproduction, edge case testing, and regression validation.
 
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -39,9 +39,9 @@ impl Default for InMemoryPeerConfig {
     }
 }
 
-/// Simulated peer with content awareness
+/// Simulated peer for deterministic testing.
 #[derive(Debug, Clone)]
-struct ContentAwarePeer {
+struct SimPeer {
     address: SocketAddr,
     info_hash: InfoHash,
     #[allow(dead_code)]
@@ -55,7 +55,7 @@ struct ContentAwarePeer {
     bytes_uploaded: u64,
 }
 
-impl ContentAwarePeer {
+impl SimPeer {
     fn new(
         address: SocketAddr,
         info_hash: InfoHash,
@@ -111,16 +111,16 @@ impl ContentAwarePeer {
 /// Uses a PieceStore to serve actual file data in response to piece requests.
 /// Enables true end-to-end content distribution simulation where downloaded
 /// pieces can be reassembled into the original media files.
-pub struct ContentAwarePeerManager<P: PieceStore> {
+pub struct SimPeerManager<P: PieceStore> {
     config: InMemoryPeerConfig,
     piece_store: Arc<P>,
-    peers: Arc<RwLock<HashMap<SocketAddr, ContentAwarePeer>>>,
+    peers: Arc<RwLock<HashMap<SocketAddr, SimPeer>>>,
     message_receiver: Arc<Mutex<mpsc::Receiver<PeerMessageEvent>>>,
     message_sender: mpsc::Sender<PeerMessageEvent>,
     next_peer_address: Arc<Mutex<u32>>,
 }
 
-impl<P: PieceStore> ContentAwarePeerManager<P> {
+impl<P: PieceStore> SimPeerManager<P> {
     /// Creates content-aware peer manager with piece store
     pub fn new(config: InMemoryPeerConfig, piece_store: Arc<P>) -> Self {
         let (message_sender, message_receiver) = mpsc::channel(1000);
@@ -144,7 +144,7 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
         upload_rate: u64,
     ) {
         let peer_id = PeerId::generate();
-        let mut peer = ContentAwarePeer::new(
+        let mut peer = SimPeer::new(
             address,
             info_hash,
             peer_id,
@@ -311,7 +311,7 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
 }
 
 #[async_trait]
-impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
+impl<P: PieceStore + 'static> PeerManager for SimPeerManager<P> {
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -346,7 +346,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
 
         // Create simulated peer with fast upload rate for development
         let upload_rate = 5_000_000 + (rand::random::<u64>() % 5_000_000); // 5MB/s to 10MB/s for development
-        let mut peer = ContentAwarePeer::new(address, info_hash, peer_id, piece_count, upload_rate);
+        let mut peer = SimPeer::new(address, info_hash, peer_id, piece_count, upload_rate);
         peer.status = ConnectionStatus::Connected;
         peer.connected_at = Some(Instant::now());
 
@@ -557,7 +557,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
         _total_bandwidth: u64,
     ) -> Result<(), TorrentError> {
         tracing::debug!(
-            "ContentAwarePeerManager: configure_upload_manager called for {}",
+            "SimPeerManager: configure_upload_manager called for {}",
             info_hash
         );
         // No-op for simulation - no real bandwidth management needed
@@ -570,7 +570,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
         _byte_position: u64,
     ) -> Result<(), TorrentError> {
         tracing::debug!(
-            "ContentAwarePeerManager: update_streaming_position called for {}",
+            "SimPeerManager: update_streaming_position called for {}",
             info_hash
         );
         // No-op for simulation - no real bandwidth management needed
@@ -588,15 +588,15 @@ mod tests {
     use crate::piece_store::InMemoryPieceStore;
 
     #[tokio::test]
-    async fn test_content_aware_peer_manager_creation() {
+    async fn test_sim_peer_manager_creation() {
         let piece_store = Arc::new(InMemoryPieceStore::new());
         let config = InMemoryPeerConfig::default();
-        let manager = ContentAwarePeerManager::new(config, piece_store);
+        let manager = SimPeerManager::new(config, piece_store);
         assert_eq!(manager.connection_count().await, 0);
     }
 
     #[tokio::test]
-    async fn test_content_aware_peer_serves_real_data() {
+    async fn test_sim_peer_serves_real_data() {
         let piece_store = Arc::new(InMemoryPieceStore::new());
         let info_hash = InfoHash::new([1u8; 20]);
 
@@ -612,7 +612,7 @@ mod tests {
             .unwrap();
 
         let config = InMemoryPeerConfig::default();
-        let mut manager = ContentAwarePeerManager::new(config, piece_store);
+        let mut manager = SimPeerManager::new(config, piece_store);
 
         let peer_address = SocketAddr::from((Ipv4Addr::LOCALHOST, 6881));
         let peer_id = PeerId::generate();
@@ -673,10 +673,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_content_aware_peer_without_piece() {
+    async fn test_sim_peer_without_piece() {
         let piece_store = Arc::new(InMemoryPieceStore::new());
         let config = InMemoryPeerConfig::default();
-        let mut manager = ContentAwarePeerManager::new(config, piece_store);
+        let mut manager = SimPeerManager::new(config, piece_store);
 
         let peer_address = SocketAddr::from((Ipv4Addr::LOCALHOST, 6881));
         let info_hash = InfoHash::new([2u8; 20]);
@@ -745,7 +745,7 @@ mod tests {
             .unwrap();
 
         let config = InMemoryPeerConfig::default();
-        let mut manager = ContentAwarePeerManager::new(config, piece_store);
+        let mut manager = SimPeerManager::new(config, piece_store);
 
         // Seed peers for the torrent
         let seeded_addresses = manager.seed_peers_for_torrent(info_hash, 3).await;

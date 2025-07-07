@@ -1,11 +1,11 @@
-//! Minimal test to isolate message passing issues in ContentAwarePeerManager
+//! Minimal test to isolate message passing issues in SimPeerManager
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PeerMessage, PieceIndex, TorrentPiece};
-use riptide_sim::{ContentAwarePeerManager, InMemoryPeerConfig, InMemoryPieceStore};
+use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeerManager};
 use tokio::sync::RwLock;
 
 #[tokio::test]
@@ -30,7 +30,7 @@ async fn test_basic_message_send_receive() {
 
     // Create peer manager
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = ContentAwarePeerManager::new(config, piece_store);
+    let mut peer_manager = SimPeerManager::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let peer_id = PeerId::generate();
@@ -152,7 +152,7 @@ async fn test_message_queue_behavior() {
         .unwrap();
 
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = ContentAwarePeerManager::new(config, piece_store);
+    let mut peer_manager = SimPeerManager::new(config, piece_store);
 
     let peer1: SocketAddr = "127.0.0.1:8081".parse().unwrap();
     let peer2: SocketAddr = "127.0.0.1:8082".parse().unwrap();
@@ -255,7 +255,7 @@ async fn test_peer_manager_in_isolation() {
     let config = InMemoryPeerConfig::default();
 
     // Use Arc<RwLock> wrapper like PieceDownloader does
-    let peer_manager = Arc::new(RwLock::new(ContentAwarePeerManager::new(
+    let peer_manager = Arc::new(RwLock::new(SimPeerManager::new(
         config,
         piece_store.clone(),
     )));

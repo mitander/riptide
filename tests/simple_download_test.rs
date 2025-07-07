@@ -7,7 +7,7 @@ use riptide_core::storage::FileStorage;
 use riptide_core::torrent::downloader::PieceDownloader;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
 use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PieceIndex, PieceStore, TorrentPiece};
-use riptide_sim::{ContentAwarePeerManager, InMemoryPeerConfig, InMemoryPieceStore};
+use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeerManager};
 use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
 
@@ -86,7 +86,7 @@ async fn test_simple_piece_download() {
 
     // Create peer manager
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = ContentAwarePeerManager::new(config, piece_store.clone());
+    let mut peer_manager = SimPeerManager::new(config, piece_store.clone());
 
     println!("SIMPLE_TEST: Created peer manager");
 
@@ -217,7 +217,7 @@ async fn test_peer_manager_basic_functionality() {
         .unwrap();
 
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = ContentAwarePeerManager::new(config, piece_store.clone());
+    let mut peer_manager = SimPeerManager::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
 
