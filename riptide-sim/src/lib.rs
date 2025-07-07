@@ -53,7 +53,6 @@
 //! - **Metrics Collection**: Detailed performance and behavior analysis
 
 pub mod content_aware_peer_manager;
-pub mod coordination;
 pub mod deterministic;
 pub mod magneto_provider;
 pub mod media;
@@ -76,7 +75,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub use content_aware_peer_manager::ContentAwarePeerManager;
-pub use coordination::SimulationCoordinator;
 pub use deterministic::{
     BandwidthInvariant, DataIntegrityInvariant, DeterministicClock, DeterministicRng,
     DeterministicSimulation, EventPriority, EventType, Invariant, InvariantViolation,
@@ -310,12 +308,9 @@ pub async fn create_development_components(
     let peer_manager_sim =
         ContentAwarePeerManager::new(realistic_peer_config, piece_store_sim.clone());
 
-    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_coordinator(
+    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
         tracker::ResponseConfig::default(),
-        move |info_hash| {
-            let registry = peer_registry_clone.lock().unwrap();
-            registry.get(info_hash).cloned().unwrap_or_default()
-        },
+        peer_registry_clone,
     );
 
     let engine = spawn_torrent_engine(config, peer_manager_sim, tracker_manager_sim);

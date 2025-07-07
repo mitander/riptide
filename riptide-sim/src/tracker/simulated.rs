@@ -368,14 +368,24 @@ impl SimulatedTrackerManager {
         }
     }
 
-    /// Creates simulated tracker manager with callback to coordinate with peer manager.
+    /// Creates simulated tracker manager with peer registry for coordination.
     ///
-    /// This allows the tracker to return peer addresses that the peer manager
-    /// knows about and can handle connections to.
-    pub fn with_peer_coordinator<F>(config: ResponseConfig, peer_coordinator: F) -> Self
-    where
-        F: Fn(&InfoHash) -> Vec<SocketAddr> + Send + Sync + 'static,
-    {
+    /// This allows the tracker to return peer addresses from a shared registry
+    /// without complex async coordination or dangerous block_on calls.
+    pub fn with_peer_registry(
+        config: ResponseConfig,
+        peer_registry: Arc<std::sync::Mutex<HashMap<InfoHash, Vec<SocketAddr>>>>,
+    ) -> Self {
+        let peer_coordinator = move |info_hash: &InfoHash| -> Vec<SocketAddr> {
+            // Simple synchronous read - no async coordination needed
+            peer_registry
+                .lock()
+                .unwrap()
+                .get(info_hash)
+                .cloned()
+                .unwrap_or_default()
+        };
+
         let mut client = SimulatedTrackerClient::with_config(
             "http://sim-tracker.test/announce".to_string(),
             config,
