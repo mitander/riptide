@@ -21,7 +21,7 @@ pub struct DownloadStats {
 
 /// Renders the main dashboard page
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
-    let stats = state.engine().get_download_stats().await.unwrap();
+    let stats = state.engine().download_statistics().await.unwrap();
 
     // Quick stats cards
     let stats_cards = [

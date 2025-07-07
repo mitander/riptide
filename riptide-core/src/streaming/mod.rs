@@ -106,11 +106,11 @@ impl DirectStreamingService {
         Ok(format!("/stream/{}", hex::encode(info_hash.as_bytes())))
     }
 
-    /// Get streaming statistics for monitoring.
-    pub async fn get_stats(&self) -> StreamingServiceStats {
+    /// Returns streaming statistics for monitoring.
+    pub async fn statistics(&self) -> StreamingServiceStats {
         let coordinator = self.stream_coordinator.read().await;
-        let peer_stats = self.peer_manager.read().await.get_enhanced_stats().await;
-        let streaming_stats = coordinator.get_stats().await;
+        let peer_stats = self.peer_manager.read().await.statistics();
+        let streaming_stats = coordinator.statistics().await;
 
         StreamingServiceStats {
             active_streams: streaming_stats.active_sessions,
@@ -146,7 +146,7 @@ mod tests {
         let config = RiptideConfig::default();
         let service = DirectStreamingService::new(config);
 
-        let stats = service.get_stats().await;
+        let stats = service.statistics().await;
         assert_eq!(stats.active_streams, 0);
         assert_eq!(stats.total_bytes_streamed, 0);
     }

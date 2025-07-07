@@ -39,7 +39,7 @@ mod tests {
     #[tokio::test]
     async fn test_stream_coordinator_creation() {
         let coordinator = create_test_coordinator();
-        let stats = coordinator.get_stats().await;
+        let stats = coordinator.statistics().await;
 
         assert_eq!(stats.active_sessions, 0);
         assert_eq!(stats.total_torrents, 0);
@@ -57,7 +57,7 @@ mod tests {
         assert!(result.is_ok());
 
         let content_info = coordinator
-            .get_content_info(*info_hash.as_bytes())
+            .content_info(*info_hash.as_bytes())
             .await
             .unwrap();
         assert_eq!(content_info.name, "Sample Torrent");
@@ -75,7 +75,7 @@ mod tests {
             .unwrap();
 
         let file_info = coordinator
-            .get_file_info(*info_hash.as_bytes(), 0)
+            .file_info(*info_hash.as_bytes(), 0)
             .await
             .unwrap();
 

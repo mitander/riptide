@@ -47,14 +47,11 @@ impl StreamCoordinator {
         Ok(())
     }
 
-    /// Get content information for a torrent.
+    /// Returns content information for a torrent.
     ///
     /// # Errors
     /// - `StreamingError::TorrentNotFound` - Torrent not registered
-    pub async fn get_content_info(
-        &self,
-        info_hash: [u8; 20],
-    ) -> Result<ContentInfo, StreamingError> {
+    pub async fn content_info(&self, info_hash: [u8; 20]) -> Result<ContentInfo, StreamingError> {
         let info_hash = InfoHash::new(info_hash);
         let torrents = self.registered_torrents.read().await;
 
@@ -71,12 +68,12 @@ impl StreamCoordinator {
         ))
     }
 
-    /// Get file information for a specific file in a torrent.
+    /// Returns file information for a specific file in a torrent.
     ///
     /// # Errors
     /// - `StreamingError::TorrentNotFound` - Torrent not registered
     /// - `StreamingError::FileNotFound` - File index out of bounds
-    pub async fn get_file_info(
+    pub async fn file_info(
         &self,
         info_hash: [u8; 20],
         file_index: usize,
@@ -167,9 +164,7 @@ impl StreamCoordinator {
         length: u64,
     ) -> Result<Vec<u8>, StreamingError> {
         let info_hash = InfoHash::new(info_hash);
-        let file_info = self
-            .get_file_info(*info_hash.as_bytes(), file_index)
-            .await?;
+        let file_info = self.file_info(*info_hash.as_bytes(), file_index).await?;
 
         // Calculate absolute offset within torrent
         let absolute_start = file_info.offset + start;
@@ -185,8 +180,8 @@ impl StreamCoordinator {
         Ok(torrents.values().cloned().collect())
     }
 
-    /// Get streaming statistics.
-    pub async fn get_stats(&self) -> StreamingStats {
+    /// Returns streaming statistics.
+    pub async fn statistics(&self) -> StreamingStats {
         let sessions = self.active_sessions.read().await;
         let torrents = self.registered_torrents.read().await;
 

@@ -29,7 +29,7 @@ fn format_elapsed_time(started_at: Instant) -> String {
 
 /// Real-time dashboard statistics fragment
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
-    let engine_stats = state.engine().get_download_stats().await.unwrap();
+    let engine_stats = state.engine().download_statistics().await.unwrap();
     let sessions = state.engine().get_active_sessions().await.unwrap();
 
     // Calculate metrics

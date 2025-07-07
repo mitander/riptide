@@ -34,7 +34,7 @@ mod tests {
             "127.0.0.1:8080".parse().unwrap(),
             "127.0.0.1:8081".parse().unwrap(),
         ];
-        tracker_manager.set_mock_peers(mock_peers);
+        tracker_manager.configure_mock_peers(mock_peers);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -120,7 +120,7 @@ mod tests {
         let mut peer_manager = crate::torrent::MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
         let mut tracker_manager = crate::torrent::MockTrackerManager::new();
-        tracker_manager.set_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -186,7 +186,7 @@ mod tests {
         let mut peer_manager = crate::torrent::MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
         let mut tracker_manager = crate::torrent::MockTrackerManager::new();
-        tracker_manager.set_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 

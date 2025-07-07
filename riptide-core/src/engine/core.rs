@@ -784,7 +784,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
     ///
     /// Calculates and returns aggregated statistics including active torrent
     /// count, peer connections, and data transfer metrics.
-    pub async fn get_download_stats(&self) -> EngineStats {
+    pub async fn download_statistics(&self) -> EngineStats {
         let active_torrents = self.active_torrents.len();
 
         // Calculate total peers across all torrents

@@ -143,8 +143,8 @@ pub struct StreamingCapability {
 }
 
 impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
-    /// Get detailed streaming capability information
-    pub async fn get_streaming_capability(
+    /// Returns detailed streaming capability information
+    pub async fn streaming_capability(
         &self,
         info_hash: InfoHash,
     ) -> StreamingResult<StreamingCapability> {
@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(format, ContainerFormat::Mp4);
 
         // Test streaming capability - should be false until DirectPieceStreaming is implemented
-        let capability = manager.get_streaming_capability(info_hash).await.unwrap();
+        let capability = manager.streaming_capability(info_hash).await.unwrap();
         assert!(!capability.can_stream); // Direct streaming not implemented yet
         assert_eq!(capability.container_format, ContainerFormat::Mp4);
         assert!(!capability.requires_remuxing);
@@ -326,7 +326,7 @@ mod tests {
         .unwrap();
 
         // Test streaming capability
-        let capability = manager.get_streaming_capability(info_hash).await.unwrap();
+        let capability = manager.streaming_capability(info_hash).await.unwrap();
         assert!(capability.can_stream);
         assert_eq!(capability.container_format, ContainerFormat::Mkv);
         assert!(capability.requires_remuxing);
@@ -371,7 +371,7 @@ mod tests {
             StreamingStrategyManager::new(Arc::new(piece_store));
 
         // Test streaming capability
-        let capability = manager.get_streaming_capability(info_hash).await.unwrap();
+        let capability = manager.streaming_capability(info_hash).await.unwrap();
         assert!(!capability.can_stream);
         assert_eq!(capability.container_format, ContainerFormat::Mkv);
         assert!(!capability.requires_remuxing);
@@ -421,7 +421,7 @@ mod tests {
         .unwrap();
 
         // Test streaming capability - should be false due to missing pieces
-        let capability = manager.get_streaming_capability(info_hash).await.unwrap();
+        let capability = manager.streaming_capability(info_hash).await.unwrap();
         assert!(!capability.can_stream); // Missing pieces
         assert_eq!(capability.container_format, ContainerFormat::Mkv);
         assert!(capability.requires_remuxing);

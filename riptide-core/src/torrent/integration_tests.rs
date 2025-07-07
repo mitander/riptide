@@ -308,8 +308,8 @@ impl BitTorrentTestHarness {
         self.downloader.update_peers(peer_addresses).await;
     }
 
-    /// Get all peer server addresses
-    pub fn get_peer_addresses(&self) -> Vec<SocketAddr> {
+    /// Returns all peer server addresses
+    pub fn peer_addresses(&self) -> Vec<SocketAddr> {
         self.test_servers.iter().map(|s| s.address).collect()
     }
 }
@@ -395,7 +395,7 @@ pub async fn test_piece_download_with_retry() -> Result<(), TorrentError> {
     harness.update_peers(vec![working_peer]).await;
 
     // Test that piece 0 is initially pending
-    let progress = harness.downloader.get_progress().await;
+    let progress = harness.downloader.progress().await;
     let piece_0 = progress
         .iter()
         .find(|p| p.piece_index.as_u32() == 0)
@@ -413,7 +413,7 @@ pub async fn test_piece_download_with_retry() -> Result<(), TorrentError> {
     match result {
         Ok(Ok(())) => {
             // Download succeeded
-            let final_progress = harness.downloader.get_progress().await;
+            let final_progress = harness.downloader.progress().await;
             let piece_0 = final_progress
                 .iter()
                 .find(|p| p.piece_index.as_u32() == 0)
@@ -427,7 +427,7 @@ pub async fn test_piece_download_with_retry() -> Result<(), TorrentError> {
     }
 
     // Check that error recovery was used
-    let error_stats = harness.downloader.get_error_recovery_stats().await;
+    let error_stats = harness.downloader.error_recovery_statistics().await;
     tracing::info!("Error recovery stats: {:?}", error_stats);
 
     Ok(())

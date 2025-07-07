@@ -108,11 +108,11 @@ impl TorrentEngineHandle {
         rx.await.map_err(|_| TorrentError::EngineShutdown)
     }
 
-    /// Gets download statistics for the engine.
+    /// Returns download statistics for the engine.
     ///
     /// Returns aggregated statistics including active torrent count, peer
     /// connections, and data transfer metrics.
-    pub async fn get_download_stats(&self) -> Result<EngineStats, TorrentError> {
+    pub async fn download_statistics(&self) -> Result<EngineStats, TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::GetDownloadStats { responder };
 

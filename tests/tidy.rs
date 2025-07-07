@@ -150,7 +150,7 @@ impl StyleChecker {
         self.check_module_size();
         self.check_banned_module_names();
         self.check_inline_module_references();
-        
+
         // Naming convention checks
         self.check_forbidden_function_prefixes();
         self.check_missing_public_documentation();
@@ -443,32 +443,32 @@ impl StyleChecker {
 
         true
     }
-    
+
     /// Check for forbidden function prefixes (get_, set_)
     fn check_forbidden_function_prefixes(&mut self) {
         let mut violations = Vec::new();
-        
+
         for (line_num, line) in self.file_lines.iter().enumerate() {
             let trimmed = line.trim();
-            
+
             // Skip comments and use statements
             if trimmed.starts_with("//") || trimmed.starts_with("use ") {
                 continue;
             }
-            
+
             // Look for function definitions with forbidden prefixes
             if let Some(captures) = regex::Regex::new(r"pub\s+(?:async\s+)?fn\s+(get|set)_(\w+)")
                 .expect("Invalid regex")
-                .captures(line) 
+                .captures(line)
             {
                 let prefix = &captures[1];
                 let function_name = &captures[2];
-                
+
                 // Skip false positives for legitimate get/set cases
                 if self.is_legitimate_getter_setter(function_name) {
                     continue;
                 }
-                
+
                 let suggested_name = match prefix {
                     "get" => {
                         if function_name.starts_with("or_") {
@@ -489,7 +489,7 @@ impl StyleChecker {
                     }
                     _ => function_name.to_string(),
                 };
-                
+
                 violations.push((
                     line_num + 1,
                     "FORBIDDEN_PREFIX".to_string(),
@@ -500,53 +500,53 @@ impl StyleChecker {
                 ));
             }
         }
-        
+
         // Add all violations
         for (line_num, rule, message) in violations {
             self.add_violation(Severity::Critical, line_num, &rule, &message);
         }
     }
-    
+
     /// Check if this is a legitimate getter/setter that should be allowed
     fn is_legitimate_getter_setter(&self, function_name: &str) -> bool {
         // Allow get_or_* patterns (get_or_create, get_or_insert, etc.)
         function_name.starts_with("or_")
     }
-    
+
     /// Check for missing public documentation
     fn check_missing_public_documentation(&mut self) {
         let mut violations = Vec::new();
         let mut i = 0;
-        
+
         while i < self.file_lines.len() {
             let line = &self.file_lines[i];
             let trimmed = line.trim();
-            
+
             // Look for public function definitions
             if let Some(captures) = regex::Regex::new(r"pub\s+(?:async\s+)?fn\s+(\w+)")
                 .expect("Invalid regex")
                 .captures(trimmed)
             {
                 let function_name = captures[1].to_string();
-                
+
                 // Skip test functions and certain patterns
-                if function_name.starts_with("test_") 
-                    || trimmed.contains("#[") 
+                if function_name.starts_with("test_")
+                    || trimmed.contains("#[")
                     || self.current_file.to_string_lossy().contains("/tests/")
                     || self.current_file.to_string_lossy().contains("test_")
                 {
                     i += 1;
                     continue;
                 }
-                
+
                 // Check if function returns Result (needs # Errors section)
                 let function_signature = self.extract_function_signature(i);
-                let needs_errors_section = function_signature.contains("-> Result<") 
+                let needs_errors_section = function_signature.contains("-> Result<")
                     || function_signature.contains("->Result<");
-                
+
                 // Look backwards for documentation
                 let has_doc = self.has_preceding_documentation(i);
-                
+
                 if !has_doc {
                     violations.push((
                         i + 1,
@@ -554,7 +554,11 @@ impl StyleChecker {
                         format!(
                             "Public function '{}' missing documentation{}",
                             function_name,
-                            if needs_errors_section { " (needs # Errors section for Result type)" } else { "" }
+                            if needs_errors_section {
+                                " (needs # Errors section for Result type)"
+                            } else {
+                                ""
+                            }
                         ),
                     ));
                 } else if needs_errors_section && !self.has_errors_section(i) {
@@ -568,27 +572,27 @@ impl StyleChecker {
                     ));
                 }
             }
-            
+
             i += 1;
         }
-        
+
         // Add all violations
         for (line_num, rule, message) in violations {
             self.add_violation(Severity::Critical, line_num, &rule, &message);
         }
     }
-    
+
     /// Extract the complete function signature (may span multiple lines)
     fn extract_function_signature(&self, start_line: usize) -> String {
         let mut signature = String::new();
         let mut i = start_line;
         let mut brace_count = 0;
         let mut paren_count = 0;
-        
+
         while i < self.file_lines.len() {
             let line = &self.file_lines[i];
             signature.push_str(line);
-            
+
             // Count brackets and parentheses to find the end of signature
             for ch in line.chars() {
                 match ch {
@@ -599,60 +603,64 @@ impl StyleChecker {
                         if paren_count == 0 && brace_count == 1 {
                             return signature;
                         }
-                    },
+                    }
                     _ => {}
                 }
             }
-            
+
             i += 1;
         }
-        
+
         signature
     }
-    
+
     /// Check if there's documentation before the given line
     fn has_preceding_documentation(&self, line_index: usize) -> bool {
         if line_index == 0 {
             return false;
         }
-        
+
         // Look backwards for doc comments (///) or doc attributes (#[doc])
         for i in (0..line_index).rev() {
             let line = self.file_lines[i].trim();
-            
+
             if line.starts_with("///") || line.contains("#[doc") {
                 return true;
             }
-            
+
             // Stop if we hit a non-empty line that's not whitespace or attributes
             if !line.is_empty() && !line.starts_with("#[") {
                 break;
             }
         }
-        
+
         false
     }
-    
+
     /// Check if documentation includes # Errors section
     fn has_errors_section(&self, line_index: usize) -> bool {
         if line_index == 0 {
             return false;
         }
-        
+
         // Look backwards through doc comments for "# Errors"
         for i in (0..line_index).rev() {
             let line = self.file_lines[i].trim();
-            
+
             if line.contains("# Errors") {
                 return true;
             }
-            
+
             // Stop if we hit a non-doc line
-            if !line.starts_with("///") && !line.starts_with("#[doc") && !line.is_empty() && !line.starts_with("#[") {
+            if !line.starts_with("///")
+                && !line.starts_with("#[doc")
+                && !line.is_empty()
+                && !line.starts_with("#[")
+            {
                 break;
             }
         }
-        
+
         false
     }
 }
@@ -667,15 +675,18 @@ mod tests {
             "pub fn get_stats() -> u32 {",
             "pub async fn set_config(value: u32) {",
             "pub fn get_or_create() -> Self {", // Should be allowed
-            "fn get_private() -> u32 {", // Not public, should be ignored
+            "fn get_private() -> u32 {",        // Not public, should be ignored
         ];
-        
+
         let regex = regex::Regex::new(r"pub\s+(?:async\s+)?fn\s+(get|set)_(\w+)").unwrap();
-        
+
         for line in &test_lines {
             println!("Testing: {}", line);
             if let Some(captures) = regex.captures(line) {
-                println!("  Matched: prefix='{}', name='{}'", &captures[1], &captures[2]);
+                println!(
+                    "  Matched: prefix='{}', name='{}'",
+                    &captures[1], &captures[2]
+                );
             } else {
                 println!("  No match");
             }
@@ -700,7 +711,6 @@ mod tests {
         println!("Focus: Reduce verbosity while maintaining semantic clarity");
     }
 
-    
     #[test]
     fn enforce_riptide_style_consistency() {
         let mut checker = StyleChecker::new();

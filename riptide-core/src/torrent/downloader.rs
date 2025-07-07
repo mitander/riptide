@@ -113,7 +113,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     }
 
     /// Returns download progress for all pieces.
-    pub async fn get_progress(&self) -> Vec<PieceProgress> {
+    pub async fn progress(&self) -> Vec<PieceProgress> {
         let status_map = self.piece_status.read().await;
         let data_map = self.piece_data.read().await;
 
@@ -351,8 +351,8 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         *available_peers = peers;
     }
 
-    /// Get error recovery statistics
-    pub async fn get_error_recovery_stats(&self) -> super::error_recovery::ErrorRecoveryStats {
+    /// Returns error recovery statistics
+    pub async fn error_recovery_statistics(&self) -> super::error_recovery::ErrorRecoveryStats {
         let error_recovery = self.error_recovery.read().await;
         error_recovery.statistics()
     }
@@ -726,7 +726,7 @@ mod tests {
         let peer_id = PeerId::generate();
         let downloader = PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
 
-        let progress = downloader.get_progress().await;
+        let progress = downloader.progress().await;
         assert_eq!(progress.len(), 3);
         assert!(progress.iter().all(|p| p.status == PieceStatus::Pending));
     }
@@ -755,7 +755,7 @@ mod tests {
         let piece_0_result = downloader.download_piece(PieceIndex::new(0)).await;
         assert!(piece_0_result.is_ok());
 
-        let progress = downloader.get_progress().await;
+        let progress = downloader.progress().await;
         let piece_0_progress = progress
             .iter()
             .find(|p| p.piece_index.as_u32() == 0)
@@ -927,7 +927,7 @@ mod tests {
             PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
 
         // Test error recovery statistics
-        let initial_stats = downloader.get_error_recovery_stats().await;
+        let initial_stats = downloader.error_recovery_statistics().await;
         assert_eq!(initial_stats.total_pieces_with_failures, 0);
         assert_eq!(initial_stats.total_blacklisted_peers, 0);
 
@@ -992,7 +992,7 @@ mod tests {
             match result {
                 Ok(Ok(())) => {
                     // Success with mock peer
-                    let progress = downloader.get_progress().await;
+                    let progress = downloader.progress().await;
                     let piece_progress = progress
                         .iter()
                         .find(|p| p.piece_index.as_u32() == piece_idx)
@@ -1001,7 +1001,7 @@ mod tests {
                 }
                 Ok(Err(_)) | Err(_) => {
                     // Expected failure due to peer unavailability
-                    let progress = downloader.get_progress().await;
+                    let progress = downloader.progress().await;
                     let piece_progress = progress
                         .iter()
                         .find(|p| p.piece_index.as_u32() == piece_idx)

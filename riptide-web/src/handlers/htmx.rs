@@ -20,7 +20,7 @@ pub struct AddTorrentForm {
 
 /// Renders the dashboard stats section as HTML fragment
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
-    let stats = state.engine().get_download_stats().await.unwrap();
+    let stats = state.engine().download_statistics().await.unwrap();
 
     // Get library size
     let library_size = if let Ok(movie_manager) = state.file_manager() {

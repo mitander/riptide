@@ -253,8 +253,8 @@ impl MockTrackerManager {
         }
     }
 
-    /// Sets the mock peers that will be returned by announce requests.
-    pub fn set_mock_peers(&mut self, peers: Vec<SocketAddr>) {
+    /// Configure mock peers that will be returned by announce requests.
+    pub fn configure_mock_peers(&mut self, peers: Vec<SocketAddr>) {
         self.mock_peers = peers;
     }
 }

@@ -126,7 +126,7 @@ where
         }
 
         TorrentEngineCommand::GetDownloadStats { responder } => {
-            let stats = engine.get_download_stats().await;
+            let stats = engine.download_statistics().await;
             let _ = responder.send(stats);
         }
 
@@ -263,7 +263,7 @@ mod tests {
         assert!(handle.is_running());
 
         // Test getting stats from empty engine
-        let stats = handle.get_download_stats().await.unwrap();
+        let stats = handle.download_statistics().await.unwrap();
         assert_eq!(stats.active_torrents, 0);
 
         // Test shutdown
@@ -273,7 +273,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Further operations should fail
-        let result = handle.get_download_stats().await;
+        let result = handle.download_statistics().await;
         println!("Result after shutdown: {:?}", result);
         // The channel should be closed, so we should get an error
         assert!(result.is_err());
@@ -322,7 +322,7 @@ mod tests {
             "127.0.0.1:8080".parse().unwrap(),
             "127.0.0.1:8081".parse().unwrap(),
         ];
-        tracker_manager.set_mock_peers(mock_peers);
+        tracker_manager.configure_mock_peers(mock_peers);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -355,7 +355,7 @@ mod tests {
         assert!(session.is_downloading);
 
         // Verify engine stats
-        let stats = handle.get_download_stats().await.unwrap();
+        let stats = handle.download_statistics().await.unwrap();
         assert_eq!(stats.active_torrents, 1);
 
         handle.shutdown().await.unwrap();
@@ -402,7 +402,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Verify engine stats
-        let stats = handle.get_download_stats().await.unwrap();
+        let stats = handle.download_statistics().await.unwrap();
         assert_eq!(stats.active_torrents, 1);
 
         handle.shutdown().await.unwrap();
@@ -414,7 +414,7 @@ mod tests {
         let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
         let mut tracker_manager = MockTrackerManager::new();
-        tracker_manager.set_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
 
@@ -460,7 +460,7 @@ mod tests {
         handle.start_download(info_hash2).await.unwrap();
 
         // Verify stats
-        let stats = handle.get_download_stats().await.unwrap();
+        let stats = handle.download_statistics().await.unwrap();
         assert_eq!(stats.active_torrents, 2);
 
         handle.shutdown().await.unwrap();

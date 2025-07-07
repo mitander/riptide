@@ -78,7 +78,7 @@ pub async fn live_ticker(State(state): State<AppState>) -> Html<String> {
 /// Renders global status banner for important system messages
 pub async fn status_banner(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().get_active_sessions().await.unwrap();
-    let engine_stats = state.engine().get_download_stats().await.unwrap();
+    let engine_stats = state.engine().download_statistics().await.unwrap();
 
     let mut messages = Vec::new();
 

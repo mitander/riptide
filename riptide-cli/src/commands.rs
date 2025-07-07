@@ -228,7 +228,7 @@ pub async fn list_torrents(engine: TorrentEngineHandle) -> Result<()> {
     println!("{:-<60}", "");
 
     let sessions = engine.get_active_sessions().await?;
-    let stats = engine.get_download_stats().await?;
+    let stats = engine.download_statistics().await?;
 
     if sessions.is_empty() {
         println!("No torrents added yet.");
@@ -333,7 +333,7 @@ async fn show_single_torrent_status(
     println!("Torrent Status");
     println!("{:-<60}", "");
 
-    let stats = engine.get_download_stats().await?;
+    let stats = engine.download_statistics().await?;
 
     println!("Info Hash: {info_hash}");
 
@@ -355,7 +355,7 @@ async fn show_all_torrents_status(engine: &TorrentEngineHandle) -> Result<()> {
     println!("All Torrents Status");
     println!("{:-<60}", "");
 
-    let stats = engine.get_download_stats().await?;
+    let stats = engine.download_statistics().await?;
 
     if stats.active_torrents == 0 {
         println!("No active torrents.");

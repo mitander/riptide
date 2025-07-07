@@ -163,11 +163,6 @@ impl EnhancedPeerManager {
         Ok(())
     }
 
-    /// Get enhanced statistics
-    pub async fn get_enhanced_stats(&self) -> EnhancedPeerManagerStats {
-        self.statistics()
-    }
-
     /// Statistics for the peer manager
     pub fn statistics(&self) -> EnhancedPeerManagerStats {
         let total_connections = self.torrents.values().map(|pool| pool.peers.len()).sum();

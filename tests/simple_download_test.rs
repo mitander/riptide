@@ -140,7 +140,7 @@ async fn test_simple_piece_download() {
             println!("SIMPLE_TEST: Successfully downloaded piece 0!");
 
             // Verify piece was completed
-            let progress = piece_downloader.get_progress().await;
+            let progress = piece_downloader.progress().await;
             let piece_0_progress = &progress[0];
             println!("SIMPLE_TEST: Piece 0 progress: {:?}", piece_0_progress);
 
@@ -159,7 +159,7 @@ async fn test_simple_piece_download() {
                     println!("SIMPLE_TEST: Successfully downloaded piece 1!");
 
                     // Check final progress
-                    let final_progress = piece_downloader.get_progress().await;
+                    let final_progress = piece_downloader.progress().await;
                     let completed_count = final_progress
                         .iter()
                         .filter(|p| {

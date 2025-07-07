@@ -41,7 +41,7 @@ pub struct SeekRequest {
 }
 
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
-    let stats = state.engine().get_download_stats().await.unwrap();
+    let stats = state.engine().download_statistics().await.unwrap();
 
     Json(Stats {
         total_torrents: stats.active_torrents as u32,
