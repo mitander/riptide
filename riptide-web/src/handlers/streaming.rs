@@ -1,6 +1,8 @@
 //! BitTorrent piece-based streaming handlers
 
+use std::io::SeekFrom;
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -263,7 +265,7 @@ async fn convert_file_to_mp4(
             let converted = ConvertedFile {
                 output_path: output_path.clone(),
                 size: result.output_size,
-                created_at: std::time::Instant::now(),
+                created_at: Instant::now(),
             };
 
             {
@@ -349,12 +351,10 @@ async fn read_converted_data(
     let mut file = file;
 
     // Seek to start position
-    file.seek(std::io::SeekFrom::Start(start))
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to seek in converted file: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    file.seek(SeekFrom::Start(start)).await.map_err(|e| {
+        tracing::error!("Failed to seek in converted file: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // Read the requested length (use read instead of read_exact to handle EOF gracefully)
     let mut buffer = vec![0u8; length as usize];
@@ -702,7 +702,7 @@ mod tests {
             filename: "test_movie.mp4".to_string(),
             tracker_urls: vec![],
             is_downloading: false,
-            started_at: std::time::Instant::now(),
+            started_at: Instant::now(),
             completed_pieces: vec![false; 100],
             progress: 0.0,
             download_speed_bps: 0,

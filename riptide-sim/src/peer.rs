@@ -136,6 +136,8 @@ pub enum PeerError {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
 
     #[test]
@@ -196,7 +198,7 @@ mod tests {
             .build();
 
         let piece_size = 100_000; // 100KB
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let result = peer.send_piece(piece_size).await;
         let elapsed = start.elapsed();
 
@@ -268,11 +270,11 @@ mod tests {
 
         let piece_size = 100_000; // 100KB
 
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         fast_peer.send_piece(piece_size).await.unwrap();
         let fast_time = start.elapsed();
 
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         slow_peer.send_piece(piece_size).await.unwrap();
         let slow_time = start.elapsed();
 

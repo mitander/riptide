@@ -1,6 +1,7 @@
 //! FFmpeg abstraction for both production and simulation modes
 
 use std::path::Path;
+use std::time::Instant;
 
 use async_trait::async_trait;
 
@@ -110,7 +111,7 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
         output_path: &Path,
         config: &RemuxingOptions,
     ) -> StreamingResult<RemuxingResult> {
-        let start_time = std::time::Instant::now();
+        let start_time = Instant::now();
 
         // Build FFmpeg command for container remuxing
         let mut cmd = tokio::process::Command::new("ffmpeg");
@@ -243,7 +244,7 @@ impl FfmpegProcessor for SimulationFfmpegProcessor {
         }
 
         // Use real FFmpeg conversion through base processor
-        let start_time = std::time::Instant::now();
+        let start_time = Instant::now();
         let result = self
             .base_processor
             .remux_to_mp4(input_path, output_path, config)

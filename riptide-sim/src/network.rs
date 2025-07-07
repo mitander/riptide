@@ -106,6 +106,8 @@ impl NetworkSimulatorBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
 
     #[tokio::test]
@@ -137,13 +139,13 @@ mod tests {
             .latency(50..51) // Very narrow range for predictable testing
             .build();
 
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         sim.simulate_latency().await;
         let elapsed = start.elapsed();
 
         // Should be approximately 50ms, allowing for some variance
-        assert!(elapsed >= std::time::Duration::from_millis(49));
-        assert!(elapsed <= std::time::Duration::from_millis(60));
+        assert!(elapsed >= Duration::from_millis(49));
+        assert!(elapsed <= Duration::from_millis(60));
     }
 
     #[test]

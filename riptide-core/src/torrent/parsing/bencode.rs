@@ -341,6 +341,8 @@ impl BencodeParser {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     #[test]
@@ -398,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_extract_bytes() {
-        let mut bencode_dict = std::collections::HashMap::new();
+        let mut bencode_dict = HashMap::new();
         bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"value"));
 
         let result = BencodeParser::extract_bytes(&bencode_dict, b"test").unwrap();
@@ -407,14 +409,14 @@ mod tests {
 
     #[test]
     fn test_extract_bytes_missing() {
-        let bencode_dict = std::collections::HashMap::new();
+        let bencode_dict = HashMap::new();
         let result = BencodeParser::extract_bytes(&bencode_dict, b"missing");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_extract_integer() {
-        let mut bencode_dict = std::collections::HashMap::new();
+        let mut bencode_dict = HashMap::new();
         bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Integer(42));
 
         let result = BencodeParser::extract_integer(&bencode_dict, b"test").unwrap();
@@ -423,14 +425,14 @@ mod tests {
 
     #[test]
     fn test_extract_integer_missing() {
-        let bencode_dict = std::collections::HashMap::new();
+        let bencode_dict = HashMap::new();
         let result = BencodeParser::extract_integer(&bencode_dict, b"missing");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_extract_bytes_as_string() {
-        let mut bencode_dict = std::collections::HashMap::new();
+        let mut bencode_dict = HashMap::new();
         bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(b"hello"));
 
         let result = BencodeParser::extract_bytes_as_string(&bencode_dict, b"test").unwrap();
@@ -439,7 +441,7 @@ mod tests {
 
     #[test]
     fn test_extract_bytes_as_string_invalid_utf8() {
-        let mut bencode_dict = std::collections::HashMap::new();
+        let mut bencode_dict = HashMap::new();
         bencode_dict.insert(b"test".as_slice(), bencode_rs::Value::Bytes(&[0xFF, 0xFE]));
 
         let result = BencodeParser::extract_bytes_as_string(&bencode_dict, b"test");
@@ -501,7 +503,7 @@ mod tests {
         // Test the multifile parsing logic without complex bencode construction
         // This test focuses on the extract_files_info function
         let file1_dict = {
-            let mut file_dict = std::collections::HashMap::new();
+            let mut file_dict = HashMap::new();
             file_dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(524288));
             file_dict.insert(
                 b"path".as_slice(),
@@ -511,7 +513,7 @@ mod tests {
         };
 
         let file2_dict = {
-            let mut file_dict = std::collections::HashMap::new();
+            let mut file_dict = HashMap::new();
             file_dict.insert(b"length".as_slice(), bencode_rs::Value::Integer(1048576));
             file_dict.insert(
                 b"path".as_slice(),
@@ -544,7 +546,7 @@ mod tests {
 
     #[test]
     fn test_extract_announce_urls_no_announce() {
-        let bencode_dict = std::collections::HashMap::new();
+        let bencode_dict = HashMap::new();
         let result = BencodeParser::extract_announce_urls(&bencode_dict);
         assert!(result.is_err());
     }

@@ -6,10 +6,6 @@ use super::commands::TorrentEngineCommand;
 use super::core::TorrentEngine;
 use super::handle::TorrentEngineHandle;
 use crate::config::RiptideConfig;
-#[cfg(test)]
-use crate::torrent::parsing::types::{TorrentFile, TorrentMetadata};
-#[cfg(test)]
-use crate::torrent::{MockPeerManager, MockTrackerManager};
 use crate::torrent::{PeerManager, TorrentError, TrackerManagement};
 
 /// Spawns the torrent engine actor and returns its handle.
@@ -238,7 +234,8 @@ mod tests {
 
     use super::*;
     use crate::config::RiptideConfig;
-    use crate::torrent::{InfoHash, TorrentError};
+    use crate::torrent::parsing::types::{TorrentFile, TorrentMetadata};
+    use crate::torrent::{InfoHash, MockPeerManager, MockTrackerManager, TorrentError};
 
     /// Generates proper SHA1 hashes for test torrent metadata.
     fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {

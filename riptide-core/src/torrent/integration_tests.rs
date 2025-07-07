@@ -464,7 +464,7 @@ mod tests {
     #[tokio::test]
     async fn test_enhanced_connection_real() {
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
+            Duration::from_secs(5),
             test_enhanced_peer_connection_real_protocol(),
         )
         .await;
@@ -478,11 +478,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_error_recovery_integration() {
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            test_error_recovery_real_failures(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), test_error_recovery_real_failures()).await;
 
         match result {
             Ok(Ok(())) => {} // Test passed
@@ -494,11 +491,8 @@ mod tests {
     #[ignore = "Temporarily disabled due to deadlock - needs protocol fix"]
     #[tokio::test]
     async fn test_piece_download_integration() {
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            test_piece_download_with_retry(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_secs(10), test_piece_download_with_retry()).await;
 
         match result {
             Ok(Ok(())) => {} // Test passed

@@ -584,7 +584,7 @@ mod tests {
         let config = InMemoryPeerConfig::default();
         let mut manager = ContentAwarePeerManager::new(config, piece_store);
 
-        let peer_address = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
+        let peer_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let peer_id = PeerId::generate();
 
         // Connect peer
@@ -648,7 +648,7 @@ mod tests {
         let config = InMemoryPeerConfig::default();
         let mut manager = ContentAwarePeerManager::new(config, piece_store);
 
-        let peer_address = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
+        let peer_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([2u8; 20]);
         let peer_id = PeerId::generate();
 
