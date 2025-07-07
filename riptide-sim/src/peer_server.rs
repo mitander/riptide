@@ -77,17 +77,17 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         tracing::debug!("Handling connection from {}", peer_addr);
 
         // Simple handshake - in a real implementation this would be more complete
-        let mut handshake_buf = [0u8; 68];
-        stream.read_exact(&mut handshake_buf).await?;
+        let mut handshake_buffer = [0u8; 68];
+        stream.read_exact(&mut handshake_buffer).await?;
 
         // Verify protocol string (first 20 bytes should be BitTorrent protocol)
-        if &handshake_buf[1..20] != b"BitTorrent protocol" {
+        if &handshake_buffer[1..20] != b"BitTorrent protocol" {
             tracing::warn!("Invalid handshake from {}", peer_addr);
             return Err("Invalid handshake".into());
         }
 
         // Extract info_hash from handshake (bytes 28-48)
-        let received_info_hash = InfoHash::new(<[u8; 20]>::try_from(&handshake_buf[28..48])?);
+        let received_info_hash = InfoHash::new(<[u8; 20]>::try_from(&handshake_buffer[28..48])?);
         if received_info_hash != self.info_hash {
             tracing::warn!(
                 "Wrong info_hash from {}: got {}, expected {}",
@@ -198,23 +198,23 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         stream: &mut TcpStream,
     ) -> Result<Option<PeerMessage>, Box<dyn std::error::Error + Send + Sync>> {
         // Read message length
-        let mut length_buf = [0u8; 4];
-        match stream.read_exact(&mut length_buf).await {
+        let mut length_buffer = [0u8; 4];
+        match stream.read_exact(&mut length_buffer).await {
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
             Err(e) => return Err(e.into()),
         }
 
-        let message_length = u32::from_be_bytes(length_buf);
+        let message_length = u32::from_be_bytes(length_buffer);
 
         if message_length == 0 {
             return Ok(Some(PeerMessage::KeepAlive));
         }
 
         // Read message ID
-        let mut id_buf = [0u8; 1];
-        stream.read_exact(&mut id_buf).await?;
-        let message_id = id_buf[0];
+        let mut id_buffer = [0u8; 1];
+        stream.read_exact(&mut id_buffer).await?;
+        let message_id = id_buffer[0];
 
         match message_id {
             0 => Ok(Some(PeerMessage::Choke)),
@@ -223,26 +223,26 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
             3 => Ok(Some(PeerMessage::NotInterested)),
             6 => {
                 // Request message
-                let mut request_buf = [0u8; 12];
-                stream.read_exact(&mut request_buf).await?;
+                let mut request_buffer = [0u8; 12];
+                stream.read_exact(&mut request_buffer).await?;
 
                 let piece_index = PieceIndex::new(u32::from_be_bytes([
-                    request_buf[0],
-                    request_buf[1],
-                    request_buf[2],
-                    request_buf[3],
+                    request_buffer[0],
+                    request_buffer[1],
+                    request_buffer[2],
+                    request_buffer[3],
                 ]));
                 let offset = u32::from_be_bytes([
-                    request_buf[4],
-                    request_buf[5],
-                    request_buf[6],
-                    request_buf[7],
+                    request_buffer[4],
+                    request_buffer[5],
+                    request_buffer[6],
+                    request_buffer[7],
                 ]);
                 let length = u32::from_be_bytes([
-                    request_buf[8],
-                    request_buf[9],
-                    request_buf[10],
-                    request_buf[11],
+                    request_buffer[8],
+                    request_buffer[9],
+                    request_buffer[10],
+                    request_buffer[11],
                 ]);
 
                 Ok(Some(PeerMessage::Request {

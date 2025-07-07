@@ -220,8 +220,8 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
         Ok(())
     }
 
-    /// Sets whether a peer has a specific piece
-    pub async fn set_peer_has_piece(
+    /// Updates whether a peer has a specific piece
+    pub async fn update_peer_piece_availability(
         &self,
         peer_address: SocketAddr,
         piece_index: PieceIndex,
@@ -298,7 +298,7 @@ impl<P: PieceStore> ContentAwarePeerManager<P> {
     /// Returns all connected peer addresses for a specific torrent.
     ///
     /// Used by TrackerManager to provide realistic peer lists in announce responses.
-    pub async fn get_peers_for_torrent(&self, info_hash: InfoHash) -> Vec<SocketAddr> {
+    pub async fn peers_for_torrent(&self, info_hash: InfoHash) -> Vec<SocketAddr> {
         let peers = self.peers.read().await;
         peers
             .values()
@@ -494,7 +494,7 @@ impl<P: PieceStore + 'static> PeerManager for ContentAwarePeerManager<P> {
                         }
                         Err(_) => {
                             // Piece not available in store - peer doesn't actually have it
-                            self.set_peer_has_piece(peer_address, piece_index, false)
+                            self.update_peer_piece_availability(peer_address, piece_index, false)
                                 .await;
                         }
                     }
@@ -630,7 +630,7 @@ mod tests {
 
         // Set peer to have the piece
         manager
-            .set_peer_has_piece(peer_address, PieceIndex::new(0), true)
+            .update_peer_piece_availability(peer_address, PieceIndex::new(0), true)
             .await;
 
         // Request piece block
@@ -696,7 +696,7 @@ mod tests {
         // Clear all pieces from peer (simulate peer that doesn't have any pieces)
         for i in 0..1000 {
             manager
-                .set_peer_has_piece(peer_address, PieceIndex::new(i), false)
+                .update_peer_piece_availability(peer_address, PieceIndex::new(i), false)
                 .await;
         }
 
@@ -742,7 +742,7 @@ mod tests {
         assert_eq!(seeded_addresses.len(), 3);
 
         // Verify we can get peers for the torrent
-        let peers_for_torrent = manager.get_peers_for_torrent(info_hash).await;
+        let peers_for_torrent = manager.peers_for_torrent(info_hash).await;
         assert_eq!(peers_for_torrent.len(), 3);
 
         // Verify addresses match
