@@ -20,7 +20,7 @@ pub struct StreamCoordinator {
     // - Real-time piece availability checks
     // - Torrent metadata queries
     // - Download progress tracking
-    pub(super) _torrent_engine: TorrentEngineHandle,
+    pub(super) torrent_engine: TorrentEngineHandle,
     pub(super) peer_manager: Arc<RwLock<EnhancedPeerManager>>,
     pub(super) active_sessions: Arc<RwLock<HashMap<InfoHash, StreamingSession>>>,
     pub(super) registered_torrents: Arc<RwLock<HashMap<InfoHash, TorrentMetadata>>>,

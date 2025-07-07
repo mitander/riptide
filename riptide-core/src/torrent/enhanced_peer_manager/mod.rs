@@ -119,13 +119,38 @@ impl EnhancedPeerManager {
         &self,
         params: PieceRequestParams,
     ) -> Result<PieceResult, TorrentError> {
-        let _pool = self.torrents.get(&params.info_hash).ok_or_else(|| {
+        let pool = self.torrents.get(&params.info_hash).ok_or_else(|| {
             TorrentError::PeerConnectionError {
                 reason: format!("Torrent not found: {}", params.info_hash),
             }
         })?;
 
-        // Simplified implementation for now - return timeout
+        // Select best peer for piece request
+        if pool.peers.is_empty() {
+            return Err(TorrentError::PeerConnectionError {
+                reason: "No connected peers available".to_string(),
+            });
+        }
+
+        // Simple peer selection: first available peer
+        let peer_addr =
+            pool.peers
+                .keys()
+                .next()
+                .copied()
+                .ok_or_else(|| TorrentError::PeerConnectionError {
+                    reason: "No peers available for piece request".to_string(),
+                })?;
+
+        tracing::debug!(
+            "Requesting piece {} from peer {} with priority {:?}",
+            params.piece_index.as_u32(),
+            peer_addr,
+            params.priority
+        );
+
+        // For now, return timeout until full peer protocol is implemented
+        // TODO: Implement actual piece request to peer
         Ok(PieceResult::Timeout)
     }
 

@@ -304,16 +304,39 @@ impl MediaStreamingSimulation {
     }
 
     /// Detects subtitle synchronization issues from report.
-    fn detect_subtitle_sync_issues_from_report(&self, _report: &crate::SimulationReport) -> usize {
-        // TODO: Implement actual subtitle sync detection by analyzing timing between
-        // video and subtitle piece arrivals in the simulation report
+    fn detect_subtitle_sync_issues_from_report(&self, report: &crate::SimulationReport) -> usize {
+        let tolerance = self.movie_folder.streaming_profile.subtitle_sync_tolerance;
 
-        // Simple heuristic: subtitle pieces arriving much later than video pieces
-        let sync_issues = 0;
-        let _tolerance = self.movie_folder.streaming_profile.subtitle_sync_tolerance;
+        // Simple heuristic: if average piece download time is greater than tolerance,
+        // assume subtitle sync issues based on piece failure rate
+        let avg_download_time = report.metrics.avg_piece_download_time;
+        let piece_failures = report.metrics.piece_failures;
 
-        // For now, return placeholder
-        sync_issues
+        if avg_download_time > tolerance {
+            // Count subtitle pieces that might have sync issues
+            let subtitle_piece_count = self.count_subtitle_pieces();
+            let failure_rate =
+                piece_failures as f64 / report.final_state.completed_pieces.len() as f64;
+
+            // Estimate sync issues based on failure rate applied to subtitle pieces
+            (subtitle_piece_count as f64 * failure_rate).round() as usize
+        } else {
+            // No sync issues if download times are within tolerance
+            0
+        }
+    }
+
+    /// Count total subtitle pieces in the movie folder.
+    fn count_subtitle_pieces(&self) -> usize {
+        self.piece_to_file_map
+            .iter()
+            .filter(|(_, file_index)| {
+                matches!(
+                    self.movie_folder.files[**file_index].file_type,
+                    crate::media::MediaFileType::Subtitle { .. }
+                )
+            })
+            .count()
     }
 
     /// Returns reference to analyzed movie folder.

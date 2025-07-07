@@ -217,7 +217,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         let tracker_urls = session.tracker_urls.clone();
         let peer_id = self.peer_id;
         let piece_count = session.piece_count;
-        let _piece_size = session.piece_size;
+
         let total_size = session.total_size;
         let piece_sender = self.piece_completion_sender.clone();
 
@@ -278,8 +278,6 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         let piece_picker = self.piece_pickers.get(&info_hash).cloned();
 
         tokio::spawn(async move {
-            let _piece_count = download_context.piece_count;
-
             if let Some(piece_picker) = piece_picker {
                 let download_result = tokio::time::timeout(
                     Duration::from_millis(DOWNLOAD_TIMEOUT_MS),

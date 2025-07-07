@@ -366,12 +366,11 @@ impl TrackerClient for HttpTrackerClient {
     /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
     /// - `TorrentError::ProtocolError` - Invalid scrape response format
     async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError> {
-        let _scrape_url =
-            self.scrape_url
-                .as_ref()
-                .ok_or_else(|| TorrentError::TrackerConnectionFailed {
-                    url: "Tracker does not support scrape operation".to_string(),
-                })?;
+        self.scrape_url
+            .as_ref()
+            .ok_or_else(|| TorrentError::TrackerConnectionFailed {
+                url: "Tracker does not support scrape operation".to_string(),
+            })?;
 
         let url = self.build_scrape_url(&request)?;
 

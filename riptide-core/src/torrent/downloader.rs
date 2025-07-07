@@ -951,9 +951,7 @@ mod tests {
                 // Unexpected success with mock data
             }
             Ok(Err(_)) | Err(_) => {
-                // Expected failure - check that error recovery was used
-                let _final_stats = downloader.get_error_recovery_stats().await;
-                // Stats may be updated due to retry attempts
+                // Expected failure - error recovery was used
             }
         }
 
@@ -1014,7 +1012,6 @@ mod tests {
         }
 
         // Verify error recovery stats show activity
-        let _final_stats = downloader.get_error_recovery_stats().await;
         // We expect some pieces to have had failures, leading to retry attempts
     }
 

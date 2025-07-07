@@ -30,6 +30,9 @@ pub enum StreamingError {
     #[error("Missing pieces for reconstruction: {missing:?} of {total} total")]
     MissingPieces { missing: Vec<u32>, total: u32 },
 
+    #[error("File reconstruction failed for {info_hash}: {reason}")]
+    ReconstructionFailed { info_hash: InfoHash, reason: String },
+
     #[error("Piece storage error: {reason}")]
     PieceStorageError { reason: String },
 

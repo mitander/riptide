@@ -18,7 +18,7 @@ pub struct GlobalBandwidthManager {
 pub struct BandwidthAllocator {
     total_bandwidth: u64,
     allocated_bandwidth: HashMap<Priority, u64>,
-    _reserved_bandwidth: HashMap<Priority, u64>,
+    reserved_bandwidth: HashMap<Priority, u64>,
 }
 
 impl GlobalBandwidthManager {
@@ -57,7 +57,7 @@ impl BandwidthAllocator {
         Self {
             total_bandwidth,
             allocated_bandwidth: HashMap::new(),
-            _reserved_bandwidth: HashMap::new(),
+            reserved_bandwidth: HashMap::new(),
         }
     }
 
@@ -66,7 +66,8 @@ impl BandwidthAllocator {
         let current_allocation = self.allocated_bandwidth.get(&priority).unwrap_or(&0);
         let available = self
             .total_bandwidth
-            .saturating_sub(self.allocated_bandwidth.values().sum::<u64>());
+            .saturating_sub(self.allocated_bandwidth.values().sum::<u64>())
+            .saturating_sub(self.reserved_bandwidth.values().sum::<u64>());
 
         let granted = requested.min(available);
         self.allocated_bandwidth
@@ -84,9 +85,54 @@ impl BandwidthAllocator {
         self.allocated_bandwidth.values().sum()
     }
 
+    /// Reserve bandwidth for a specific priority level
+    pub fn reserve_bandwidth(&mut self, priority: Priority, amount: u64) -> u64 {
+        let current_reserved = self.reserved_bandwidth.get(&priority).copied().unwrap_or(0);
+        let total_used = self.total_allocated() + self.total_reserved();
+        let available = self.total_bandwidth.saturating_sub(total_used);
+
+        let granted = amount.min(available);
+        self.reserved_bandwidth
+            .insert(priority, current_reserved + granted);
+        granted
+    }
+
+    /// Release reserved bandwidth for a specific priority
+    pub fn release_reservation(&mut self, priority: Priority, amount: u64) -> u64 {
+        let current_reserved = self.reserved_bandwidth.get(&priority).copied().unwrap_or(0);
+        let released = amount.min(current_reserved);
+
+        if released == current_reserved {
+            self.reserved_bandwidth.remove(&priority);
+        } else {
+            self.reserved_bandwidth
+                .insert(priority, current_reserved - released);
+        }
+
+        released
+    }
+
+    /// Get total reserved bandwidth
+    pub fn total_reserved(&self) -> u64 {
+        self.reserved_bandwidth.values().sum()
+    }
+
+    /// Get reserved bandwidth for a specific priority
+    pub fn reserved_for_priority(&self, priority: Priority) -> u64 {
+        self.reserved_bandwidth.get(&priority).copied().unwrap_or(0)
+    }
+
+    /// Reset both allocations and reservations
+    pub fn reset_all(&mut self) {
+        self.allocated_bandwidth.clear();
+        self.reserved_bandwidth.clear();
+    }
+
     /// Get remaining bandwidth
     pub fn remaining(&self) -> u64 {
-        self.total_bandwidth.saturating_sub(self.total_allocated())
+        self.total_bandwidth
+            .saturating_sub(self.total_allocated())
+            .saturating_sub(self.total_reserved())
     }
 }
 

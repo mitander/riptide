@@ -107,12 +107,23 @@ impl<P: PieceStore, F: FfmpegProcessor> RemuxedStreaming<P, F> {
 
         // Reconstruct the original file
         let temp_path = self.temp_reconstruction_path(info_hash);
-        let _bytes_written = self
+        let bytes_written = self
             .file_reconstructor
             .reconstruct_file(info_hash, &temp_path)
             .await?;
 
-        tracing::debug!("File reconstructed, starting remuxing to MP4");
+        tracing::debug!(
+            "File reconstructed ({} bytes), starting remuxing to MP4",
+            bytes_written
+        );
+
+        // Verify reconstruction was successful
+        if bytes_written == 0 {
+            return Err(StreamingError::ReconstructionFailed {
+                info_hash,
+                reason: "No bytes written during reconstruction".to_string(),
+            });
+        }
 
         // Remux to MP4
         let remux_result = self

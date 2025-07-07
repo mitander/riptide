@@ -22,7 +22,7 @@ impl StreamCoordinator {
         peer_manager: Arc<RwLock<EnhancedPeerManager>>,
     ) -> Self {
         Self {
-            _torrent_engine: torrent_engine,
+            torrent_engine,
             peer_manager,
             active_sessions: Arc::new(RwLock::new(HashMap::new())),
             registered_torrents: Arc::new(RwLock::new(HashMap::new())),
@@ -111,17 +111,44 @@ impl StreamCoordinator {
     ) -> Result<Vec<u8>, StreamingError> {
         let info_hash = InfoHash::new(info_hash);
 
-        // Get or create streaming session
-        // TODO: Use session for state management once streaming protocol is implemented
+        // Check if torrent exists in engine (optional validation)
+        if let Err(e) = self.torrent_engine.get_session(info_hash).await {
+            tracing::warn!(
+                "Torrent {} not found in engine during streaming: {}",
+                info_hash,
+                e
+            );
+            // Continue anyway - torrent might be registered but not yet active
+        }
+
+        // Get or create streaming session for state management
         let _session = self.get_or_create_session(info_hash, start).await?;
+
+        // Update session with current streaming position
+        {
+            let mut sessions = self.active_sessions.write().await;
+            if let Some(session_data) = sessions.get_mut(&info_hash) {
+                session_data.last_activity = std::time::Instant::now();
+                session_data.current_position = start;
+                session_data.bytes_served += length;
+            }
+        }
 
         // Calculate required pieces for this range
         let range_handler = self.create_range_handler(info_hash).await?;
         let required_pieces = range_handler.calculate_required_pieces(start, length);
 
-        // Prioritize pieces for streaming
+        // Prioritize pieces for streaming using session context
         self.prioritize_pieces_for_streaming(info_hash, &required_pieces, start)
             .await?;
+
+        // Update session with piece requests
+        {
+            let mut sessions = self.active_sessions.write().await;
+            if let Some(session_data) = sessions.get_mut(&info_hash) {
+                session_data.performance_metrics.total_requests += required_pieces.len() as u32;
+            }
+        }
 
         // Read data from available pieces
         self.read_pieces_data(info_hash, start, length).await
@@ -253,7 +280,12 @@ impl StreamCoordinator {
                 priority,
                 deadline: Some(Instant::now() + Duration::from_secs(10)),
             };
-            let _result = peer_manager.request_piece_prioritized(params).await;
+            let result = peer_manager.request_piece_prioritized(params).await;
+
+            // Handle piece request result
+            if let Err(e) = result {
+                tracing::warn!("Failed to request piece {}: {}", piece_range.piece_index, e);
+            }
         }
 
         Ok(())

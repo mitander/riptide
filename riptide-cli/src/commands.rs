@@ -143,10 +143,25 @@ pub async fn add_torrent(
     } else {
         // Handle torrent file
         println!("Adding torrent file: {source}");
-        let _torrent_data = fs::read(&source).await?;
-        // The actor model will need an `AddTorrentData` command. For now, this will fail to compile.
-        // I will add this command later.
-        unimplemented!("Adding torrent data is not yet supported in the actor model.");
+        let torrent_data = fs::read(&source).await?;
+
+        // Validate torrent file format
+        if torrent_data.is_empty() {
+            return Err(RiptideError::Torrent(TorrentError::InvalidTorrentFile {
+                reason: format!("Torrent file is empty: {source}"),
+            }));
+        }
+
+        // For now, torrent files are not supported in the actor model
+        // TODO: Implement AddTorrentData command in the actor model
+        return Err(RiptideError::Torrent(TorrentError::InvalidTorrentFile {
+            reason: format!(
+                "Torrent file support is not yet implemented. Please use magnet links instead.\n\
+                 File: {} ({} bytes)",
+                source,
+                torrent_data.len()
+            ),
+        }));
     };
 
     println!("Successfully added torrent: {info_hash}");
