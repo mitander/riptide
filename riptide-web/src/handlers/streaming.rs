@@ -92,8 +92,10 @@ pub async fn stream_torrent(
     let (start, end, _content_length) = if let Some(range_str) = extract_range_header(&headers) {
         parse_range_header(&range_str, available_size)
     } else {
-        // For non-Range requests, serve first 1MB to allow browser to analyze file
-        let chunk_size = 1024 * 1024; // 1MB
+        // If the client doesn't send a Range header, it's often a preliminary request to identify the content.
+        // We serve the first 1MB to allow the browser's media player to analyze the file headers (e.g., moov atom)
+        // and subsequently make specific byte-range requests for streaming.
+        let chunk_size = 1024 * 1024;
         let safe_end = chunk_size.min(available_size.saturating_sub(1));
         (0, safe_end, safe_end + 1)
     };
@@ -117,7 +119,7 @@ pub async fn stream_torrent(
 
     // Check if container format needs remuxing and handle conversion
     let (video_data, actual_file_size) =
-        get_video_data_with_conversion(&state, info_hash, &session, start, safe_length).await?;
+        video_data_with_conversion(&state, info_hash, &session, start, safe_length).await?;
 
     // Determine MIME type from filename
     let content_type = determine_content_type(&session.filename);
@@ -132,9 +134,10 @@ pub async fn stream_torrent(
     )
 }
 
-/// Get video data with automatic conversion for non-browser-compatible formats
+/// Loads video data with automatic conversion for non-browser-compatible formats.
+///
 /// Returns (data, actual_file_size) where actual_file_size is the size of the served file
-async fn get_video_data_with_conversion(
+async fn video_data_with_conversion(
     state: &AppState,
     info_hash: InfoHash,
     session: &riptide_core::engine::TorrentSession,

@@ -188,9 +188,9 @@ impl MediaSearchService {
     ) -> Result<Vec<crate::enhanced_search::MovieSearchResult>, MediaSearchError> {
         // Create enhanced service with the same provider and metadata service
         let enhanced_service = if self.is_development {
-            crate::enhanced_search::EnhancedMediaSearchService::new_development()
+            crate::enhanced_search::EnhancedMediaSearch::new_development()
         } else {
-            crate::enhanced_search::EnhancedMediaSearchService::with_fuzzy_threshold(
+            crate::enhanced_search::EnhancedMediaSearch::with_fuzzy_threshold(
                 Box::new(crate::providers::MagnetoProvider::new()),
                 fuzzy_threshold.unwrap_or(0.6),
             )

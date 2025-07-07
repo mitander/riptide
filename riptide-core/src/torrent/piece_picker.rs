@@ -174,26 +174,28 @@ impl AdaptiveStreamingPiecePicker {
     }
 
     /// Get the priority for a specific piece based on current position.
+    ///
+    /// This heuristic prioritizes pieces to ensure smooth playback. The strategy is:
+    /// 1. Critical: The current piece and the ones immediately following it.
+    /// 2. High: The first half of the forward buffer to stay ahead of playback.
+    /// 3. Normal: The rest of the forward buffer and the immediate history for seeking backwards.
+    /// 4. Low: All other pieces, which can be downloaded opportunistically.
     fn calculate_piece_priority(&self, piece_index: u32) -> PiecePriority {
-        // Check for explicit priority overrides first
         if let Some(&priority) = self.piece_priorities.get(&piece_index) {
             return priority;
         }
 
         let current_piece = self.byte_to_piece(self.current_position);
 
-        // Calculate effective buffer sizes (adaptive or fixed)
         let forward_buffer = if self.adaptive_buffer_enabled {
             self.calculate_adaptive_buffer_size()
         } else {
             self.forward_buffer_size
         };
 
-        // Priority based on position relative to current piece
         if piece_index == current_piece {
-            PiecePriority::Critical // Current piece
+            PiecePriority::Critical
         } else if piece_index > current_piece {
-            // Forward pieces (ahead of current position)
             let distance = piece_index - current_piece;
             let near_buffer_threshold = forward_buffer / 2;
 
@@ -276,18 +278,15 @@ impl PiecePicker for StreamingPiecePicker {
     }
 
     fn mark_completed(&mut self, _index: PieceIndex) {
-        // Completion tracking implementation pending
+        // Implementation not needed for current streaming use case
     }
 }
 
 impl PiecePicker for AdaptiveStreamingPiecePicker {
     fn next_piece(&mut self) -> Option<PieceIndex> {
-        // First try to find a priority piece based on current position
         if let Some(piece) = self.find_next_priority_piece() {
             return Some(piece);
         }
-
-        // Fallback to sequential download if no priority pieces
         while self.sequential_index < self.total_pieces {
             if !self.completed_pieces[self.sequential_index as usize] {
                 let index = PieceIndex::new(self.sequential_index);

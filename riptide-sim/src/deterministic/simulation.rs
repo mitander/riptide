@@ -248,32 +248,23 @@ impl DeterministicSimulation {
         // let start_time = self.clock.now();
 
         while let Some(event) = self.event_queue.pop() {
-            // Check if we've exceeded target time
             if event.timestamp > target_time {
-                self.event_queue.push(event); // Put it back
+                self.event_queue.push(event);
                 break;
             }
 
-            // Advance time to event
             self.clock.advance_to(event.timestamp)?;
-
-            // Process event
             self.process_event(&event)?;
 
-            // Record in history
             if self.event_history.len() < MAX_EVENT_HISTORY {
                 self.event_history.push(event.clone());
             }
 
-            // Update metrics
             self.metrics.record_event(event.event_type.as_str());
             self.metrics
                 .update_peak_connections(self.state.connected_peers.len());
 
-            // Check invariants
             self.check_invariants()?;
-
-            // Check resource limits
             self.check_resource_limits()?;
         }
 
@@ -282,7 +273,6 @@ impl DeterministicSimulation {
 
     /// Processes a single event.
     fn process_event(&mut self, event: &SimulationEvent) -> Result<(), SimulationError> {
-        // Update resource usage based on event
         self.resource_usage.update_for_event(&event.event_type);
 
         match &event.event_type {
@@ -316,9 +306,7 @@ impl DeterministicSimulation {
                 self.state.fail_piece(*piece_index, reason.clone());
                 self.metrics.record_piece_failure();
             }
-            EventType::NetworkChange { .. } => {
-                // Network conditions updated
-            }
+            EventType::NetworkChange { .. } => {}
             EventType::BandwidthThrottle {
                 direction,
                 rate_bytes_per_sec,
@@ -423,7 +411,6 @@ impl DeterministicSimulation {
         total_pieces: u32,
         piece_size: u32,
     ) -> Result<(), SimulationError> {
-        // Schedule initial tracker announce
         self.schedule_delayed(
             Duration::from_secs(1),
             EventType::TrackerAnnounce {
@@ -433,7 +420,6 @@ impl DeterministicSimulation {
             EventPriority::High,
         )?;
 
-        // Schedule peer connections
         for i in 0..self.config.max_simulated_peers {
             let connect_delay = Duration::from_millis(100 * i as u64);
             self.schedule_delayed(
@@ -445,7 +431,6 @@ impl DeterministicSimulation {
             )?;
         }
 
-        // Schedule piece downloads sequentially for streaming
         for piece_index in 0..total_pieces {
             let piece_delay = Duration::from_millis(500 + piece_index as u64 * 100);
             let peer_index = (piece_index as usize) % self.config.max_simulated_peers;
@@ -459,11 +444,11 @@ impl DeterministicSimulation {
                 EventPriority::Normal,
             )?;
 
-            // Schedule completion
-            // Calculate realistic download time based on piece size and bandwidth
+            // A minimum download time is enforced to prevent division-by-zero with infinite bandwidth
+            // and to ensure simulation events have a non-zero duration, which helps avoid scheduling conflicts.
             let bytes_per_second = self.config.simulated_download_speed;
             let download_seconds = piece_size as f64 / bytes_per_second as f64;
-            let download_time = Duration::from_secs_f64(download_seconds.max(0.1)); // Minimum 100ms
+            let download_time = Duration::from_secs_f64(download_seconds.max(0.1));
             self.schedule_delayed(
                 piece_delay + download_time,
                 EventType::PieceComplete {
@@ -484,7 +469,6 @@ impl DeterministicSimulation {
         peer_id: String,
         behavior: PeerBehavior,
     ) -> Result<(), SimulationError> {
-        // Schedule peer connection
         self.schedule_event(
             EventType::PeerConnect {
                 peer_id: peer_id.clone(),
@@ -492,16 +476,10 @@ impl DeterministicSimulation {
             EventPriority::Normal,
         )?;
 
-        // Apply behavior patterns
         match behavior {
-            PeerBehavior::Fast => {
-                // Fast peers complete pieces quickly
-            }
-            PeerBehavior::Slow => {
-                // Slow peers have delayed completions
-            }
+            PeerBehavior::Fast => {}
+            PeerBehavior::Slow => {}
             PeerBehavior::Unreliable => {
-                // Schedule random disconnects
                 let disconnect_time = Duration::from_secs(self.rng.random_range(5, 30));
                 self.schedule_delayed(
                     disconnect_time,

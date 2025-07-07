@@ -119,7 +119,7 @@ impl StreamCoordinator {
         }
 
         // Get or create streaming session for state management
-        let _session = self.get_or_create_session(info_hash, start).await?;
+        let _session = self.ensure_session(info_hash, start).await?;
 
         // Update session with current streaming position
         {
@@ -212,8 +212,8 @@ impl StreamCoordinator {
         }
     }
 
-    /// Get or create streaming session for torrent.
-    async fn get_or_create_session(
+    /// Ensures streaming session exists for torrent, creating if needed.
+    async fn ensure_session(
         &self,
         info_hash: InfoHash,
         position: u64,

@@ -12,9 +12,9 @@ use crate::metadata::ImdbMetadataService;
 use crate::providers::TorrentSearchProvider;
 use crate::types::{MediaSearchResult, TorrentResult};
 
-/// Enhanced search service with fuzzy matching and movie focus.
+/// Enhanced search with fuzzy matching and movie focus.
 #[derive(Debug)]
-pub struct EnhancedMediaSearchService {
+pub struct EnhancedMediaSearch {
     provider: Box<dyn TorrentSearchProvider>,
     metadata_service: ImdbMetadataService,
     #[allow(dead_code)]
@@ -73,8 +73,8 @@ impl Default for FuzzySearchConfig {
     }
 }
 
-impl EnhancedMediaSearchService {
-    /// Create new enhanced search service with default fuzzy matching.
+impl EnhancedMediaSearch {
+    /// Create new enhanced search with default fuzzy matching.
     pub fn new(provider: Box<dyn TorrentSearchProvider>) -> Self {
         Self {
             provider,
@@ -84,7 +84,7 @@ impl EnhancedMediaSearchService {
         }
     }
 
-    /// Create enhanced search service with custom fuzzy threshold.
+    /// Create enhanced search with custom fuzzy threshold.
     ///
     /// # Arguments
     /// * `threshold` - Minimum similarity score (0.0-1.0) for fuzzy matching
@@ -237,9 +237,9 @@ impl EnhancedMediaSearchService {
                     plot: original_result.plot,
                     genre: original_result.genre,
                     rating: original_result.rating,
-                    runtime: None,    // TODO: Extract from metadata
-                    director: None,   // TODO: Extract from metadata
-                    cast: Vec::new(), // TODO: Extract from metadata
+                    runtime: None,
+                    director: None,
+                    cast: Vec::new(),
                     torrents,
                     match_score,
                 }
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_extract_clean_title() {
-        let service = EnhancedMediaSearchService::new_development();
+        let service = EnhancedMediaSearch::new_development();
 
         assert_eq!(
             service.extract_clean_title("The.Matrix.1999.1080p.BluRay.x264"),
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_typo_corrections() {
-        let service = EnhancedMediaSearchService::new_development();
+        let service = EnhancedMediaSearch::new_development();
         let corrections = service.generate_typo_corrections("matix");
 
         assert!(corrections.contains(&"matrix".to_string()));
@@ -456,7 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_development_mode_fuzzy_search() {
-        let service = EnhancedMediaSearchService::new_development();
+        let service = EnhancedMediaSearch::new_development();
 
         // Test exact match
         let results = service
@@ -483,7 +483,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_development_mode_rich_metadata() {
-        let service = EnhancedMediaSearchService::new_development();
+        let service = EnhancedMediaSearch::new_development();
 
         // Use "matrix" to match the development provider's keyword matching
         let results = service
@@ -523,7 +523,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fuzzy_threshold_filtering() {
-        let service = EnhancedMediaSearchService::with_fuzzy_threshold(
+        let service = EnhancedMediaSearch::with_fuzzy_threshold(
             Box::new(crate::providers::DevelopmentProvider::new()),
             0.95, // Very high threshold
         );
@@ -563,7 +563,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deduplication() {
-        let service = EnhancedMediaSearchService::new_development();
+        let service = EnhancedMediaSearch::new_development();
 
         // Simulate multiple search results that should be deduplicated
         let duplicate_results = vec![
@@ -604,7 +604,7 @@ mod tests {
 
     #[test]
     fn test_clean_search_query() {
-        let service = EnhancedMediaSearchService::new_development();
+        let service = EnhancedMediaSearch::new_development();
 
         assert_eq!(service.clean_search_query("  The  Matrix  "), "the matrix");
         assert_eq!(service.clean_search_query("INTERSTELLAR"), "interstellar");

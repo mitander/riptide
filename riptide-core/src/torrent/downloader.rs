@@ -211,7 +211,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         status_map.insert(piece_index, PieceStatus::Verifying);
                     }
 
-                    // Verify piece hash
                     tracing::debug!("download_piece: verifying hash for piece={piece_index}");
                     if !self.verify_piece_hash(piece_index, &piece_data) {
                         tracing::warn!(
@@ -219,10 +218,11 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         );
                         let hash_error = TorrentError::PieceHashMismatch { index: piece_index };
 
-                        // Record hash verification failure
                         {
                             let mut error_recovery = self.error_recovery.write().await;
-                            // Use a dummy peer address for hash failures since they're not peer-specific
+                            // A piece hash failure is not attributable to a specific peer, as any peer could have sent
+                            // the corrupted data. We record the failure against a dummy address to track that the piece
+                            // itself is problematic, so we can retry it from a different peer.
                             let dummy_peer = "0.0.0.0:0".parse().unwrap();
                             error_recovery.record_piece_failure(
                                 piece_index,
@@ -244,7 +244,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                     }
 
                     tracing::debug!("download_piece: piece={piece_index} hash verification PASSED");
-                    // Store the piece
                     tracing::debug!("download_piece: storing piece={piece_index}");
                     match self
                         .storage
@@ -252,7 +251,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         .await
                     {
                         Ok(()) => {
-                            // Success! Record it and update status
                             tracing::info!(
                                 "download_piece: piece={piece_index} stored successfully, COMPLETE"
                             );
@@ -275,7 +273,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                             return Ok(());
                         }
                         Err(storage_error) => {
-                            // Record storage failure
                             tracing::error!(
                                 "download_piece: piece={piece_index} storage FAILED: {storage_error}"
                             );
@@ -381,13 +378,11 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
             return Err(TorrentError::NoPeersAvailable);
         }
 
-        // Get list of peers to avoid for this piece
         let peers_to_avoid = {
             let error_recovery = self.error_recovery.read().await;
             error_recovery.peers_to_avoid_for_piece(piece_index)
         };
 
-        // Filter out blacklisted and problematic peers
         let available_peers: Vec<SocketAddr> = peers
             .into_iter()
             .filter(|peer| !peers_to_avoid.contains(peer))
@@ -404,7 +399,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         let peer_count = available_peers.len();
         let mut last_error = TorrentError::NoPeersAvailable;
 
-        // Try downloading from each available peer
         for (i, peer_addr) in available_peers.iter().enumerate() {
             tracing::debug!(
                 "download_from_peers_with_recovery: trying peer {} of {}: {}",
@@ -414,7 +408,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
             );
             match self.download_piece_from_peer(*peer_addr, piece_index).await {
                 Ok(piece_data) => {
-                    // Record successful download
                     tracing::debug!("download_from_peers_with_recovery: peer {peer_addr} SUCCESS");
                     {
                         let mut error_recovery = self.error_recovery.write().await;
@@ -423,7 +416,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                     return Ok(piece_data);
                 }
                 Err(e) => {
-                    // Record failure for this peer
                     tracing::debug!(
                         "download_from_peers_with_recovery: peer {peer_addr} FAILED: {e}"
                     );
@@ -439,7 +431,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         e
                     );
                     last_error = e;
-                    // Try next peer
                     continue;
                 }
             }

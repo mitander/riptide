@@ -232,14 +232,12 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             event: AnnounceEvent::Started,
         };
 
-        // Get the stored metadata for this torrent
         let metadata = self
             .torrent_metadata
             .get(&info_hash)
             .ok_or(TorrentError::TorrentNotFound { info_hash })?
             .clone();
 
-        // Create and store piece picker for this torrent
         let piece_picker = Arc::new(RwLock::new(AdaptiveStreamingPiecePicker::new(
             piece_count,
             metadata.piece_length,
@@ -247,11 +245,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         self.piece_pickers
             .insert(info_hash, Arc::clone(&piece_picker));
 
-        // Configure upload manager for streaming if using TcpPeerManager
         self.configure_upload_manager_for_streaming(info_hash, metadata.piece_length as u64)
             .await;
-
-        // Start BitTorrent download process
         let download_context = DownloadContext {
             info_hash,
             metadata,

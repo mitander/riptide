@@ -134,7 +134,6 @@ impl SimulationEnvironment {
             .bandwidth_limit(50_000_000) // 50 Mbps
             .build();
 
-        // Add mix of fast and slow peers
         env.add_fast_peers(10);
         env.add_slow_peers(5);
         env.add_unreliable_peers(2);
@@ -254,14 +253,12 @@ pub fn create_standard_streaming_simulation(
 
     let mut sim = DeterministicSimulation::new(config)?;
 
-    // Add standard invariants
     sim.add_invariant(Arc::new(MaxPeersInvariant::new(25)));
     sim.add_invariant(Arc::new(NoDuplicateDownloadsInvariant));
     sim.add_invariant(Arc::new(ResourceLimitInvariant::new(
         ResourceLimits::default(),
     )));
 
-    // Create streaming scenario
     sim.create_streaming_scenario(piece_count, std::time::Duration::from_secs(1))?;
 
     Ok(sim)

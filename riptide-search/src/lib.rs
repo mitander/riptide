@@ -11,7 +11,7 @@ pub mod service;
 pub mod types;
 
 // Re-export main types
-pub use enhanced_search::{EnhancedMediaSearchService, FuzzySearchConfig, MovieSearchResult};
+pub use enhanced_search::{EnhancedMediaSearch, FuzzySearchConfig, MovieSearchResult};
 pub use errors::MediaSearchError;
 pub use metadata::{ImdbMetadataService, MediaMetadata};
 pub use service::MediaSearchService;

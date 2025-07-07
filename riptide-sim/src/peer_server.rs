@@ -33,8 +33,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     /// The server runs in a background task and serves pieces to connecting peers
     ///
     /// # Errors
-    /// - Returns error if TCP listener cannot bind to the specified address
-    /// - Returns error if background task spawning fails
+    /// Returns error if TCP listener cannot bind to the specified address
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(self.listen_address).await?;
         tracing::info!(
@@ -43,7 +42,6 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
             self.listen_address
         );
 
-        // Spawn background task to handle connections
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
@@ -73,6 +71,9 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     }
 
     /// Handles a single peer connection with full BitTorrent wire protocol
+    ///
+    /// # Errors
+    /// Returns error if I/O operations fail or protocol violations occur
     async fn handle_connection(
         &self,
         mut stream: TcpStream,
@@ -80,17 +81,16 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::debug!("Handling connection from {}", peer_addr);
 
-        // Simple handshake - in a real implementation this would be more complete
+        // A simplified handshake for simulation. A production implementation would also negotiate protocol extensions (BEP_0010) and handle encryption.
         let mut handshake_buffer = [0u8; 68];
         stream.read_exact(&mut handshake_buffer).await?;
 
-        // Verify protocol string (first 20 bytes should be BitTorrent protocol)
         if &handshake_buffer[1..20] != b"BitTorrent protocol" {
             tracing::warn!("Invalid handshake from {}", peer_addr);
             return Err("Invalid handshake".into());
         }
 
-        // Extract info_hash from handshake (bytes 28-48)
+        // Per BEP_0003, the info_hash is located at bytes 28-48 of the handshake.
         let received_info_hash = InfoHash::new(<[u8; 20]>::try_from(&handshake_buffer[28..48])?);
         if received_info_hash != self.info_hash {
             tracing::warn!(
@@ -102,49 +102,41 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
             return Err("Wrong info_hash".into());
         }
 
-        // Send handshake response
-        let mut response = vec![19u8]; // Length of protocol string
+        let mut response = vec![19u8];
         response.extend_from_slice(b"BitTorrent protocol");
-        response.extend_from_slice(&[0u8; 8]); // Reserved bytes
-        response.extend_from_slice(self.info_hash.as_bytes()); // Info hash
-        response.extend_from_slice(&[0u8; 20]); // Peer ID
+        response.extend_from_slice(&[0u8; 8]);
+        response.extend_from_slice(self.info_hash.as_bytes());
+        response.extend_from_slice(&[0u8; 20]);
         stream.write_all(&response).await?;
 
         tracing::debug!("Handshake completed with {}", peer_addr);
 
-        // Send bitfield message to indicate we have all pieces
         if let Ok(piece_count) = self.piece_store.piece_count(self.info_hash) {
             self.send_bitfield(&mut stream, piece_count).await?;
         }
 
-        // Send unchoke message
         self.send_unchoke(&mut stream).await?;
-
-        // Handle message loop
         loop {
             match self.read_message(&mut stream).await {
-                Ok(Some(message)) => {
-                    match message {
-                        PeerMessage::Request {
-                            piece_index,
-                            offset,
-                            length,
-                        } => {
-                            self.handle_piece_request(&mut stream, piece_index, offset, length)
-                                .await?;
-                        }
-                        PeerMessage::Interested => {
-                            tracing::debug!("Peer {} is interested", peer_addr);
-                            // Already unchoked
-                        }
-                        PeerMessage::KeepAlive => {
-                            tracing::debug!("Keep-alive from {}", peer_addr);
-                        }
-                        _ => {
-                            tracing::debug!("Received message from {}: {:?}", peer_addr, message);
-                        }
+                Ok(Some(message)) => match message {
+                    PeerMessage::Request {
+                        piece_index,
+                        offset,
+                        length,
+                    } => {
+                        self.handle_piece_request(&mut stream, piece_index, offset, length)
+                            .await?;
                     }
-                }
+                    PeerMessage::Interested => {
+                        tracing::debug!("Peer {} is interested", peer_addr);
+                    }
+                    PeerMessage::KeepAlive => {
+                        tracing::debug!("Keep-alive from {}", peer_addr);
+                    }
+                    _ => {
+                        tracing::debug!("Received message from {}: {:?}", peer_addr, message);
+                    }
+                },
                 Ok(None) => {
                     tracing::debug!("Connection closed by peer {}", peer_addr);
                     break;
@@ -165,10 +157,10 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         stream: &mut TcpStream,
         piece_count: u32,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let bitfield_bytes = piece_count.div_ceil(8); // Round up to nearest byte
-        let mut bitfield = vec![0xFFu8; bitfield_bytes as usize]; // Set all bits (we have all pieces)
+        let bitfield_bytes = piece_count.div_ceil(8);
+        let mut bitfield = vec![0xFFu8; bitfield_bytes as usize];
 
-        // Clear unused bits in the last byte
+        // The BitTorrent protocol requires that any unused bits at the end of the bitfield are set to zero.
         let unused_bits = (8 - (piece_count % 8)) % 8;
         if unused_bits > 0 && !bitfield.is_empty() {
             let last_index = bitfield.len() - 1;
@@ -177,7 +169,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
 
         let message_length = (1 + bitfield.len()) as u32;
         stream.write_all(&message_length.to_be_bytes()).await?;
-        stream.write_all(&[5u8]).await?; // Bitfield message ID
+        stream.write_all(&[5u8]).await?;
         stream.write_all(&bitfield).await?;
 
         tracing::debug!("Sent bitfield with {} pieces", piece_count);
@@ -191,7 +183,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let message_length = 1u32;
         stream.write_all(&message_length.to_be_bytes()).await?;
-        stream.write_all(&[1u8]).await?; // Unchoke message ID
+        stream.write_all(&[1u8]).await?;
         tracing::debug!("Sent unchoke message");
         Ok(())
     }
@@ -201,7 +193,6 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         &self,
         stream: &mut TcpStream,
     ) -> Result<Option<PeerMessage>, Box<dyn std::error::Error + Send + Sync>> {
-        // Read message length
         let mut length_buffer = [0u8; 4];
         match stream.read_exact(&mut length_buffer).await {
             Ok(_) => {}
@@ -215,7 +206,6 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
             return Ok(Some(PeerMessage::KeepAlive));
         }
 
-        // Read message ID
         let mut id_buffer = [0u8; 1];
         stream.read_exact(&mut id_buffer).await?;
         let message_id = id_buffer[0];
@@ -226,7 +216,6 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
             2 => Ok(Some(PeerMessage::Interested)),
             3 => Ok(Some(PeerMessage::NotInterested)),
             6 => {
-                // Request message
                 let mut request_buffer = [0u8; 12];
                 stream.read_exact(&mut request_buffer).await?;
 
@@ -256,7 +245,6 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
                 }))
             }
             _ => {
-                // Skip unknown message
                 let payload_length = message_length - 1;
                 let mut payload = vec![0u8; payload_length as usize];
                 stream.read_exact(&mut payload).await?;
@@ -280,7 +268,6 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
             length
         );
 
-        // Get piece data from store
         match self
             .piece_store
             .piece_data(self.info_hash, piece_index)
@@ -301,10 +288,9 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
 
                 let block_data = &piece_data[start..end];
 
-                // Send piece message
                 let message_length = (9 + block_data.len()) as u32;
                 stream.write_all(&message_length.to_be_bytes()).await?;
-                stream.write_all(&[7u8]).await?; // Piece message ID
+                stream.write_all(&[7u8]).await?;
                 stream
                     .write_all(&piece_index.as_u32().to_be_bytes())
                     .await?;
