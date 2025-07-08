@@ -57,10 +57,10 @@ fn reproduce_bug_report() {
     println!("  Completion rate: {completion_rate:.1}%");
 
     if completion_rate < 85.0 {
-        println!("  ⚠️  BUG REPRODUCED: Low completion rate during peer churn");
+        println!("  BUG REPRODUCED: Low completion rate during peer churn");
         println!("  Investigation needed: piece request retry logic");
     } else {
-        println!("  ✅ Bug appears to be fixed");
+        println!("  Bug appears to be fixed");
     }
 }
 
@@ -145,7 +145,7 @@ fn regression_test_suite() {
         if let Some(ideal) = results.get_result("ideal_streaming") {
             if ideal.success_rate() < 0.95 {
                 println!(
-                    "  ❌ REGRESSION: Ideal scenario success rate: {:.1}%",
+                    "  REGRESSION: Ideal scenario success rate: {:.1}%",
                     ideal.success_rate() * 100.0
                 );
                 passed = false;
@@ -155,7 +155,7 @@ fn regression_test_suite() {
         if let Some(churn) = results.get_result("peer_churn") {
             if churn.success_rate() < 0.75 {
                 println!(
-                    "  ❌ REGRESSION: Peer churn scenario success rate: {:.1}%",
+                    "  REGRESSION: Peer churn scenario success rate: {:.1}%",
                     churn.success_rate() * 100.0
                 );
                 passed = false;
@@ -163,7 +163,7 @@ fn regression_test_suite() {
         }
 
         if passed {
-            println!("  ✅ All scenarios passed");
+            println!("  All scenarios passed");
         }
 
         println!();
@@ -213,9 +213,9 @@ fn performance_benchmarking() {
 
     // Performance thresholds
     if throughput_mbps < 10.0 {
-        println!("  ⚠️  Performance below threshold (10 Mbps)");
+        println!("  Performance below threshold (10 Mbps)");
     } else {
-        println!("  ✅ Performance meets requirements");
+        println!("  Performance meets requirements");
     }
 }
 

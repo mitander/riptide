@@ -123,9 +123,9 @@ async fn fast_development_mode_example() -> Result<(), Box<dyn std::error::Error
     println!("Expected: >100 Mbps for fast development mode");
 
     if throughput_mbps > 100.0 {
-        println!("  ✅ Performance target met!");
+        println!("  Performance target met!");
     } else {
-        println!("  ⚠️  Performance below target");
+        println!("  Performance below target");
     }
 
     Ok(())
@@ -136,7 +136,7 @@ async fn mode_selection_guide() {
     println!("\n=== Mode Selection Guide ===");
     println!();
 
-    println!("🐞 Use DETERMINISTIC mode when:");
+    println!("Use DETERMINISTIC mode when:");
     println!("  - Reproducing bug reports");
     println!("  - Testing edge cases (network failures, peer churn)");
     println!("  - Validating protocol correctness");
@@ -144,7 +144,7 @@ async fn mode_selection_guide() {
     println!("  - Need reproducible results");
     println!();
 
-    println!("🚀 Use DEVELOPMENT mode when:");
+    println!("Use DEVELOPMENT mode when:");
     println!("  - Developing streaming features");
     println!("  - Testing HTTP range requests");
     println!("  - Iterating on UI/UX");
@@ -152,7 +152,7 @@ async fn mode_selection_guide() {
     println!("  - Need maximum speed");
     println!();
 
-    println!("🔄 Use HYBRID mode when:");
+    println!("Use HYBRID mode when:");
     println!("  - Comprehensive test suites");
     println!("  - CI/CD pipelines");
     println!("  - Load testing with realistic conditions");
@@ -264,11 +264,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== Summary ===");
     println!();
-    println!("✅ Both simulation modes available");
-    println!("✅ Deterministic mode: Perfect for bug reproduction");
-    println!("✅ Development mode: Perfect for streaming performance");
-    println!("✅ Mode selection: Environment variable or programmatic");
-    println!("✅ Performance: >100x improvement in development mode");
+    println!("Both simulation modes available");
+    println!("Deterministic mode: Perfect for bug reproduction");
+    println!("Development mode: Perfect for streaming performance");
+    println!("Mode selection: Environment variable or programmatic");
+    println!("Performance: >100x improvement in development mode");
     println!();
     println!("Next steps:");
     println!("  1. Use development mode for daily streaming work");

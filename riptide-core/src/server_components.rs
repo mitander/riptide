@@ -66,7 +66,7 @@ impl ServerComponents {
 
     /// Get the piece store if available (Development mode only).
     ///
-    /// # Errors  
+    /// # Errors
     /// Returns `ServiceError::NotAvailable` if piece store is not available in this mode.
     pub fn piece_store(&self) -> Result<&Arc<dyn PieceStore>, ServiceError> {
         self.piece_store.as_ref().ok_or(ServiceError::NotAvailable(
@@ -88,7 +88,7 @@ impl ServerComponents {
             ))
     }
 
-    /// Get the FFmpeg processor for transcoding operations.
+    /// Get the FFmpeg processor for remuxing operations.
     pub fn ffmpeg_processor(&self) -> &Arc<dyn FfmpegProcessor> {
         &self.ffmpeg_processor
     }

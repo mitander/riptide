@@ -404,7 +404,7 @@ pub async fn start_simple_server() -> Result<()> {
         create_server_components(config.clone(), RuntimeMode::Development, None).await?;
     let search_service = MediaSearchService::from_runtime_mode(RuntimeMode::Development);
 
-    riptide_web::run_server(config, components, search_service)
+    riptide_web::run_server(config, components, search_service, RuntimeMode::Development)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -445,7 +445,7 @@ pub async fn start_server(
     let components = create_server_components(config.clone(), mode, movies_dir).await?;
     let search_service = MediaSearchService::from_runtime_mode(mode);
 
-    riptide_web::run_server(config, components, search_service)
+    riptide_web::run_server(config, components, search_service, mode)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 
