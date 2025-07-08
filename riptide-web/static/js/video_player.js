@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let streamReadyRetries = 0;
   const maxRetries = 30; // Maximum retries for stream readiness
   let retryInterval = null;
+  let originalVideoSrc = player.src || player.querySelector("source")?.src;
 
   // Function to check if stream is ready
   function checkStreamReadiness() {
@@ -23,25 +24,9 @@ document.addEventListener("DOMContentLoaded", function () {
               `Stream not ready, retrying... (${streamReadyRetries}/${maxRetries})`,
             );
 
-            // Determine file type and required percentage
-            const streamUrl = player.src || player.currentSrc;
-            const isAvi = streamUrl.includes(".avi");
-            const isMkv = streamUrl.includes(".mkv");
-
-            let requiredPercent = "10%";
-            let estimatedTime = "1-2 minutes";
-
-            if (isAvi) {
-              requiredPercent = "70%";
-              estimatedTime = "5-10 minutes";
-            } else if (isMkv) {
-              requiredPercent = "15%";
-              estimatedTime = "2-3 minutes";
-            }
-
             showStreamingIndicator(
-              `Downloading ${requiredPercent} of file for conversion... (${streamReadyRetries}/${maxRetries})`,
-              `Estimated time: ${estimatedTime}`,
+              `Preparing stream for playback... (${streamReadyRetries}/${maxRetries})`,
+              `Downloading file headers and metadata. Usually takes 10-30 seconds.`,
             );
             setTimeout(checkStreamReadiness, 3000); // Retry every 3 seconds for longer waits
           } else {
@@ -54,7 +39,10 @@ document.addEventListener("DOMContentLoaded", function () {
           // Stream is ready
           console.log("Stream ready, starting playback");
           hideStreamingIndicator();
-          player.load(); // Reload the video element
+          const currentPlayer = document.getElementById("video-player");
+          if (currentPlayer) {
+            currentPlayer.load(); // Reload the video element
+          }
         } else {
           // Other error
           showError(
@@ -90,10 +78,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 <p>${message}</p>
                 ${subtitle ? `<p style="color: #007bff; margin-top: 10px;">${subtitle}</p>` : ""}
                 <p style="color: #aaa; margin-top: 10px; font-size: 0.9em;">
-                    Different file formats require different amounts of data:<br>
-                    • AVI files: 70% download required<br>
-                    • MKV files: 15% download required<br>
-                    • Other formats: 10% download required
+                    Smart streaming preparation in progress:<br>
+                    • Downloading file headers and metadata first<br>
+                    • This enables streaming while the rest downloads<br>
+                    • Much faster than previous approach</p>
                 </p>
             </div>
             <style>
@@ -108,16 +96,25 @@ document.addEventListener("DOMContentLoaded", function () {
   // Function to hide streaming indicator and restore video player
   function hideStreamingIndicator() {
     const container = document.getElementById("video-container");
-    container.innerHTML = `
+    // Check if video player already exists
+    let currentPlayer = document.getElementById("video-player");
+
+    if (!currentPlayer) {
+      // Recreate video element only if it doesn't exist
+      container.innerHTML = `
             <video id="video-player" controls style="background: #000;">
-                <source src="${player.src}">
+                <source src="${originalVideoSrc}">
                 Your browser does not support the video tag or this video format.
             </video>
         `;
-    // Re-get the player element after DOM update
-    const newPlayer = document.getElementById("video-player");
-    if (newPlayer) {
-      setupVideoEventListeners(newPlayer);
+      currentPlayer = document.getElementById("video-player");
+      if (currentPlayer) {
+        setupVideoEventListeners(currentPlayer);
+      }
+    } else {
+      // Video player exists, just ensure it's visible and properly set up
+      currentPlayer.style.display = "block";
+      currentPlayer.src = originalVideoSrc;
     }
   }
 
@@ -137,10 +134,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Function to setup video event listeners
   function setupVideoEventListeners(videoElement) {
+    // Remove existing listeners to prevent duplicates
+    const newVideoElement = videoElement.cloneNode(true);
+    videoElement.parentNode.replaceChild(newVideoElement, videoElement);
+
     // Enhanced error handling with format-specific messages
-    videoElement.addEventListener("error", function (e) {
+    newVideoElement.addEventListener("error", function (e) {
       console.error("Video error:", e);
-      const videoSrc = videoElement.currentSrc || videoElement.src;
+      const videoSrc = newVideoElement.currentSrc || newVideoElement.src;
       const isAvi = videoSrc.includes(".avi");
       const isMkv = videoSrc.includes(".mkv");
 
@@ -162,28 +163,28 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Streaming buffer management
-    videoElement.addEventListener("waiting", function () {
+    newVideoElement.addEventListener("waiting", function () {
       console.log("Video buffering - waiting for more data");
     });
 
-    videoElement.addEventListener("playing", function () {
+    newVideoElement.addEventListener("playing", function () {
       console.log("Video playing");
     });
 
-    videoElement.addEventListener("progress", function () {
+    newVideoElement.addEventListener("progress", function () {
       const currentTime = Date.now();
       if (currentTime - lastBufferCheck > 1000) {
         // Check every second
-        const buffered = videoElement.buffered;
+        const buffered = newVideoElement.buffered;
         if (buffered.length > 0) {
           const bufferedEnd = buffered.end(buffered.length - 1);
-          const currentTime = videoElement.currentTime;
+          const currentTime = newVideoElement.currentTime;
           const bufferHealth = bufferedEnd - currentTime;
 
           console.log(`Buffer health: ${bufferHealth.toFixed(1)}s ahead`);
 
           // If buffer is getting low, we could show a loading indicator
-          if (bufferHealth < 5 && !videoElement.paused) {
+          if (bufferHealth < 5 && !newVideoElement.paused) {
             console.log(
               "Low buffer - torrent may need to download more pieces",
             );
@@ -193,18 +194,28 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    videoElement.addEventListener("loadstart", function () {
+    newVideoElement.addEventListener("loadstart", function () {
       console.log("Video loading started");
     });
 
-    videoElement.addEventListener("canplay", function () {
+    newVideoElement.addEventListener("canplay", function () {
       console.log("Video can start playing");
     });
+
+    // Ensure controls are enabled and clickable
+    newVideoElement.addEventListener("loadedmetadata", function () {
+      console.log("Video metadata loaded, controls should be responsive");
+      newVideoElement.controls = true;
+    });
+
+    return newVideoElement;
   }
 
   // Initial setup
-  setupVideoEventListeners(player);
+  const initialPlayer = setupVideoEventListeners(player);
 
-  // Start checking stream readiness immediately
-  checkStreamReadiness();
+  // Start checking stream readiness with a small delay to allow DOM to settle
+  setTimeout(() => {
+    checkStreamReadiness();
+  }, 100);
 });

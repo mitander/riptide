@@ -61,7 +61,7 @@ mod tests {
         let file_size = reader.file_size(info_hash).await.unwrap();
         assert_eq!(file_size, mock_video_data.len() as u64);
 
-        println!("✅ CORE STREAMING LOGIC VERIFIED");
+        println!("CORE STREAMING LOGIC VERIFIED");
         println!("   - Same PieceBasedStreamReader used in production");
         println!("   - Same trait-based PieceStore abstraction");
         println!(
@@ -98,7 +98,7 @@ mod tests {
         // Simulate typical video player requests
         test_video_player_behavior(&reader, info_hash, video_data.len()).await;
 
-        println!("✅ PRODUCTION/SIMULATION EQUIVALENCE VERIFIED");
+        println!("PRODUCTION/SIMULATION EQUIVALENCE VERIFIED");
         println!("   - Same streaming logic for production and simulation");
         println!("   - Only PieceStore implementation differs");
         println!("   - Video player behavior identical");

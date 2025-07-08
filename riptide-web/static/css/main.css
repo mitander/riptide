@@ -5,7 +5,8 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: #0a0a0a;
     color: #ffffff;
     line-height: 1.6;
@@ -261,9 +262,15 @@ nav {
 }
 
 @keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
 }
 
 .status-indicator.offline {
@@ -462,6 +469,8 @@ nav {
 #video-container {
     text-align: center;
     margin: 20px 0;
+    position: relative;
+    z-index: 1;
 }
 
 #video-player {
@@ -473,6 +482,32 @@ nav {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     background: #000;
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+/* Ensure video controls are always clickable */
+#video-player::-webkit-media-controls-panel {
+    z-index: 3;
+    pointer-events: auto;
+}
+
+#video-player::-webkit-media-controls-play-button {
+    z-index: 4;
+    pointer-events: auto;
+}
+
+/* Fix for Firefox controls */
+#video-player::-moz-media-controls {
+    z-index: 3;
+    pointer-events: auto;
+}
+
+/* Ensure no overlay blocks video controls */
+#video-container::before,
+#video-container::after {
+    pointer-events: none;
 }
 
 .video-info {
@@ -503,28 +538,30 @@ nav {
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .action-grid {
         grid-template-columns: repeat(3, 1fr);
     }
-    
+
     .quick-add-form {
         flex-direction: column;
     }
-    
+
     .download-item {
         flex-direction: column;
         align-items: flex-start;
     }
-    
+
     .download-progress {
         margin-top: 8px;
         text-align: left;
     }
-    
+
     #video-player {
         max-width: 100%;
         min-height: 300px;
         max-height: 60vh;
+        position: relative;
+        z-index: 2;
     }
 }

@@ -50,9 +50,9 @@ echo "--------------------------"
 echo "Largest modules (should be <500 lines):"
 find */src/ -name "*.rs" -exec wc -l {} + 2>/dev/null | sort -nr | head -5 | while read lines file; do
     if [ "$lines" -gt 500 ]; then
-        echo "⚠ $file: $lines lines (exceeds 500 line limit)"
+        echo "WARNING: $file: $lines lines (exceeds 500 line limit)"
     else
-        echo "✓ $file: $lines lines"
+        echo "OK: $file: $lines lines"
     fi
 done
 
