@@ -194,9 +194,9 @@ impl AdaptiveStreamingPiecePicker {
         self
     }
 
-    /// Set the download phase for testing purposes
+    /// Update the download phase for testing purposes
     #[cfg(test)]
-    pub fn set_phase(&mut self, phase: DownloadPhase) {
+    pub fn update_phase(&mut self, phase: DownloadPhase) {
         self.phase = phase;
     }
 
@@ -593,7 +593,7 @@ mod tests {
         let mut picker = AdaptiveStreamingPiecePicker::new(20, 1024);
 
         // Set to StreamAndFill phase for this test
-        picker.set_phase(DownloadPhase::StreamAndFill);
+        picker.update_phase(DownloadPhase::StreamAndFill);
 
         // Set current position to piece 5
         picker.update_current_position(5 * 1024);
@@ -649,7 +649,7 @@ mod tests {
         let mut picker = AdaptiveStreamingPiecePicker::new(10, piece_size);
 
         // Set to StreamAndFill phase for this test
-        picker.set_phase(DownloadPhase::StreamAndFill);
+        picker.update_phase(DownloadPhase::StreamAndFill);
 
         // Set current position to middle of piece 5
         picker.update_current_position(5 * piece_size as u64 + 512 * 1024);
@@ -665,7 +665,7 @@ mod tests {
         let mut picker = AdaptiveStreamingPiecePicker::new(10, piece_size);
 
         // Set to StreamAndFill phase for this test
-        picker.set_phase(DownloadPhase::StreamAndFill);
+        picker.update_phase(DownloadPhase::StreamAndFill);
 
         // Request seek to piece 7
         picker.request_seek_position(7 * piece_size as u64, 2 * piece_size as u64);
@@ -696,7 +696,7 @@ mod tests {
         let mut picker = AdaptiveStreamingPiecePicker::new(10, piece_size);
 
         // Set to StreamAndFill phase for this test
-        picker.set_phase(DownloadPhase::StreamAndFill);
+        picker.update_phase(DownloadPhase::StreamAndFill);
 
         // Set current position far from the priority range to avoid interference
         picker.update_current_position(8 * piece_size as u64);
@@ -718,7 +718,7 @@ mod tests {
         let mut picker = AdaptiveStreamingPiecePicker::new(10, 1024);
 
         // Set to StreamAndFill phase for this test
-        picker.set_phase(DownloadPhase::StreamAndFill);
+        picker.update_phase(DownloadPhase::StreamAndFill);
 
         picker.prioritize_range(3, 5, PiecePriority::Critical);
         picker.clear_priorities();
