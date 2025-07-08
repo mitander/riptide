@@ -12,10 +12,15 @@ serde_json = { workspace = true }
 sha1 = { workspace = true }
 regex = { workspace = true }
 toml = "0.8"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 riptide-core = { workspace = true }
 riptide-web = { workspace = true }
 riptide-sim = { workspace = true }
 riptide-search = { workspace = true }
+axum = { workspace = true }
+async-trait = { workspace = true }
+tower = { workspace = true }
 
 [[test]]
 name = "tidy"
@@ -32,3 +37,8 @@ path = "simple_download_test.rs"
 [[test]]
 name = "message_flow_test"
 path = "message_flow_test.rs"
+
+
+[[test]]
+name = "streaming_integration_test"
+path = "streaming_integration_test.rs"
