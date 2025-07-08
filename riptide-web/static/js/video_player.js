@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Function to check if stream is ready
   function checkStreamReadiness() {
-    const streamUrl = player.src || player.currentSrc;
+    const streamUrl = originalVideoSrc || player.src || player.currentSrc;
     if (!streamUrl) return;
 
     fetch(streamUrl, { method: "HEAD" })
@@ -40,7 +40,12 @@ document.addEventListener("DOMContentLoaded", function () {
           console.log("Stream ready, starting playback");
           hideStreamingIndicator();
           const currentPlayer = document.getElementById("video-player");
-          if (currentPlayer) {
+          if (currentPlayer && originalVideoSrc) {
+            // Restore the original src now that stream is ready
+            currentPlayer.src = originalVideoSrc;
+            if (currentPlayer.querySelector("source")) {
+              currentPlayer.querySelector("source").src = originalVideoSrc;
+            }
             currentPlayer.load(); // Reload the video element
           }
         } else {
@@ -209,6 +214,19 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     return newVideoElement;
+  }
+
+  // Store original src and clear it to prevent immediate loading
+  if (!originalVideoSrc) {
+    originalVideoSrc = player.src || player.querySelector("source")?.src;
+  }
+  
+  // Clear the src to prevent browser from trying to load before stream is ready
+  if (originalVideoSrc) {
+    player.src = "";
+    if (player.querySelector("source")) {
+      player.querySelector("source").src = "";
+    }
   }
 
   // Initial setup

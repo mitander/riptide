@@ -428,11 +428,21 @@ impl HttpStreamingService {
 
         let container_format = ContainerDetector::detect_format(&header_data);
 
-        // If source is already MP4 and client supports MP4, use direct streaming
-        if matches!(container_format, ContainerFormat::Mp4)
-            && session.client_capabilities.supports_mp4
-        {
+        // Always use direct streaming for MP4 files (no remuxing needed)
+        if matches!(container_format, ContainerFormat::Mp4) {
             return Ok(StreamingStrategy::Direct);
+        }
+
+        // For non-MP4 sources, check if the complete file is available for remuxing
+        let complete_file_available = self
+            .file_assembler
+            .is_range_available(request.info_hash, 0..file_size);
+
+        // If file is incomplete and client supports MP4, we need to wait for complete download
+        if !complete_file_available && session.client_capabilities.supports_mp4 {
+            return Err(HttpStreamingError::StreamingNotReady {
+                reason: "File is still downloading. Remuxing requires complete file to avoid corruption.".to_string(),
+            });
         }
 
         // Check if adaptive streaming is enabled and supported
@@ -440,7 +450,7 @@ impl HttpStreamingService {
             return Ok(StreamingStrategy::Adaptive);
         }
 
-        // For non-MP4 sources, use remuxed streaming if client supports MP4
+        // For non-MP4 sources with complete files, use remuxed streaming if client supports MP4
         if session.client_capabilities.supports_mp4 {
             let quality = VideoQuality::Medium;
             let format = VideoFormat::Mp4;
@@ -651,59 +661,15 @@ impl HttpStreamingService {
             });
         }
 
-        // For streaming remuxing, we'll attempt to get available data
-        // If complete file isn't available, we'll try with head + tail + available middle
-        let original_data = match self
+        // For streaming remuxing, we need the complete file to avoid corruption
+        // Don't attempt to remux incomplete files as this creates invalid MP4s
+        let original_data = self
             .file_assembler
             .read_range(info_hash, 0..file_size)
             .await
-        {
-            Ok(data) => data,
-            Err(_) => {
-                // If complete file isn't available, try to create a sparse representation
-                // Read head data
-                let head_data = self
-                    .file_assembler
-                    .read_range(info_hash, 0..head_size.min(file_size))
-                    .await
-                    .map_err(|e| HttpStreamingError::RemuxFailed {
-                        reason: format!("Failed to read head data: {e}"),
-                    })?;
-
-                // Read tail data
-                let tail_data = self
-                    .file_assembler
-                    .read_range(info_hash, tail_start..file_size)
-                    .await
-                    .map_err(|e| HttpStreamingError::RemuxFailed {
-                        reason: format!("Failed to read tail data: {e}"),
-                    })?;
-
-                // Try to read available middle data
-                let middle_start = head_size.min(file_size);
-                let middle_end = tail_start.max(middle_start);
-
-                if middle_end > middle_start {
-                    // Try to get available middle data, but don't fail if we can't
-                    let middle_data = self
-                        .file_assembler
-                        .read_range(info_hash, middle_start..middle_end)
-                        .await
-                        .unwrap_or_else(|_| vec![0u8; (middle_end - middle_start) as usize]);
-
-                    // Combine head + middle + tail
-                    let mut combined_data = head_data;
-                    combined_data.extend(middle_data);
-                    combined_data.extend(tail_data);
-                    combined_data
-                } else {
-                    // Just combine head + tail
-                    let mut combined_data = head_data;
-                    combined_data.extend(tail_data);
-                    combined_data
-                }
-            }
-        };
+            .map_err(|e| HttpStreamingError::StreamingNotReady {
+                reason: format!("Complete file not yet available for remuxing: {e}"),
+            })?;
 
         // Detect container format
         let header_data = &original_data[..64.min(original_data.len())];
