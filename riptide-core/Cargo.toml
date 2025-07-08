@@ -25,6 +25,7 @@ urlencoding = { workspace = true }
 bencode-rs = { workspace = true }
 magnet-url = { workspace = true }
 magneto = { workspace = true }
+num_cpus = { workspace = true }
 sha1 = { workspace = true }
 hex = { workspace = true }
 lru = { workspace = true }

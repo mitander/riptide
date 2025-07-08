@@ -12,6 +12,7 @@ pub mod server_components;
 pub mod storage;
 pub mod streaming;
 pub mod torrent;
+pub mod transcoding;
 
 // Re-export main types for convenient access
 pub use config::RiptideConfig;
