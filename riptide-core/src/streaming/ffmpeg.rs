@@ -121,6 +121,13 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
     ) -> StreamingResult<RemuxingResult> {
         let start_time = Instant::now();
 
+        tracing::info!(
+            "Starting FFmpeg remux: {} -> {}",
+            input_path.display(),
+            output_path.display()
+        );
+        tracing::debug!("Remux config: {:?}", config);
+
         // Build FFmpeg command for container remuxing
         let mut cmd = tokio::process::Command::new("ffmpeg");
         cmd.arg("-y") // Overwrite output file
@@ -135,56 +142,73 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
 
         match input_extension.to_lowercase().as_str() {
             "avi" => {
+                tracing::info!("Applying AVI-specific FFmpeg options");
                 // AVI files often have problematic timestamps and indexing
-                cmd.arg("-fflags").arg("+genpts"); // Generate presentation timestamps
+                cmd.arg("-fflags").arg("+genpts+igndts"); // Generate timestamps, ignore DTS
                 cmd.arg("-avoid_negative_ts").arg("make_zero"); // Fix negative timestamps
                 cmd.arg("-max_muxing_queue_size").arg("9999"); // Handle complex streams
+                cmd.arg("-err_detect").arg("ignore_err"); // Ignore non-fatal errors
+                cmd.arg("-copy_unknown"); // Copy unknown streams (compatibility)
             }
             "mkv" => {
+                tracing::info!("Applying MKV-specific FFmpeg options");
                 // MKV files can have complex subtitle/attachment streams
                 cmd.arg("-map").arg("0:v").arg("-map").arg("0:a?"); // Only video and audio
             }
-            _ => {}
+            _ => {
+                tracing::debug!("No special options for extension: {}", input_extension);
+            }
         }
 
-        cmd.arg("-c:v")
-            .arg(&config.video_codec)
-            .arg("-c:a")
-            .arg(&config.audio_codec);
+        // Handle codec settings - special handling for AVI audio compatibility
+        cmd.arg("-c:v").arg(&config.video_codec);
 
-        // Add streaming optimization
+        // For AVI files, check if we need to convert audio for MP4 compatibility
+        if input_extension.to_lowercase() == "avi" && config.audio_codec == "copy" {
+            // AVI often has MP3/PCM audio which may not work well in MP4
+            // Use AAC for better compatibility
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+            tracing::info!("Converting AVI audio to AAC for MP4 compatibility");
+        } else {
+            cmd.arg("-c:a").arg(&config.audio_codec);
+        }
+
+        // Add streaming optimization - faststart is critical for web playback
         if config.faststart {
-            cmd.arg("-movflags").arg("faststart");
+            cmd.arg("-movflags").arg("+faststart");
+        } else {
+            // Even without faststart config, we should use it for browser compatibility
+            cmd.arg("-movflags").arg("+faststart");
         }
 
-        // Additional flags for better streaming compatibility
-        cmd.arg("-movflags").arg("+empty_moov"); // Improve streaming start
-        cmd.arg("-f").arg("mp4"); // Force MP4 output format
+        // Force MP4 output format
+        cmd.arg("-f").arg("mp4");
 
         cmd.arg(output_path);
 
         // Execute FFmpeg command
-        tracing::debug!("Executing FFmpeg command: {:?}", cmd);
+        tracing::info!("Executing FFmpeg command: {:?}", cmd);
 
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| StreamingError::FfmpegError {
+        let output = cmd.output().await.map_err(|e| {
+            tracing::error!("Failed to execute FFmpeg: {}", e);
+            StreamingError::FfmpegError {
                 reason: format!("Failed to execute ffmpeg: {e}"),
-            })?;
+            }
+        })?;
 
         // Log FFmpeg output for debugging
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         if !stdout.is_empty() {
-            tracing::debug!("FFmpeg stdout: {}", stdout);
+            tracing::info!("FFmpeg stdout: {}", stdout);
         }
         if !stderr.is_empty() {
-            tracing::debug!("FFmpeg stderr: {}", stderr);
+            tracing::warn!("FFmpeg stderr: {}", stderr);
         }
 
         if !output.status.success() {
+            tracing::error!("FFmpeg failed with exit code {}: {}", output.status, stderr);
             return Err(StreamingError::FfmpegError {
                 reason: format!("FFmpeg failed with exit code {}: {stderr}", output.status),
             });
@@ -206,15 +230,71 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
             });
         }
 
-        // Check for basic MP4 structure (ftyp box)
-        let mut header = [0u8; 12];
+        // Validate MP4 structure more thoroughly
         if let Ok(mut file) = std::fs::File::open(output_path) {
-            use std::io::Read;
-            if file.read_exact(&mut header).is_ok() && &header[4..8] != b"ftyp" {
+            use std::io::{Read, Seek, SeekFrom};
+
+            // Check for ftyp box at the beginning
+            let mut header = [0u8; 12];
+            if file.read_exact(&mut header).is_err() {
+                return Err(StreamingError::FfmpegError {
+                    reason: "Output file too small to be valid MP4".to_string(),
+                });
+            }
+
+            if &header[4..8] != b"ftyp" {
+                tracing::error!(
+                    "Invalid MP4 output - missing ftyp box. Header: {:?}",
+                    &header[0..12]
+                );
                 return Err(StreamingError::FfmpegError {
                     reason: "Output file does not contain valid MP4 ftyp box".to_string(),
                 });
             }
+
+            // Check for moov atom (required for playback)
+            let mut found_moov = false;
+            let mut pos = 0u64;
+
+            while pos < output_size {
+                if file.seek(SeekFrom::Start(pos)).is_err() {
+                    break;
+                }
+
+                let mut size_and_type = [0u8; 8];
+                if file.read_exact(&mut size_and_type).is_err() {
+                    break;
+                }
+
+                let atom_size = u32::from_be_bytes([
+                    size_and_type[0],
+                    size_and_type[1],
+                    size_and_type[2],
+                    size_and_type[3],
+                ]) as u64;
+
+                let atom_type = &size_and_type[4..8];
+
+                if atom_type == b"moov" {
+                    found_moov = true;
+                    tracing::debug!("Found moov atom at position {}", pos);
+                    break;
+                }
+
+                if atom_size == 0 || atom_size > output_size {
+                    break;
+                }
+
+                pos += atom_size;
+            }
+
+            if !found_moov {
+                return Err(StreamingError::FfmpegError {
+                    reason: "Output MP4 missing moov atom - file is unplayable".to_string(),
+                });
+            }
+
+            tracing::debug!("MP4 validation passed - ftyp and moov atoms found");
         }
 
         let processing_time = start_time.elapsed().as_secs_f64();

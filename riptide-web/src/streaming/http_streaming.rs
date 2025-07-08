@@ -525,17 +525,33 @@ impl HttpStreamingService {
     ) -> Result<StreamingResponse, HttpStreamingError> {
         // Get cache path for remuxed file
         let cache_dir = std::env::temp_dir().join("riptide-remux-cache");
+        tracing::debug!("Cache directory: {}", cache_dir.display());
+
         std::fs::create_dir_all(&cache_dir).map_err(|e| HttpStreamingError::RemuxFailed {
             reason: format!("Failed to create cache directory: {e}"),
         })?;
 
         let cache_path = cache_dir.join(format!("{}.mp4", request.info_hash));
+        tracing::debug!(
+            "Cache path for {}: {}",
+            request.info_hash,
+            cache_path.display()
+        );
 
         // Check if cached MP4 exists
         if !cache_path.exists() {
+            tracing::info!(
+                "Cache miss for {} - remuxed file does not exist",
+                request.info_hash
+            );
+
             // Check if a remux operation is already in progress
             let lock_path = cache_dir.join(format!("{}.lock", request.info_hash));
             if lock_path.exists() {
+                tracing::info!(
+                    "Remux already in progress for {} (lock file exists)",
+                    request.info_hash
+                );
                 // Another process is already remuxing this file
                 return Err(HttpStreamingError::StreamingNotReady {
                     reason: "Stream is being prepared. Please wait...".to_string(),
@@ -580,6 +596,10 @@ impl HttpStreamingService {
             }
 
             // All pieces available - create lock file to prevent concurrent remuxing
+            tracing::info!(
+                "Creating lock file and starting remux for {}",
+                request.info_hash
+            );
             std::fs::write(&lock_path, "").map_err(|e| HttpStreamingError::RemuxFailed {
                 reason: format!("Failed to create lock file: {e}"),
             })?;
@@ -591,14 +611,21 @@ impl HttpStreamingService {
             {
                 Ok(_) => {
                     // Success - remove lock file
+                    tracing::info!("Remux completed successfully for {}", request.info_hash);
                     let _ = std::fs::remove_file(&lock_path);
                 }
                 Err(e) => {
                     // Failed - remove lock file and propagate error
+                    tracing::error!("Remux failed for {}: {:?}", request.info_hash, e);
                     let _ = std::fs::remove_file(&lock_path);
                     return Err(e);
                 }
             }
+        } else {
+            tracing::info!(
+                "Cache hit for {} - serving existing remuxed file",
+                request.info_hash
+            );
         }
 
         // Get file size from cached MP4
@@ -691,6 +718,10 @@ impl HttpStreamingService {
         let temp_reconstructed = temp_dir.join(format!("riptide_reconstruct_{info_hash}.tmp"));
 
         // Reconstruct the complete file from pieces
+        tracing::info!(
+            "Starting file reconstruction to: {}",
+            temp_reconstructed.display()
+        );
         let reconstructed_size = file_reconstructor
             .reconstruct_file(info_hash, &temp_reconstructed)
             .await
@@ -699,9 +730,10 @@ impl HttpStreamingService {
             })?;
 
         tracing::info!(
-            "Successfully reconstructed {} bytes for {}",
+            "Successfully reconstructed {} bytes for {} at {}",
             reconstructed_size,
-            info_hash
+            info_hash,
+            temp_reconstructed.display()
         );
 
         // Detect container format from reconstructed file
@@ -732,14 +764,26 @@ impl HttpStreamingService {
         };
 
         // Perform the remux
+        tracing::info!(
+            "Starting FFmpeg remux from {} to {}",
+            temp_reconstructed.display(),
+            output_path.display()
+        );
         self.ffmpeg_processor
             .remux_to_mp4(&temp_reconstructed, output_path, &remux_options)
             .await
-            .map_err(|e| HttpStreamingError::RemuxFailed {
-                reason: format!("FFmpeg remux failed: {e}"),
+            .map_err(|e| {
+                tracing::error!("FFmpeg remux failed: {:?}", e);
+                HttpStreamingError::RemuxFailed {
+                    reason: format!("FFmpeg remux failed: {e}"),
+                }
             })?;
 
         // Clean up temporary reconstructed file
+        tracing::debug!(
+            "Cleaning up temporary file: {}",
+            temp_reconstructed.display()
+        );
         let _ = tokio::fs::remove_file(&temp_reconstructed).await;
 
         // Verify the output file was created successfully

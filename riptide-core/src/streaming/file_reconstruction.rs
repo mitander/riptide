@@ -40,15 +40,22 @@ impl<P: PieceStore + ?Sized> FileReconstructor<P> {
         })?;
 
         // Verify all pieces are available
+        tracing::info!(
+            "Checking piece availability for {}: {} total pieces",
+            info_hash,
+            piece_count
+        );
         for piece_index in 0..piece_count {
             let piece_idx = PieceIndex::new(piece_index);
             if !self.piece_store.has_piece(info_hash, piece_idx) {
+                tracing::warn!("Missing piece {} for torrent {}", piece_index, info_hash);
                 return Err(StreamingError::MissingPieces {
                     missing: vec![piece_index],
                     total: piece_count,
                 });
             }
         }
+        tracing::info!("All {} pieces available for {}", piece_count, info_hash);
 
         // Create output file
         let mut output_file =
@@ -61,23 +68,46 @@ impl<P: PieceStore + ?Sized> FileReconstructor<P> {
         let mut total_bytes_written = 0u64;
 
         // Reconstruct file piece by piece
+        tracing::info!(
+            "Starting reconstruction of {} pieces to {}",
+            piece_count,
+            output_path.display()
+        );
         for piece_index in 0..piece_count {
             let piece_idx = PieceIndex::new(piece_index);
 
-            tracing::debug!(
-                "Reconstructing piece {}/{} for torrent {}",
-                piece_index + 1,
-                piece_count,
-                info_hash
-            );
+            if piece_index % 100 == 0 || piece_index == piece_count - 1 {
+                tracing::info!(
+                    "Reconstructing piece {}/{} for torrent {} ({:.1}% complete)",
+                    piece_index + 1,
+                    piece_count,
+                    info_hash,
+                    ((piece_index + 1) as f32 / piece_count as f32) * 100.0
+                );
+            } else {
+                tracing::debug!(
+                    "Reconstructing piece {}/{} for torrent {}",
+                    piece_index + 1,
+                    piece_count,
+                    info_hash
+                );
+            }
 
             // Get piece data
             let piece_data = self
                 .piece_store
                 .piece_data(info_hash, piece_idx)
                 .await
-                .map_err(|e| StreamingError::PieceStorageError {
-                    reason: e.to_string(),
+                .map_err(|e| {
+                    tracing::error!(
+                        "Failed to retrieve piece {} for {}: {}",
+                        piece_index,
+                        info_hash,
+                        e
+                    );
+                    StreamingError::PieceStorageError {
+                        reason: e.to_string(),
+                    }
                 })?;
 
             // Write piece data to output file
@@ -101,9 +131,10 @@ impl<P: PieceStore + ?Sized> FileReconstructor<P> {
                 source: e,
             })?;
 
-        tracing::debug!(
-            "Successfully reconstructed {} bytes for torrent {} to {}",
+        tracing::info!(
+            "Successfully reconstructed {} bytes ({:.2} MB) for torrent {} to {}",
             total_bytes_written,
+            total_bytes_written as f64 / (1024.0 * 1024.0),
             info_hash,
             output_path.display()
         );
@@ -122,14 +153,30 @@ impl<P: PieceStore + ?Sized> FileReconstructor<P> {
             }
         })?;
 
+        let mut missing_count = 0;
         for piece_index in 0..piece_count {
             let piece_idx = PieceIndex::new(piece_index);
             if !self.piece_store.has_piece(info_hash, piece_idx) {
-                return Ok(false);
+                missing_count += 1;
             }
         }
 
-        Ok(true)
+        if missing_count > 0 {
+            tracing::debug!(
+                "Cannot reconstruct {}: missing {}/{} pieces",
+                info_hash,
+                missing_count,
+                piece_count
+            );
+            Ok(false)
+        } else {
+            tracing::debug!(
+                "Can reconstruct {}: all {} pieces available",
+                info_hash,
+                piece_count
+            );
+            Ok(true)
+        }
     }
 
     /// Get list of missing pieces
