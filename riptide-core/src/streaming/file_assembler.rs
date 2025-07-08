@@ -224,6 +224,7 @@ impl PieceFileAssembler {
             }
         }
 
+        // Return error if pieces are missing
         if !missing_pieces.is_empty() {
             return Err(FileAssemblerError::InsufficientData {
                 start: range.start,

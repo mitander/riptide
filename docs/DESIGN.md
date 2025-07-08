@@ -16,11 +16,12 @@ riptide/
 ```
 
 **Dependency Graph**: Clean tree structure with no circular dependencies
+
 ```
 riptide-core (foundational)
     ↑
     ├── riptide-sim (simulation & testing)
-    ├── riptide-web (UI & API) 
+    ├── riptide-web (UI & API)
     ├── riptide-cli (command interface)
     └── riptide-search (media discovery)
 ```
@@ -70,7 +71,7 @@ riptide-sim:
 
 - **riptide-core**: BitTorrent protocol and streaming, trait abstractions for testability
 - **riptide-web**: HTTP API and UI, depends only on core
-- **riptide-search**: Media search and metadata, depends only on core  
+- **riptide-search**: Media search and metadata, depends only on core
 - **riptide-cli**: Command interface, depends only on core
 - **riptide-sim**: Simulation implementations of core traits, depends only on core
 
@@ -113,7 +114,7 @@ pub trait PeerManager: Send + Sync {
 pub struct TcpPeerManager { /* TCP peer connections */ }
 pub struct TrackerManager { /* HTTP/UDP tracker communication */ }
 
-// Simulation implementations (riptide-sim) 
+// Simulation implementations (riptide-sim)
 pub struct InMemoryPeerManager { /* Deterministic peer simulation */ }
 pub struct SimulatedTrackerManager { /* Offline tracker responses */ }
 pub struct ContentAwarePeerManager<P: PieceStore> { /* Real piece data serving */ }
@@ -149,6 +150,7 @@ pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
 **Testing Strategy**:
 
 The unified interface enables comprehensive testing:
+
 - Unit tests with simulated components for speed and determinism
 - Integration tests with real components for protocol validation
 - Mixed scenarios testing specific edge cases
@@ -214,7 +216,7 @@ pub struct PieceReconstructionService {
 
 **Choice**: Direct streaming for browser-compatible formats (MP4/WebM), FFmpeg conversion for others (MKV/AVI/MOV) when download is near-complete.
 
-**Rationale**: Direct streaming eliminates transcoding overhead. Legacy formats converted only when sufficient content is available for reliable processing.
+**Rationale**: Direct streaming eliminates processing overhead. Legacy formats remuxed (container conversion without re-encoding) only when sufficient content is available for reliable processing.
 
 ### 6. Database Design
 
@@ -272,7 +274,7 @@ Kill switch if VPN disconnects during torrent activity.
 ### Phase 1: Core **COMPLETE**
 
 - Real BitTorrent tracker communication with HTTP announce/scrape
-- TCP peer connections with BitTorrent wire protocol  
+- TCP peer connections with BitTorrent wire protocol
 - Unified trait-based architecture for production and testing
 - File storage with piece management
 - CLI interface for torrent management
@@ -319,7 +321,7 @@ Every performance claim requires benchmark proof:
 
 - Piece selection: O(log n) for deadline-based
 - Disk I/O: Batched writes, io_uring on Linux
-- Transcoding: Worker pool with CPU affinity
+- Remuxing: Worker pool with CPU affinity
 
 ## Testing Strategy
 
@@ -376,7 +378,7 @@ Storage format versioning from day one prevents future migration pain.
 - All async functions must be cancellation-safe
 - Pre-allocate buffers in hot paths
 - Feature flags for gradual rollout
-- Comprehensive monitoring (download speed, buffer underruns, transcode queue)
+- Comprehensive monitoring (download speed, buffer underruns, remux queue)
 
 ## Philosophy
 

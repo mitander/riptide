@@ -46,6 +46,12 @@ pub struct RemuxingOptions {
 
     /// Maximum allowed processing time (None = no limit)
     pub timeout_seconds: Option<u64>,
+
+    /// Ignore incomplete index data when remuxing
+    pub ignore_index: bool,
+
+    /// Allow processing of partial/incomplete files
+    pub allow_partial: bool,
 }
 
 impl Default for RemuxingOptions {
@@ -55,6 +61,8 @@ impl Default for RemuxingOptions {
             audio_codec: "copy".to_string(), // Don't re-encode audio
             faststart: true,                 // Optimize for streaming
             timeout_seconds: Some(300),      // 5 minute timeout
+            ignore_index: false,             // Default: require complete index
+            allow_partial: false,            // Default: require complete file
         }
     }
 }

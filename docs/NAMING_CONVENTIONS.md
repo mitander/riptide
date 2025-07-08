@@ -56,7 +56,7 @@ pub struct SimulationReport;         // Run results and metrics
 // State mutations
 start_download()        // Not download() - ambiguous with noun
 pause_torrent()        // Not pause() - what are we pausing?
-transcode_segment()    // Not process() - too vague
+remux_container()      // Not process() - too vague
 
 // Queries (pure, no side effects)
 is_seeding()           // Boolean
@@ -301,7 +301,7 @@ const BT_MAX_PEER_CONNECTIONS: usize = 50;
 // Application constants
 const DEFAULT_DOWNLOAD_DIR: &str = "/media/downloads";
 const STREAMING_SEGMENT_DURATION: u64 = 6;  // seconds
-const TRANSCODE_WORKER_THREADS: usize = 4;
+const REMUX_WORKER_THREADS: usize = 4;
 
 // Module-specific (no prefix needed in module)
 mod tracker {
@@ -451,7 +451,7 @@ torrent/
 ### Module Naming
 
 1. Use nouns for things: `tracker`, `peer`, `piece`
-2. Use verbs for processes: `download`, `streaming`, `transcoding`
+2. Use verbs for processes: `download`, `streaming`, `remuxing`
 3. Never plural unless it's a collection module
 4. No redundant prefixes: `piece_picker.rs` not `piece_picker_module.rs`
 

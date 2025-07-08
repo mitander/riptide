@@ -23,6 +23,20 @@ pub enum PiecePriority {
     Urgent = 5,
 }
 
+/// Download phases for streaming container formats.
+///
+/// Manages the different phases of downloading for optimal streaming performance
+/// with non-streamable formats like AVI and MKV.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloadPhase {
+    /// Prioritize downloading the first and last pieces for container metadata
+    PrioritizeHeadTail,
+    /// Head and tail complete; now download sequentially for streaming
+    StreamAndFill,
+    /// The entire file is downloaded
+    Complete,
+}
+
 /// Buffer status around current playback position.
 #[derive(Debug, Clone)]
 pub struct BufferStatus {
@@ -74,6 +88,9 @@ pub trait AdaptivePiecePicker: PiecePicker {
 
     /// Get current buffer status around playback position.
     fn buffer_status(&self) -> BufferStatus;
+
+    /// Get current download phase for streaming optimization.
+    fn download_phase(&self) -> DownloadPhase;
 }
 
 /// Sequential piece picker optimized for streaming.
@@ -133,6 +150,12 @@ pub struct AdaptiveStreamingPiecePicker {
     min_buffer_size: u32,
     /// Maximum buffer size to prevent over-buffering
     max_buffer_size: u32,
+    /// Current download phase for streaming optimization
+    phase: DownloadPhase,
+    /// Number of pieces to prioritize at head of file
+    head_pieces: u32,
+    /// Number of pieces to prioritize at tail of file
+    tail_pieces: u32,
 }
 
 impl AdaptiveStreamingPiecePicker {
@@ -152,6 +175,9 @@ impl AdaptiveStreamingPiecePicker {
             estimated_bandwidth: 1_000_000, // Default 1 MB/s
             min_buffer_size: 3,
             max_buffer_size: 20,
+            phase: DownloadPhase::PrioritizeHeadTail,
+            head_pieces: 5,  // Default: first 5 pieces
+            tail_pieces: 10, // Default: last 10 pieces
         }
     }
 
@@ -166,6 +192,12 @@ impl AdaptiveStreamingPiecePicker {
     pub fn with_adaptive_buffer(mut self, enabled: bool) -> Self {
         self.adaptive_buffer_enabled = enabled;
         self
+    }
+
+    /// Set the download phase for testing purposes
+    #[cfg(test)]
+    pub fn set_phase(&mut self, phase: DownloadPhase) {
+        self.phase = phase;
     }
 
     /// Calculate which piece contains the given byte position.
@@ -238,6 +270,43 @@ impl AdaptiveStreamingPiecePicker {
 
     /// Find the next piece to download based on priorities.
     fn find_next_priority_piece(&mut self) -> Option<PieceIndex> {
+        match self.phase {
+            DownloadPhase::PrioritizeHeadTail => {
+                // Check head pieces first
+                for i in 0..self.head_pieces.min(self.total_pieces) {
+                    if !self.completed_pieces[i as usize] {
+                        return Some(PieceIndex::new(i));
+                    }
+                }
+
+                // Check tail pieces
+                for i in 0..self.tail_pieces.min(self.total_pieces) {
+                    let piece_idx = self.total_pieces - 1 - i;
+
+                    if !self.completed_pieces[piece_idx as usize] {
+                        return Some(PieceIndex::new(piece_idx));
+                    }
+                }
+
+                // If we reach here, head and tail are complete - transition phase
+
+                self.phase = DownloadPhase::StreamAndFill;
+                // Fall through to StreamAndFill logic
+            }
+            DownloadPhase::StreamAndFill => {
+                // Check if we're complete
+                if self.completed_pieces.iter().all(|&completed| completed) {
+                    self.phase = DownloadPhase::Complete;
+                    return None;
+                }
+                // Continue with normal streaming logic
+            }
+            DownloadPhase::Complete => {
+                return None;
+            }
+        }
+
+        // Normal streaming piece selection logic
         let mut candidates: Vec<(u32, PiecePriority)> = Vec::new();
 
         // Collect all incomplete pieces with their priorities
@@ -406,6 +475,10 @@ impl AdaptivePiecePicker for AdaptiveStreamingPiecePicker {
             buffer_duration,
         }
     }
+
+    fn download_phase(&self) -> DownloadPhase {
+        self.phase
+    }
 }
 
 #[cfg(test)]
@@ -436,7 +509,7 @@ mod tests {
 
         // Test backward pieces
         assert_eq!(picker.calculate_piece_priority(9), PiecePriority::Normal); // Recent (distance 1 <= 2)
-        assert_eq!(picker.calculate_piece_priority(8), PiecePriority::Normal); // Recent (distance 2 <= 2)  
+        assert_eq!(picker.calculate_piece_priority(8), PiecePriority::Normal); // Recent (distance 2 <= 2)
         assert_eq!(picker.calculate_piece_priority(7), PiecePriority::Low); // Older (distance 3 > 2)
     }
 
@@ -456,7 +529,7 @@ mod tests {
         assert!(high_speed_buffer > normal_buffer);
 
         // Test lower bandwidth should decrease buffer
-        picker.update_buffer_strategy(1.0, 500_000); // 1x speed, 0.5 MB/s  
+        picker.update_buffer_strategy(1.0, 500_000); // 1x speed, 0.5 MB/s
         let low_bandwidth_buffer = picker.calculate_adaptive_buffer_size();
         assert!(low_bandwidth_buffer < normal_buffer);
 
@@ -517,10 +590,13 @@ mod tests {
 
     #[test]
     fn test_priority_piece_selection() {
-        let mut picker = AdaptiveStreamingPiecePicker::new(20, 32768);
+        let mut picker = AdaptiveStreamingPiecePicker::new(20, 1024);
+
+        // Set to StreamAndFill phase for this test
+        picker.set_phase(DownloadPhase::StreamAndFill);
 
         // Set current position to piece 5
-        picker.update_current_position(5 * 32768);
+        picker.update_current_position(5 * 1024);
 
         // Request urgent piece at position 10
         picker.prioritize_range(10, 12, PiecePriority::Urgent);
@@ -572,6 +648,9 @@ mod tests {
         let piece_size = 1024 * 1024; // 1MB pieces
         let mut picker = AdaptiveStreamingPiecePicker::new(10, piece_size);
 
+        // Set to StreamAndFill phase for this test
+        picker.set_phase(DownloadPhase::StreamAndFill);
+
         // Set current position to middle of piece 5
         picker.update_current_position(5 * piece_size as u64 + 512 * 1024);
 
@@ -584,6 +663,9 @@ mod tests {
     fn test_adaptive_picker_seek_position() {
         let piece_size = 1024 * 1024; // 1MB pieces
         let mut picker = AdaptiveStreamingPiecePicker::new(10, piece_size);
+
+        // Set to StreamAndFill phase for this test
+        picker.set_phase(DownloadPhase::StreamAndFill);
 
         // Request seek to piece 7
         picker.request_seek_position(7 * piece_size as u64, 2 * piece_size as u64);
@@ -613,6 +695,9 @@ mod tests {
         let piece_size = 1024;
         let mut picker = AdaptiveStreamingPiecePicker::new(10, piece_size);
 
+        // Set to StreamAndFill phase for this test
+        picker.set_phase(DownloadPhase::StreamAndFill);
+
         // Set current position far from the priority range to avoid interference
         picker.update_current_position(8 * piece_size as u64);
 
@@ -632,10 +717,103 @@ mod tests {
     fn test_adaptive_picker_clear_priorities() {
         let mut picker = AdaptiveStreamingPiecePicker::new(10, 1024);
 
+        // Set to StreamAndFill phase for this test
+        picker.set_phase(DownloadPhase::StreamAndFill);
+
         picker.prioritize_range(3, 5, PiecePriority::Critical);
         picker.clear_priorities();
 
         // After clearing, should fall back to sequential
         assert_eq!(picker.next_piece(), Some(PieceIndex::new(0)));
+    }
+
+    #[test]
+    fn test_download_phase_transitions() {
+        let mut picker = AdaptiveStreamingPiecePicker::new(20, 1024);
+
+        // Initially should be in PrioritizeHeadTail phase
+        assert_eq!(picker.download_phase(), DownloadPhase::PrioritizeHeadTail);
+
+        // Should prioritize head pieces first (pieces 0-4)
+        for _i in 0..5 {
+            let next = picker.next_piece().unwrap();
+            assert!(
+                next.as_u32() < 5,
+                "Expected head piece (0-4), got {}",
+                next.as_u32()
+            );
+            picker.mark_completed(next);
+        }
+
+        // Should still be in PrioritizeHeadTail phase until tail is complete
+        assert_eq!(picker.download_phase(), DownloadPhase::PrioritizeHeadTail);
+
+        // Should now prioritize tail pieces (pieces 10-19)
+        for _i in 0..10 {
+            let next = picker.next_piece().unwrap();
+            assert!(
+                next.as_u32() >= 10,
+                "Expected tail piece (10-19), got {}",
+                next.as_u32()
+            );
+            picker.mark_completed(next);
+        }
+
+        // Now should transition to StreamAndFill phase when we request next piece
+        // The phase transition happens inside find_next_priority_piece()
+
+        let next = picker.next_piece().unwrap();
+
+        assert_eq!(picker.download_phase(), DownloadPhase::StreamAndFill);
+
+        // Should now follow normal streaming logic for remaining pieces
+        assert!(
+            next.as_u32() >= 5 && next.as_u32() < 10,
+            "Expected middle piece (5-9), got {}",
+            next.as_u32()
+        );
+
+        // Complete all remaining pieces
+        picker.mark_completed(next);
+        while let Some(piece) = picker.next_piece() {
+            picker.mark_completed(piece);
+        }
+
+        // Should transition to Complete phase
+        assert_eq!(picker.download_phase(), DownloadPhase::Complete);
+        assert_eq!(picker.next_piece(), None);
+    }
+
+    #[test]
+    fn test_head_and_tail_piece_calculation() {
+        let mut picker = AdaptiveStreamingPiecePicker::new(100, 1024);
+
+        // Test with default head/tail sizes
+        let head_pieces = picker.head_pieces;
+        let tail_pieces = picker.tail_pieces;
+        assert_eq!(head_pieces, 5);
+        assert_eq!(tail_pieces, 10);
+
+        // Verify head pieces are prioritized
+        for _ in 0..head_pieces {
+            let next = picker.next_piece().unwrap();
+            assert!(
+                next.as_u32() < head_pieces,
+                "Expected head piece, got {}",
+                next.as_u32()
+            );
+            picker.mark_completed(next);
+        }
+
+        // Verify tail pieces are prioritized
+        for _ in 0..tail_pieces {
+            let next = picker.next_piece().unwrap();
+            assert!(
+                next.as_u32() >= 100 - tail_pieces,
+                "Expected tail piece, got {}",
+                next.as_u32()
+            );
+            picker.mark_completed(next);
+        }
     }
 }
