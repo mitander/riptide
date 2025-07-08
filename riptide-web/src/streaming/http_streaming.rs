@@ -48,9 +48,6 @@ pub struct HttpStreamingService {
     ffmpeg_processor: Box<dyn FfmpegProcessor>,
     sessions: Arc<RwLock<HashMap<InfoHash, StreamingSession>>>,
     config: HttpStreamingConfig,
-
-    #[allow(dead_code)]
-    temp_file_cleanup: Arc<RwLock<Vec<std::path::PathBuf>>>,
     performance_metrics: Arc<RwLock<StreamingPerformanceMetrics>>,
 }
 
@@ -262,7 +259,6 @@ impl HttpStreamingService {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             config,
 
-            temp_file_cleanup: Arc::new(RwLock::new(Vec::new())),
             performance_metrics: Arc::new(RwLock::new(StreamingPerformanceMetrics::default())),
         }
     }
@@ -289,7 +285,6 @@ impl HttpStreamingService {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             config,
 
-            temp_file_cleanup: Arc::new(RwLock::new(Vec::new())),
             performance_metrics: Arc::new(RwLock::new(StreamingPerformanceMetrics::default())),
         }
     }
