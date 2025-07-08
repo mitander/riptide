@@ -125,8 +125,29 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
         let mut cmd = tokio::process::Command::new("ffmpeg");
         cmd.arg("-y") // Overwrite output file
             .arg("-i")
-            .arg(input_path)
-            .arg("-c:v")
+            .arg(input_path);
+
+        // Add format-specific options for problematic containers
+        let input_extension = input_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("");
+
+        match input_extension.to_lowercase().as_str() {
+            "avi" => {
+                // AVI files often have problematic timestamps and indexing
+                cmd.arg("-fflags").arg("+genpts"); // Generate presentation timestamps
+                cmd.arg("-avoid_negative_ts").arg("make_zero"); // Fix negative timestamps
+                cmd.arg("-max_muxing_queue_size").arg("9999"); // Handle complex streams
+            }
+            "mkv" => {
+                // MKV files can have complex subtitle/attachment streams
+                cmd.arg("-map").arg("0:v").arg("-map").arg("0:a?"); // Only video and audio
+            }
+            _ => {}
+        }
+
+        cmd.arg("-c:v")
             .arg(&config.video_codec)
             .arg("-c:a")
             .arg(&config.audio_codec);
@@ -135,6 +156,10 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
         if config.faststart {
             cmd.arg("-movflags").arg("faststart");
         }
+
+        // Additional flags for better streaming compatibility
+        cmd.arg("-movflags").arg("+empty_moov"); // Improve streaming start
+        cmd.arg("-f").arg("mp4"); // Force MP4 output format
 
         cmd.arg(output_path);
 
@@ -174,7 +199,32 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
             })?
             .len();
 
+        // Validate that the output is a valid MP4 file
+        if output_size < 100 {
+            return Err(StreamingError::FfmpegError {
+                reason: format!("Output file too small ({output_size} bytes), likely corrupt"),
+            });
+        }
+
+        // Check for basic MP4 structure (ftyp box)
+        let mut header = [0u8; 12];
+        if let Ok(mut file) = std::fs::File::open(output_path) {
+            use std::io::Read;
+            if file.read_exact(&mut header).is_ok() && &header[4..8] != b"ftyp" {
+                return Err(StreamingError::FfmpegError {
+                    reason: "Output file does not contain valid MP4 ftyp box".to_string(),
+                });
+            }
+        }
+
         let processing_time = start_time.elapsed().as_secs_f64();
+
+        tracing::info!(
+            "Successfully remuxed {} to MP4: {} bytes in {:.2}s",
+            input_path.display(),
+            output_size,
+            processing_time
+        );
 
         Ok(RemuxingResult {
             output_size,

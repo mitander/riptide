@@ -8,11 +8,11 @@ use super::strategy::{StreamingError, StreamingResult};
 use crate::torrent::{InfoHash, PieceIndex, PieceStore};
 
 /// Reconstructs complete files from BitTorrent pieces for remuxing
-pub struct FileReconstructor<P: PieceStore> {
+pub struct FileReconstructor<P: PieceStore + ?Sized> {
     piece_store: Arc<P>,
 }
 
-impl<P: PieceStore> FileReconstructor<P> {
+impl<P: PieceStore + ?Sized> FileReconstructor<P> {
     /// Create new file reconstructor with piece store
     pub fn new(piece_store: Arc<P>) -> Self {
         Self { piece_store }
@@ -183,6 +183,13 @@ impl<P: PieceStore> FileReconstructor<P> {
         // Rough estimate: all pieces same size except possibly last
         Ok(piece_size * piece_count as u64)
     }
+}
+
+/// Creates a file reconstructor from a trait object for dynamic dispatch
+pub fn create_file_reconstructor_from_trait_object(
+    piece_store: Arc<dyn PieceStore>,
+) -> FileReconstructor<dyn PieceStore> {
+    FileReconstructor { piece_store }
 }
 
 #[cfg(test)]

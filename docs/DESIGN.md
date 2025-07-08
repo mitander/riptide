@@ -30,18 +30,24 @@ riptide-core (foundational)
 
 ```
 riptide-core:
-  - TorrentEngine     → BitTorrent protocol with trait-based peer/tracker abstractions
-  - TcpPeerManager    → Production TCP peer connections and message handling
-  - TrackerManager    → Real HTTP/UDP tracker communication
-  - Storage Layer     → File organization, reflink/CoW support, piece verification
-  - Streaming Service → Direct streaming, range requests, bandwidth control
-  - TorrentCreator    → File-to-torrent conversion with piece splitting and hashing
+  - TorrentEngine         → BitTorrent protocol with trait-based peer/tracker abstractions
+  - TcpPeerManager        → Production TCP peer connections and message handling
+  - TrackerManager        → Real HTTP/UDP tracker communication
+  - Storage Layer         → File organization, reflink/CoW support, piece verification
+  - Streaming Service     → Direct streaming, range requests, bandwidth control
+  - TorrentCreator        → File-to-torrent conversion with piece splitting and hashing
+  - FileReconstructor     → Full file assembly from pieces for remuxing
+  - PieceBasedStreamReader → Direct byte-range reading from piece store
+  - ContainerDetector     → Media format identification (MP4, MKV, AVI, etc.)
+  - FfmpegProcessor       → Trait-based FFmpeg integration for remuxing
 
 riptide-web:
-  - Web Server        → Axum-based HTTP server with template rendering
-  - API Handlers      → RESTful API for torrent management and streaming
-  - Template Engine   → Server-side rendering with external template files
-  - Static Files      → Asset serving for CSS, JavaScript, images
+  - Web Server            → Axum-based HTTP server with template rendering
+  - HttpStreamingService  → Two-phase streaming coordinator with caching
+  - API Handlers          → RESTful API for torrent management and streaming
+  - Template Engine       → Server-side rendering with external template files
+  - Static Files          → Asset serving for CSS, JavaScript, images
+  - StreamingStrategy     → Direct vs Remux-and-Cache decision logic
 
 riptide-search:
   - Media Search      → Torrent discovery via search providers
@@ -88,6 +94,8 @@ riptide-sim:
 - Trait-based abstractions for testability and simulation
 - Error conversion between crates via explicit mapping
 - Workspace-level dependency management for consistency
+- Two-phase streaming strategy for format compatibility
+- Intelligent caching to avoid redundant remuxing operations
 
 ### 2. Unified Trait-Based BitTorrent Architecture
 
@@ -214,9 +222,27 @@ pub struct PieceReconstructionService {
 
 ### 5. Streaming Strategy
 
-**Choice**: Direct streaming for browser-compatible formats (MP4/WebM), FFmpeg conversion for others (MKV/AVI/MOV) when download is near-complete.
+**Choice**: Two-phase streaming strategy based on container format compatibility.
 
-**Rationale**: Direct streaming eliminates processing overhead. Legacy formats remuxed (container conversion without re-encoding) only when sufficient content is available for reliable processing.
+**Phase 1 - Direct Streaming (MP4/WebM)**:
+
+- Serve byte ranges directly from piece store
+- Zero processing overhead
+- Instant seeking via HTTP range requests
+
+**Phase 2 - Remux-and-Cache (MKV/AVI/MOV)**:
+
+1. **Check Cache**: Look for pre-remuxed MP4 in `/tmp/riptide-remux-cache/{info_hash}.mp4`
+2. **Serve from Cache**: If exists, serve ranges from cached MP4 (same as direct streaming)
+3. **Full Reconstruction**: If not cached:
+   - Verify all pieces available via `FileReconstructor`
+   - Return HTTP 425 (Too Early) if incomplete
+   - Reconstruct entire file from pieces
+   - Remux to MP4 with `-movflags faststart`
+   - Cache result for future requests
+4. **Client Polling**: Frontend polls until 200/206 response indicates stream ready
+
+**Rationale**: Non-streamable formats (MKV/AVI) cannot be partially remuxed - they require the complete file for reliable conversion. The two-phase approach ensures reliable streaming while maintaining performance through caching.
 
 ### 6. Database Design
 
@@ -236,6 +262,29 @@ CREATE TABLE movies (
 ```
 
 ## Critical Components
+
+### Two-Phase Streaming Architecture
+
+```rust
+pub struct HttpStreamingService {
+    file_assembler: Arc<dyn FileAssembler>,
+    piece_store: Arc<dyn PieceStore>,
+    ffmpeg_processor: Box<dyn FfmpegProcessor>,
+    // Cached remuxed files in /tmp/riptide-remux-cache/
+}
+```
+
+**Direct Streaming (MP4/WebM)**:
+
+- `PieceBasedStreamReader` serves ranges directly from piece store
+- Zero processing overhead, instant seeking
+
+**Remux-and-Cache (MKV/AVI)**:
+
+- `FileReconstructor` assembles complete file from pieces
+- FFmpeg remuxes to MP4 with `-movflags faststart`
+- Result cached to avoid repeated processing
+- Client polls with HTTP 425 (Too Early) until ready
 
 ### Streaming Piece Picker
 
@@ -280,14 +329,16 @@ Kill switch if VPN disconnects during torrent activity.
 - CLI interface for torrent management
 - Comprehensive test suite
 
-### Phase 2: Streaming (In Progress)
+### Phase 2: Streaming **COMPLETE**
 
-- Basic streaming service architecture
-- HTTP range request handling
-- Stream coordinator with piece prioritization
-- **Current**: Template/asset extraction and organization
-- Direct streaming optimization
-- Bandwidth management and buffering
+- ✓ HTTP streaming service with range request support
+- ✓ Two-phase streaming strategy (direct vs remux-and-cache)
+- ✓ Container format detection (MP4, WebM, MKV, AVI)
+- ✓ Full file reconstruction from pieces (`FileReconstructor`)
+- ✓ FFmpeg integration for remuxing non-streamable formats
+- ✓ Intelligent caching of remuxed files
+- ✓ Client-side retry logic with progress indication
+- ✓ Piece-based streaming for browser-compatible formats
 
 ### Phase 3: Web UI Enhancement
 

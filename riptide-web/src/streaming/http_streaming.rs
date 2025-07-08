@@ -12,7 +12,7 @@ use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
 use riptide_core::streaming::{
     ContainerDetector, ContainerFormat, FfmpegProcessor, FileAssembler, FileAssemblerError,
-    ProductionFfmpegProcessor,
+    ProductionFfmpegProcessor, create_file_reconstructor_from_trait_object,
 };
 use riptide_core::torrent::InfoHash;
 use riptide_core::video::{VideoFormat, VideoQuality};
@@ -433,24 +433,12 @@ impl HttpStreamingService {
             return Ok(StreamingStrategy::Direct);
         }
 
-        // For non-MP4 sources, check if the complete file is available for remuxing
-        let complete_file_available = self
-            .file_assembler
-            .is_range_available(request.info_hash, 0..file_size);
-
-        // If file is incomplete and client supports MP4, we need to wait for complete download
-        if !complete_file_available && session.client_capabilities.supports_mp4 {
-            return Err(HttpStreamingError::StreamingNotReady {
-                reason: "File is still downloading. Remuxing requires complete file to avoid corruption.".to_string(),
-            });
-        }
-
         // Check if adaptive streaming is enabled and supported
         if self.config.enable_adaptive_streaming && session.client_capabilities.supports_hls {
             return Ok(StreamingStrategy::Adaptive);
         }
 
-        // For non-MP4 sources with complete files, use remuxed streaming if client supports MP4
+        // For non-MP4 sources, use remuxed streaming if client supports MP4
         if session.client_capabilities.supports_mp4 {
             let quality = VideoQuality::Medium;
             let format = VideoFormat::Mp4;
@@ -543,29 +531,74 @@ impl HttpStreamingService {
 
         let cache_path = cache_dir.join(format!("{}.mp4", request.info_hash));
 
-        // If cached MP4 doesn't exist, create it
+        // Check if cached MP4 exists
         if !cache_path.exists() {
-            // Check if we have sufficient data for remuxing before attempting
-            let file_size = self.file_assembler.file_size(request.info_hash).await?;
-            let head_size = 1024 * 1024; // First 1MB for headers
-            let tail_size = 2 * 1024 * 1024; // Last 2MB for index data
-
-            let head_available = self
-                .file_assembler
-                .is_range_available(request.info_hash, 0..head_size.min(file_size));
-            let tail_start = file_size.saturating_sub(tail_size);
-            let tail_available = self
-                .file_assembler
-                .is_range_available(request.info_hash, tail_start..file_size);
-
-            if !head_available || !tail_available {
+            // Check if a remux operation is already in progress
+            let lock_path = cache_dir.join(format!("{}.lock", request.info_hash));
+            if lock_path.exists() {
+                // Another process is already remuxing this file
                 return Err(HttpStreamingError::StreamingNotReady {
-                    reason: "File is being prepared for streaming. Head and tail data not yet available.".to_string(),
+                    reason: "Stream is being prepared. Please wait...".to_string(),
                 });
             }
 
-            self.create_remuxed_file(request.info_hash, &cache_path)
-                .await?;
+            // Create FileReconstructor to check if we can reconstruct the full file
+            let file_reconstructor =
+                create_file_reconstructor_from_trait_object(self.piece_store.clone());
+
+            // Check if all pieces are available
+            if !file_reconstructor
+                .can_reconstruct(request.info_hash)
+                .map_err(|e| HttpStreamingError::RemuxFailed {
+                    reason: format!("Failed to check reconstruction capability: {e}"),
+                })?
+            {
+                // Not all pieces available - return 425 to trigger client retry
+                let missing = file_reconstructor
+                    .missing_pieces(request.info_hash)
+                    .unwrap_or_default();
+                let piece_count = self
+                    .piece_store
+                    .piece_count(request.info_hash)
+                    .map_err(|e| HttpStreamingError::RemuxFailed {
+                        reason: format!("Failed to get piece count: {e}"),
+                    })?;
+
+                tracing::info!(
+                    "Cannot remux yet - missing {}/{} pieces for {}",
+                    missing.len(),
+                    piece_count,
+                    request.info_hash
+                );
+
+                return Err(HttpStreamingError::StreamingNotReady {
+                    reason: format!(
+                        "Downloading file... {:.1}% complete",
+                        ((piece_count - missing.len() as u32) as f32 / piece_count as f32) * 100.0
+                    ),
+                });
+            }
+
+            // All pieces available - create lock file to prevent concurrent remuxing
+            std::fs::write(&lock_path, "").map_err(|e| HttpStreamingError::RemuxFailed {
+                reason: format!("Failed to create lock file: {e}"),
+            })?;
+
+            // Create the remuxed file
+            match self
+                .create_remuxed_file(request.info_hash, &cache_path)
+                .await
+            {
+                Ok(_) => {
+                    // Success - remove lock file
+                    let _ = std::fs::remove_file(&lock_path);
+                }
+                Err(e) => {
+                    // Failed - remove lock file and propagate error
+                    let _ = std::fs::remove_file(&lock_path);
+                    return Err(e);
+                }
+            }
         }
 
         // Get file size from cached MP4
@@ -633,88 +666,95 @@ impl HttpStreamingService {
         info_hash: InfoHash,
         output_path: &std::path::Path,
     ) -> Result<(), HttpStreamingError> {
-        // Check how much of the file we have available
-        let file_size = self.file_assembler.file_size(info_hash).await?;
-
-        // For streaming remuxing, we need head and tail data to create a valid MP4
-        // This allows us to start remuxing while the file is still downloading
-        let head_size = 1024 * 1024; // First 1MB for headers
-        let tail_size = 2 * 1024 * 1024; // Last 2MB for index data
-
         tracing::info!(
-            "Attempting to remux streaming file: {}MB (checking head/tail availability)",
-            file_size / (1024 * 1024)
+            "Starting full file reconstruction and remux for {}",
+            info_hash
         );
 
-        // Check if we have head and tail data available
-        let head_available = self
-            .file_assembler
-            .is_range_available(info_hash, 0..head_size.min(file_size));
-        let tail_start = file_size.saturating_sub(tail_size);
-        let tail_available = self
-            .file_assembler
-            .is_range_available(info_hash, tail_start..file_size);
+        // Create FileReconstructor
+        let file_reconstructor =
+            create_file_reconstructor_from_trait_object(self.piece_store.clone());
 
-        if !head_available || !tail_available {
+        // Verify all pieces are available (double-check)
+        if !file_reconstructor.can_reconstruct(info_hash).map_err(|e| {
+            HttpStreamingError::RemuxFailed {
+                reason: format!("Failed to verify reconstruction capability: {e}"),
+            }
+        })? {
             return Err(HttpStreamingError::RemuxFailed {
-                reason: "Head and tail data not yet available for remuxing".to_string(),
+                reason: "Cannot remux - not all pieces are available".to_string(),
             });
         }
 
-        // For streaming remuxing, we need the complete file to avoid corruption
-        // Don't attempt to remux incomplete files as this creates invalid MP4s
-        let original_data = self
-            .file_assembler
-            .read_range(info_hash, 0..file_size)
-            .await
-            .map_err(|e| HttpStreamingError::StreamingNotReady {
-                reason: format!("Complete file not yet available for remuxing: {e}"),
-            })?;
-
-        // Detect container format
-        let header_data = &original_data[..64.min(original_data.len())];
-        let container_format = ContainerDetector::detect_format(header_data);
-
-        let input_extension = match container_format {
-            ContainerFormat::Avi => "avi",
-            ContainerFormat::Mkv => "mkv",
-            ContainerFormat::Mov => "mov",
-            _ => "bin",
-        };
-
-        // Write available data to temp file for remuxing
+        // Create temporary file for reconstruction
         let temp_dir = std::env::temp_dir();
-        let input_path =
-            temp_dir.join(format!("riptide_remux_input_{info_hash}.{input_extension}"));
+        let temp_reconstructed = temp_dir.join(format!("riptide_reconstruct_{info_hash}.tmp"));
 
-        tokio::fs::write(&input_path, &original_data)
+        // Reconstruct the complete file from pieces
+        let reconstructed_size = file_reconstructor
+            .reconstruct_file(info_hash, &temp_reconstructed)
             .await
             .map_err(|e| HttpStreamingError::RemuxFailed {
-                reason: format!("Failed to write temp input file: {e}"),
+                reason: format!("Failed to reconstruct file from pieces: {e}"),
             })?;
 
-        // Remux to MP4 using FFmpeg with stream copy (no re-encoding)
-        // Use options that work better with partial/incomplete files
+        tracing::info!(
+            "Successfully reconstructed {} bytes for {}",
+            reconstructed_size,
+            info_hash
+        );
+
+        // Detect container format from reconstructed file
+        let header_data = tokio::fs::read(&temp_reconstructed)
+            .await
+            .map_err(|e| HttpStreamingError::RemuxFailed {
+                reason: format!("Failed to read reconstructed file header: {e}"),
+            })?
+            .into_iter()
+            .take(64)
+            .collect::<Vec<_>>();
+
+        let container_format = ContainerDetector::detect_format(&header_data);
+
+        tracing::info!(
+            "Detected container format: {:?}, starting remux to MP4",
+            container_format
+        );
+
+        // Remux to MP4 using FFmpeg with optimal streaming settings
         let remux_options = riptide_core::streaming::RemuxingOptions {
-            ignore_index: true,
-            allow_partial: true,
-            ..Default::default()
+            video_codec: "copy".to_string(),
+            audio_codec: "copy".to_string(),
+            faststart: true, // Critical for streaming - moves moov atom to beginning
+            timeout_seconds: Some(300), // 5 minute timeout
+            ignore_index: false, // We have the complete file now
+            allow_partial: false, // We have the complete file now
         };
-        let _result = self
-            .ffmpeg_processor
-            .remux_to_mp4(&input_path, output_path, &remux_options)
+
+        // Perform the remux
+        self.ffmpeg_processor
+            .remux_to_mp4(&temp_reconstructed, output_path, &remux_options)
             .await
             .map_err(|e| HttpStreamingError::RemuxFailed {
                 reason: format!("FFmpeg remux failed: {e}"),
             })?;
 
-        // Clean up temp input file
-        let _ = tokio::fs::remove_file(&input_path).await;
+        // Clean up temporary reconstructed file
+        let _ = tokio::fs::remove_file(&temp_reconstructed).await;
+
+        // Verify the output file was created successfully
+        let output_metadata = tokio::fs::metadata(output_path).await.map_err(|e| {
+            HttpStreamingError::RemuxFailed {
+                reason: format!("Failed to verify remuxed output file: {e}"),
+            }
+        })?;
 
         tracing::info!(
-            "Successfully remuxed streaming file to MP4: {}",
-            output_path.display()
+            "Successfully remuxed to MP4: {} ({} bytes)",
+            output_path.display(),
+            output_metadata.len()
         );
+
         Ok(())
     }
 
@@ -792,20 +832,20 @@ mod tests {
         ) -> Result<Vec<u8>, riptide_core::streaming::FileAssemblerError> {
             let length = (range.end - range.start) as usize;
             let mut data = vec![0u8; length];
-            
+
             // If reading from the beginning, provide MP4 header for format detection
             if range.start == 0 && length >= 16 {
                 // Create minimal MP4 ftyp box header
-                data[4] = b'f';  // ftyp box type
+                data[4] = b'f'; // ftyp box type
                 data[5] = b't';
                 data[6] = b'y';
                 data[7] = b'p';
-                data[8] = b'm';  // mp42 brand
+                data[8] = b'm'; // mp42 brand
                 data[9] = b'p';
                 data[10] = b'4';
                 data[11] = b'2';
             }
-            
+
             Ok(data)
         }
 

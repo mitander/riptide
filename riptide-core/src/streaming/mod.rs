@@ -22,7 +22,7 @@ pub use ffmpeg::{
     SimulationFfmpegProcessor,
 };
 pub use file_assembler::{CacheStats, FileAssembler, FileAssemblerError, PieceFileAssembler};
-pub use file_reconstruction::FileReconstructor;
+pub use file_reconstruction::{FileReconstructor, create_file_reconstructor_from_trait_object};
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
