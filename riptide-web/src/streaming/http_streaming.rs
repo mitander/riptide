@@ -822,9 +822,25 @@ mod tests {
         async fn read_range(
             &self,
             _info_hash: InfoHash,
-            _range: std::ops::Range<u64>,
+            range: std::ops::Range<u64>,
         ) -> Result<Vec<u8>, riptide_core::streaming::FileAssemblerError> {
-            Ok(vec![0u8; 1024])
+            let length = (range.end - range.start) as usize;
+            let mut data = vec![0u8; length];
+            
+            // If reading from the beginning, provide MP4 header for format detection
+            if range.start == 0 && length >= 16 {
+                // Create minimal MP4 ftyp box header
+                data[4] = b'f';  // ftyp box type
+                data[5] = b't';
+                data[6] = b'y';
+                data[7] = b'p';
+                data[8] = b'm';  // mp42 brand
+                data[9] = b'p';
+                data[10] = b'4';
+                data[11] = b'2';
+            }
+            
+            Ok(data)
         }
 
         fn is_range_available(&self, _info_hash: InfoHash, _range: std::ops::Range<u64>) -> bool {
