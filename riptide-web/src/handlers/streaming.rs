@@ -1,14 +1,14 @@
 //! Simplified streaming handler using HttpStreamingService
 //!
 //! This replaces the complex streaming.rs with a clean integration
-//! of FileAssembler and TranscodingService components.
+//! of FileAssembler and FFmpeg remuxing components.
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, Response, StatusCode};
 use axum::response::IntoResponse;
 use riptide_core::torrent::InfoHash;
-use riptide_core::transcoding::VideoQuality;
+use riptide_core::video::VideoQuality;
 use serde::Deserialize;
 use tracing::{error, info};
 
@@ -100,9 +100,6 @@ fn convert_streaming_response(response: StreamingResponse) -> Response<Body> {
         builder = builder.header(key, value);
     }
 
-    // Set content type
-    builder = builder.header("Content-Type", response.content_type);
-
     // Build response
     builder.body(response.body).unwrap_or_else(|_| {
         Response::builder()
@@ -143,7 +140,7 @@ pub async fn streaming_health(State(state): State<AppState>) -> impl IntoRespons
         "status": "healthy",
         "active_sessions": stats.active_sessions,
         "max_concurrent_streams": stats.max_concurrent_streams,
-        "active_transcoding_jobs": stats.active_transcoding_jobs,
+        "active_remuxing_jobs": stats.active_remuxing_jobs,
         "adaptive_streaming_enabled": stats.adaptive_streaming_enabled,
     });
 
