@@ -201,6 +201,9 @@ impl StorageCache {
     }
 
     /// Put entry into cache
+    ///
+    /// # Errors
+    /// Returns `StorageCacheError::EntryTooLarge` if the entry exceeds the maximum size limit.
     pub async fn put(&self, key: CacheKey, data: Vec<u8>) -> Result<(), StorageCacheError> {
         // Validate entry size
         if data.len() > self.config.max_entry_size {
@@ -306,7 +309,7 @@ impl StorageCache {
     }
 
     /// Get list of cached ranges for a torrent
-    pub async fn get_cached_ranges(&self, info_hash: InfoHash) -> Vec<Range<u64>> {
+    pub async fn cached_ranges(&self, info_hash: InfoHash) -> Vec<Range<u64>> {
         let cache = self.cache.read().await;
         cache
             .iter()
@@ -483,7 +486,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_cached_ranges() {
+    async fn test_cached_ranges() {
         let cache = StorageCache::new_default();
         let info_hash = create_test_info_hash();
         let data = b"test".to_vec();
@@ -496,7 +499,7 @@ mod tests {
         }
 
         // Get cached ranges
-        let mut cached_ranges = cache.get_cached_ranges(info_hash).await;
+        let mut cached_ranges = cache.cached_ranges(info_hash).await;
         cached_ranges.sort_by_key(|r| r.start);
 
         assert_eq!(cached_ranges.len(), 3);

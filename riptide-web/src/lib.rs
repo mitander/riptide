@@ -8,6 +8,7 @@ pub mod handlers;
 pub mod htmx;
 pub mod pages;
 pub mod server;
+pub mod streaming;
 pub mod templates;
 
 // Re-export main types

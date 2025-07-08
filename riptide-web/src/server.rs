@@ -11,16 +11,20 @@ use axum::extract::State;
 use riptide_core::FileLibraryManager;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
-use riptide_core::streaming::FfmpegProcessor;
+use riptide_core::streaming::{FfmpegProcessor, PieceFileAssembler};
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
+use riptide_core::transcoding::TranscodingService;
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
+use crate::handlers::streaming::{
+    cleanup_sessions, stream_torrent, streaming_health, streaming_stats,
+};
 use crate::handlers::{
     api_add_torrent, api_download_torrent, api_library, api_search, api_search_movies,
-    api_seek_torrent, api_settings, api_stats, api_torrents, stream_torrent, video_player_page,
+    api_seek_torrent, api_settings, api_stats, api_torrents, video_player_page,
 };
 use crate::htmx::{
     add_torrent, dashboard_activity, dashboard_downloads, dashboard_stats, system_status,
@@ -28,6 +32,7 @@ use crate::htmx::{
 };
 // Import new architecture modules
 use crate::pages::{dashboard_page, library_page, search_page, torrents_page};
+use crate::streaming::{HttpStreamingConfig, HttpStreamingService};
 
 // Removed PieceStoreType enum - using trait objects instead
 
@@ -46,6 +51,7 @@ pub struct AppState {
     pub services: Arc<ServerComponents>,
     pub search_service: MediaSearchService,
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
+    pub streaming_service: Arc<HttpStreamingService>,
     pub server_started_at: std::time::Instant,
 }
 
@@ -93,6 +99,11 @@ impl AppState {
     pub fn ffmpeg_processor(&self) -> &Arc<dyn FfmpegProcessor> {
         self.services.ffmpeg_processor()
     }
+
+    /// Get the HTTP streaming service.
+    pub fn streaming_service(&self) -> &Arc<HttpStreamingService> {
+        &self.streaming_service
+    }
 }
 
 /// Starts the Riptide web server with the provided configuration and components.
@@ -106,10 +117,21 @@ pub async fn run_server(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conversion_cache = Arc::new(RwLock::new(HashMap::new()));
 
+    // Create streaming service components
+    let piece_store = components.piece_store().unwrap();
+    let file_assembler = Arc::new(PieceFileAssembler::new(piece_store.clone(), Some(100)));
+    let transcoding_service = Arc::new(TranscodingService::new_default());
+    let streaming_service = Arc::new(HttpStreamingService::new(
+        file_assembler,
+        transcoding_service,
+        HttpStreamingConfig::default(),
+    ));
+
     let state = AppState {
         services: Arc::new(components),
         search_service,
         conversion_cache,
+        streaming_service,
         server_started_at: std::time::Instant::now(),
     };
 
@@ -135,6 +157,9 @@ pub async fn run_server(
         .route("/htmx/system/status", axum::routing::get(system_status))
         // Streaming endpoints
         .route("/stream/{info_hash}", axum::routing::get(stream_torrent))
+        .route("/stream/health", axum::routing::get(streaming_health))
+        .route("/stream/stats", axum::routing::get(streaming_stats))
+        .route("/stream/cleanup", axum::routing::post(cleanup_sessions))
         // JSON API endpoints (for external clients)
         .route("/api/stats", axum::routing::get(api_stats))
         .route("/api/torrents", axum::routing::get(api_torrents))

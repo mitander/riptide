@@ -405,7 +405,7 @@ impl SegmentCache {
     }
 
     /// Get list of cached segments for a torrent
-    pub async fn get_cached_segments(&self, info_hash: InfoHash) -> Vec<SegmentKey> {
+    pub async fn cached_segments(&self, info_hash: InfoHash) -> Vec<SegmentKey> {
         let cache = self.cache.read().await;
         cache
             .iter()
@@ -765,7 +765,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_cached_segments() {
+    async fn test_cached_segments() {
         let cache = SegmentCache::new_default();
         let info_hash = InfoHash::new([1u8; 20]);
 
@@ -784,7 +784,7 @@ mod tests {
                 .unwrap();
         }
 
-        let cached_segments = cache.get_cached_segments(info_hash).await;
+        let cached_segments = cache.cached_segments(info_hash).await;
         assert_eq!(cached_segments.len(), 3);
 
         // Check that all segments belong to the correct torrent

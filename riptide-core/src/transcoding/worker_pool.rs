@@ -296,6 +296,9 @@ impl FfmpegInstance {
     }
 
     /// Start FFmpeg process for a job
+    ///
+    /// # Errors
+    /// Returns `TranscodingError` if FFmpeg fails to start or configuration is invalid.
     pub async fn start_job(&mut self, job: &TranscodeJob) -> Result<(), TranscodingError> {
         self.stop_current_job().await;
 
@@ -393,6 +396,9 @@ impl FfmpegInstance {
     }
 
     /// Wait for current job to complete
+    ///
+    /// # Errors
+    /// Returns `TranscodingError::ProcessFailed` if FFmpeg process fails or exits with non-zero status.
     pub async fn wait_for_completion(&mut self) -> Result<(), TranscodingError> {
         if let Some(process) = self.process.take() {
             let output =
@@ -494,7 +500,7 @@ enum PoolCommand {
         job_id: JobId,
         result_tx: oneshot::Sender<Option<TranscodeProgress>>,
     },
-    GetStats {
+    GetStatistics {
         result_tx: oneshot::Sender<PoolStats>,
     },
     Shutdown,
@@ -547,6 +553,9 @@ impl WorkerPool {
     }
 
     /// Cancel job by ID
+    ///
+    /// # Errors
+    /// Returns `TranscodingError::PoolShuttingDown` if the worker pool is shutting down.
     pub async fn cancel_job(&self, job_id: JobId) -> Result<(), TranscodingError> {
         self.command_tx
             .send(PoolCommand::Cancel { job_id })
@@ -556,7 +565,7 @@ impl WorkerPool {
     }
 
     /// Get job progress
-    pub async fn get_progress(
+    pub async fn progress(
         &self,
         job_id: JobId,
     ) -> Result<Option<TranscodeProgress>, TranscodingError> {
@@ -572,11 +581,14 @@ impl WorkerPool {
     }
 
     /// Get pool statistics
-    pub async fn get_stats(&self) -> Result<PoolStats, TranscodingError> {
+    ///
+    /// # Errors
+    /// Returns `TranscodingError::PoolShuttingDown` if the worker pool is shutting down.
+    pub async fn statistics(&self) -> Result<PoolStats, TranscodingError> {
         let (result_tx, result_rx) = oneshot::channel();
 
         self.command_tx
-            .send(PoolCommand::GetStats { result_tx })
+            .send(PoolCommand::GetStatistics { result_tx })
             .map_err(|_| TranscodingError::PoolShuttingDown)?;
 
         result_rx
@@ -634,8 +646,8 @@ impl WorkerPoolImpl {
                             let progress = self.active_jobs.get(&job_id).cloned();
                             let _ = result_tx.send(progress);
                         }
-                        Some(PoolCommand::GetStats { result_tx }) => {
-                            let stats = self.get_stats();
+                        Some(PoolCommand::GetStatistics { result_tx }) => {
+                            let stats = self.statistics();
                             let _ = result_tx.send(stats);
                         }
                         Some(PoolCommand::Shutdown) => {
@@ -773,7 +785,7 @@ impl WorkerPoolImpl {
         self.workers.retain(|worker| !worker.should_recycle());
     }
 
-    fn get_stats(&self) -> PoolStats {
+    fn statistics(&self) -> PoolStats {
         let active_workers = self.workers.iter().filter(|w| w.process.is_some()).count();
         let idle_workers = self.workers.len() - active_workers;
 
@@ -925,7 +937,7 @@ mod tests {
         assert!(config.job_timeout > Duration::ZERO);
 
         let pool = WorkerPool::new(config);
-        let stats = pool.get_stats().await.unwrap();
+        let stats = pool.statistics().await.unwrap();
         assert_eq!(stats.active_workers, 0);
         assert_eq!(stats.idle_workers, 0);
         assert_eq!(stats.queue_length, 0);

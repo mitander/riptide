@@ -86,21 +86,27 @@ impl TranscodingService {
     }
 
     /// Get transcoding progress for a job
-    pub async fn get_progress(
+    pub async fn progress(
         &self,
         job_id: JobId,
     ) -> Result<Option<TranscodeProgress>, TranscodingError> {
-        self.worker_pool.get_progress(job_id).await
+        self.worker_pool.progress(job_id).await
     }
 
     /// Cancel transcoding job
+    ///
+    /// # Errors
+    /// Returns `TranscodingError::PoolShuttingDown` if the worker pool is shutting down.
     pub async fn cancel_job(&self, job_id: JobId) -> Result<(), TranscodingError> {
         self.worker_pool.cancel_job(job_id).await
     }
 
     /// Get service statistics
+    ///
+    /// # Errors
+    /// Returns `TranscodingError::PoolShuttingDown` if the worker pool is shutting down.
     pub async fn statistics(&self) -> Result<TranscodingStats, TranscodingError> {
-        let pool_stats = self.worker_pool.get_stats().await?;
+        let pool_stats = self.worker_pool.statistics().await?;
 
         Ok(TranscodingStats {
             pool_stats,
