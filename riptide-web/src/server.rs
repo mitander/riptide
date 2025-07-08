@@ -8,12 +8,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::State;
-use riptide_core::FileLibraryManager;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
 use riptide_core::streaming::{FfmpegProcessor, PieceFileAssembler};
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
-use riptide_core::transcoding::TranscodingService;
+use riptide_core::{FileLibraryManager, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -95,7 +94,7 @@ impl AppState {
         self.services.conversion_progress()
     }
 
-    /// Get the FFmpeg processor for transcoding operations.
+    /// Get the FFmpeg processor for remuxing operations.
     pub fn ffmpeg_processor(&self) -> &Arc<dyn FfmpegProcessor> {
         self.services.ffmpeg_processor()
     }
@@ -114,16 +113,17 @@ pub async fn run_server(
     _config: RiptideConfig,
     components: ServerComponents,
     search_service: MediaSearchService,
+    _runtime_mode: RuntimeMode,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conversion_cache = Arc::new(RwLock::new(HashMap::new()));
 
     // Create streaming service components
     let piece_store = components.piece_store().unwrap();
     let file_assembler = Arc::new(PieceFileAssembler::new(piece_store.clone(), Some(100)));
-    let transcoding_service = Arc::new(TranscodingService::new_default());
+
     let streaming_service = Arc::new(HttpStreamingService::new(
         file_assembler,
-        transcoding_service,
+        piece_store.clone(),
         HttpStreamingConfig::default(),
     ));
 

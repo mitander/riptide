@@ -140,25 +140,25 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
     for session in sessions.iter().take(8) {
         let (icon, title, description) = if session.progress >= 1.0 {
             (
-                "✅",
+                "✓",
                 format!("Completed: {}", session.filename),
                 Some("Download finished successfully".to_string()),
             )
         } else if session.progress > 0.5 {
             (
-                "⬇️",
+                "↓",
                 format!("Downloading: {}", session.filename),
                 Some(format!("{:.1}% complete", session.progress * 100.0)),
             )
         } else if session.progress > 0.0 {
             (
-                "🔄",
+                "•",
                 format!("Starting: {}", session.filename),
                 Some("Download in progress".to_string()),
             )
         } else {
             (
-                "📋",
+                "•",
                 format!("Queued: {}", session.filename),
                 Some("Waiting for peers".to_string()),
             )
@@ -184,7 +184,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
         };
 
         activities.push(activity::ActivityItem {
-            icon: "🚀".to_string(),
+            icon: "•".to_string(),
             title: "Riptide engine online".to_string(),
             description: Some(format!("System {uptime_str} and ready for downloads")),
             time: format_elapsed_time(state.server_started_at),
@@ -211,7 +211,7 @@ pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> 
     if active_downloads.is_empty() {
         return Html(
             r#"<div class="text-center py-8">
-                <div class="text-4xl mb-2">📦</div>
+                <div class="text-4xl mb-2">•</div>
                 <p class="text-gray-400">No active downloads</p>
                 <p class="text-gray-500 text-sm mt-1">Add a torrent to see progress here</p>
             </div>"#
@@ -269,10 +269,10 @@ fn collect_system_metrics() -> [(&'static str, String, &'static str); 4] {
     let network_latency = "~";
 
     [
-        ("🖥️", cpu_usage.to_string(), "CPU Usage"),
-        ("💾", memory_usage, "Memory"),
-        ("💿", disk_free, "Disk Free"),
-        ("🌐", network_latency.to_string(), "Network"),
+        ("CPU", cpu_usage.to_string(), "CPU Usage"),
+        ("MEM", memory_usage, "Memory"),
+        ("DSK", disk_free, "Disk Free"),
+        ("NET", network_latency.to_string(), "Network"),
     ]
 }
 

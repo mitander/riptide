@@ -32,11 +32,11 @@ pub async fn search_page(State(_state): State<AppState>) -> Html<String> {
 
     let content = format!(
         r#"{}
-        
+
         {}
-        
+
         <div class="text-center py-12">
-            <div class="text-6xl mb-4">🔍</div>
+            <div class="text-6xl mb-4">•</div>
             <h2 class="text-2xl font-semibold text-white mb-4">Search Coming Soon</h2>
             <p class="text-gray-400 mb-8">Search functionality will be integrated with torrent indexers</p>
             {}

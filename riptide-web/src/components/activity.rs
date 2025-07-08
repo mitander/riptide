@@ -16,7 +16,7 @@ pub fn activity_feed(activities: &[ActivityItem]) -> String {
 
     if activities.is_empty() {
         r#"<div class="text-center py-8">
-                <div class="text-4xl mb-2">📡</div>
+                <div class="text-4xl mb-2">•</div>
                 <p class="text-gray-400">No recent activity</p>
                 <p class="text-gray-500 text-sm mt-1">Activity will appear here as you use Riptide</p>
             </div>"#.to_string()
@@ -52,11 +52,11 @@ pub fn activity_item(icon: &str, title: &str, time: &str, description: Option<&s
 /// Renders a notification toast
 pub fn notification_toast(message: &str, toast_type: &str, dismissible: bool) -> String {
     let (bg_class, border_class, icon) = match toast_type {
-        "success" => ("bg-green-800", "border-green-600", "✅"),
-        "error" => ("bg-red-800", "border-red-600", "❌"),
-        "warning" => ("bg-yellow-800", "border-yellow-600", "⚠️"),
-        "info" => ("bg-blue-800", "border-blue-600", "ℹ️"),
-        _ => ("bg-gray-800", "border-gray-600", "📌"),
+        "success" => ("bg-green-800", "border-green-600", "✓"),
+        "error" => ("bg-red-800", "border-red-600", "✗"),
+        "warning" => ("bg-yellow-800", "border-yellow-600", "!"),
+        "info" => ("bg-blue-800", "border-blue-600", "i"),
+        _ => ("bg-gray-800", "border-gray-600", "•"),
     };
 
     let dismiss_button = if dismissible {

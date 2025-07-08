@@ -11,9 +11,9 @@ use crate::server::AppState;
 pub async fn library_page(State(_state): State<AppState>) -> Html<String> {
     let content = format!(
         r#"{}
-        
+
         <div class="text-center py-12">
-            <div class="text-6xl mb-4">📚</div>
+            <div class="text-6xl mb-4">•</div>
             <h2 class="text-2xl font-semibold text-white mb-4">Library Coming Soon</h2>
             <p class="text-gray-400 mb-8">Browse and stream your downloaded content</p>
             {}

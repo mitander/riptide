@@ -46,18 +46,18 @@ pub fn torrent_list_item(params: TorrentListItemParams) -> String {
                     {}
                 </div>
             </div>
-            
+
             <div class="mb-4">
                 {}
             </div>
-            
+
             <div class="flex items-center justify-between text-sm">
                 <div class="flex items-center space-x-4">
                     <span class="text-gray-400">Size: <span class="text-white">{}</span></span>
                     <span class="text-gray-400">Speed: {}</span>
                     {}
                 </div>
-                
+
                 <div class="flex items-center space-x-2">
                     {}
                     {}
@@ -78,7 +78,7 @@ pub fn torrent_list_item(params: TorrentListItemParams) -> String {
             Some(r#"hx-post="/api/torrents/pause" hx-target="closest .bg-gray-800""#)
         ),
         button(
-            "▶️ Stream",
+            "Stream",
             "primary",
             Some(&format!(
                 "onclick=\"window.open('/player/{}', '_blank')\"",
@@ -96,8 +96,8 @@ pub fn torrent_list_item(params: TorrentListItemParams) -> String {
 /// Renders a form for adding new torrents
 pub fn torrent_form() -> String {
     format!(
-        r#"<form hx-post="/api/torrents/add" 
-                hx-target=".add-result" 
+        r#"<form hx-post="/api/torrents/add"
+                hx-target=".add-result"
                 hx-swap="innerHTML"
                 hx-indicator=".add-spinner"
                 class="space-y-4">
@@ -124,13 +124,13 @@ pub fn torrent_form() -> String {
 /// Renders a status badge for torrents
 pub fn torrent_status_badge(status: &str) -> String {
     let (bg_class, text_class, icon) = match status {
-        "downloading" => ("bg-riptide-500 bg-opacity-20", "text-riptide-400", "⬇️"),
-        "completed" => ("bg-green-500 bg-opacity-20", "text-green-400", "✅"),
-        "seeding" => ("bg-blue-500 bg-opacity-20", "text-blue-400", "⬆️"),
-        "paused" => ("bg-yellow-500 bg-opacity-20", "text-yellow-400", "⏸️"),
-        "error" => ("bg-red-500 bg-opacity-20", "text-red-400", "❌"),
-        "queued" => ("bg-gray-500 bg-opacity-20", "text-gray-400", "⏳"),
-        _ => ("bg-gray-500 bg-opacity-20", "text-gray-400", "❓"),
+        "downloading" => ("bg-riptide-500 bg-opacity-20", "text-riptide-400", "↓"),
+        "completed" => ("bg-green-500 bg-opacity-20", "text-green-400", "✓"),
+        "seeding" => ("bg-blue-500 bg-opacity-20", "text-blue-400", "↑"),
+        "paused" => ("bg-yellow-500 bg-opacity-20", "text-yellow-400", "||"),
+        "error" => ("bg-red-500 bg-opacity-20", "text-red-400", "✗"),
+        "queued" => ("bg-gray-500 bg-opacity-20", "text-gray-400", "•"),
+        _ => ("bg-gray-500 bg-opacity-20", "text-gray-400", "?"),
     };
 
     format!(
@@ -151,24 +151,24 @@ pub fn torrent_actions(info_hash: &str) -> String {
             {}
         </div>"#,
         button(
-            "▶️",
+            "▶",
             "ghost",
             Some(&format!(r#"hx-post="/api/torrents/{info_hash}/start""#))
         ),
         button(
-            "⏸️",
+            "||",
             "ghost",
             Some(&format!(r#"hx-post="/api/torrents/{info_hash}/pause""#))
         ),
         button(
-            "🗑️",
+            "✗",
             "danger",
             Some(&format!(
                 r#"hx-delete="/api/torrents/{info_hash}" hx-confirm="Delete this torrent?""#
             ))
         ),
         button(
-            "📊",
+            "Stats",
             "secondary",
             Some(&format!(
                 "hx-get='/torrents/{info_hash}/stats' hx-target='#modal'"
@@ -218,7 +218,7 @@ pub fn torrent_details(params: TorrentDetailsParams) -> String {
                     </svg>
                 </button>
             </div>
-            
+
             <div class="grid grid-cols-2 gap-6">
                 <div class="space-y-4">
                     <div>
@@ -234,7 +234,7 @@ pub fn torrent_details(params: TorrentDetailsParams) -> String {
                         <p class="text-white font-medium">{uploaded_gb:.2} GB</p>
                     </div>
                 </div>
-                
+
                 <div class="space-y-4">
                     <div>
                         <p class="text-gray-400 text-sm">Share Ratio</p>
@@ -258,7 +258,7 @@ pub fn torrent_details(params: TorrentDetailsParams) -> String {
 pub fn torrents_empty_state() -> String {
     format!(
         r#"<div class="text-center py-12">
-            <div class="text-6xl mb-4">📦</div>
+            <div class="text-6xl mb-4">•</div>
             <h3 class="text-xl font-medium text-white mb-2">No torrents yet</h3>
             <p class="text-gray-400 mb-6">Add a magnet link above to start downloading</p>
             {}

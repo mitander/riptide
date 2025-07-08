@@ -57,22 +57,22 @@ pub async fn live_ticker(State(state): State<AppState>) -> Html<String> {
 
     let ticker_stats = vec![
         activity::TickerStat {
-            icon: "⬇️".to_string(),
+            icon: "↓".to_string(),
             value: format!("{download_speed:.1} MB/s"),
             label: "Download".to_string(),
         },
         activity::TickerStat {
-            icon: "⬆️".to_string(),
+            icon: "↑".to_string(),
             value: format!("{upload_speed:.1} MB/s"),
             label: "Upload".to_string(),
         },
         activity::TickerStat {
-            icon: "📦".to_string(),
+            icon: "•".to_string(),
             value: active_torrents.to_string(),
             label: "Active".to_string(),
         },
         activity::TickerStat {
-            icon: "🔄".to_string(),
+            icon: "•".to_string(),
             value: downloading.to_string(),
             label: "Downloading".to_string(),
         },

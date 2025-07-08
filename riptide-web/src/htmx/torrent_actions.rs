@@ -56,7 +56,7 @@ pub async fn add_torrent(
             match state.engine().start_download(info_hash).await {
                 Ok(()) => Html(activity::notification_toast(
                     &format!(
-                        "✅ Torrent added successfully! Download started for {}",
+                        "✓ Torrent added successfully! Download started for {}",
                         &info_hash.to_string()[..8]
                     ),
                     "success",
@@ -83,7 +83,7 @@ pub async fn add_torrent(
                     };
 
                     Html(activity::notification_toast(
-                        &format!("❌ {error_msg}"),
+                        &format!("✗ {error_msg}"),
                         "error",
                         true,
                     ))
@@ -91,7 +91,7 @@ pub async fn add_torrent(
             }
         }
         Err(e) => Html(activity::notification_toast(
-            &format!("❌ Failed to parse magnet link: {e}"),
+            &format!("✗ Failed to parse magnet link: {e}"),
             "error",
             true,
         )),

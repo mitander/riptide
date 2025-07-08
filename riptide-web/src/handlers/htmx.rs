@@ -92,11 +92,11 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
     // Generate activity entries from torrent sessions
     for session in sessions.iter().take(5) {
         let status_icon = if session.progress >= 1.0 {
-            "✅"
+            "✓"
         } else if session.progress > 0.0 {
-            "⬇️"
+            "↓"
         } else {
-            "🔄"
+            "•"
         };
 
         let status_text = if session.progress >= 1.0 {
@@ -121,7 +121,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
 
     let html = if activities.is_empty() {
         r#"<div class="activity-item">
-            <div class="activity-icon">📡</div>
+            <div class="activity-icon">•</div>
             <div class="activity-content">
                 <div class="activity-title">Server running</div>
                 <div class="activity-time">BitTorrent engine active, waiting for downloads</div>
@@ -200,7 +200,7 @@ pub async fn add_torrent_htmx(
             // Start downloading immediately after adding
             match state.engine().start_download(info_hash).await {
                 Ok(()) => Ok(Html(format!(
-                    r#"<div class="add-result success">✅ Torrent added successfully! Download started for {}</div>"#,
+                    r#"<div class="add-result success">✓ Torrent added successfully! Download started for {}</div>"#,
                     &info_hash.to_string()[..8]
                 ))),
                 Err(e) => {
@@ -224,13 +224,13 @@ pub async fn add_torrent_htmx(
                     };
 
                     Ok(Html(format!(
-                        r#"<div class="add-result error">❌ {error_msg}</div>"#
+                        r#"<div class="add-result error">✗ {error_msg}</div>"#
                     )))
                 }
             }
         }
         Err(e) => Ok(Html(format!(
-            r#"<div class="add-result error">❌ Failed to parse magnet link: {e}</div>"#
+            r#"<div class="add-result error">✗ Failed to parse magnet link: {e}</div>"#
         ))),
     }
 }
@@ -319,7 +319,7 @@ pub async fn torrents_list(State(state): State<AppState>) -> Html<String> {
         r#"<tr>
             <td colspan="6" class="no-torrents">
                 <div class="empty-state">
-                    <div class="empty-icon">📦</div>
+                    <div class="empty-icon">•</div>
                     <div>No active torrents</div>
                     <div class="empty-subtitle">Add a magnet link above to start downloading</div>
                 </div>
