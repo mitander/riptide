@@ -321,6 +321,28 @@ impl HttpStreamingService {
         }
     }
 
+    /// Create new streaming service with custom remux config (for testing)
+    pub fn new_with_remux_config(
+        file_assembler: Arc<dyn FileAssembler>,
+        piece_store: Arc<dyn riptide_core::torrent::PieceStore>,
+        config: HttpStreamingConfig,
+        remux_config: RemuxStreamingConfig,
+    ) -> Self {
+        let remux_streaming = Some(create_remux_streaming_strategy_with_config(
+            Arc::clone(&file_assembler),
+            remux_config,
+        ));
+
+        Self {
+            file_assembler,
+            piece_store,
+            remux_streaming,
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            config,
+            performance_metrics: Arc::new(RwLock::new(StreamingPerformanceMetrics::default())),
+        }
+    }
+
     /// Handle streaming request with range support
     pub async fn handle_streaming_request(
         &self,

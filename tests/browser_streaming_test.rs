@@ -182,7 +182,6 @@ async fn test_avi_streaming() {
     // Setup services
     let file_assembler = Arc::new(MockFileAssembler::new());
     let piece_store = Arc::new(MockPieceStore::new());
-    let ffmpeg = ProductionFfmpegProcessor::new(None);
 
     // Create test AVI file
     let info_hash = InfoHash::new([1u8; 20]);
@@ -239,7 +238,6 @@ async fn test_mkv_streaming() {
     // Setup services
     let file_assembler = Arc::new(MockFileAssembler::new());
     let piece_store = Arc::new(MockPieceStore::new());
-    let ffmpeg = ProductionFfmpegProcessor::new(None);
 
     // Create test MKV file (dummy data that will fail FFmpeg processing)
     let info_hash = InfoHash::new([2u8; 20]);
@@ -302,7 +300,6 @@ async fn test_cache_behavior() {
 
     let file_assembler = Arc::new(MockFileAssembler::new());
     let piece_store = Arc::new(MockPieceStore::new());
-    let ffmpeg = ProductionFfmpegProcessor::new(None);
 
     let info_hash = InfoHash::new([3u8; 20]);
     let avi_data = create_test_video_data(ContainerFormat::Avi, 512 * 1024);
@@ -364,7 +361,6 @@ async fn test_cache_behavior() {
 async fn test_concurrent_remux_prevention() {
     let file_assembler = Arc::new(MockFileAssembler::new());
     let piece_store = Arc::new(MockPieceStore::new());
-    let ffmpeg = ProductionFfmpegProcessor::new(None);
 
     let info_hash = InfoHash::new([4u8; 20]);
     let mkv_data = create_test_video_data(ContainerFormat::Mkv, 1024 * 1024);
@@ -435,7 +431,6 @@ async fn test_concurrent_remux_prevention() {
 async fn test_error_conditions() {
     let file_assembler = Arc::new(MockFileAssembler::new());
     let piece_store = Arc::new(MockPieceStore::new());
-    let ffmpeg = ProductionFfmpegProcessor::new(None);
 
     let streaming_service =
         HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
@@ -469,7 +464,6 @@ async fn test_error_conditions() {
 async fn test_mp4_direct_streaming() {
     let file_assembler = Arc::new(MockFileAssembler::new());
     let piece_store = Arc::new(MockPieceStore::new());
-    let ffmpeg = ProductionFfmpegProcessor::new(None);
 
     let info_hash = InfoHash::new([5u8; 20]);
     let mp4_data = create_test_video_data(ContainerFormat::Mp4, 1024 * 1024);

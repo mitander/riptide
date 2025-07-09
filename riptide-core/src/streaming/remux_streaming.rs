@@ -117,26 +117,35 @@ impl RemuxStreamingStrategy {
         &self,
         info_hash: InfoHash,
     ) -> StreamingResult<Arc<RemuxSession>> {
+        // First, try a read lock to quickly get an existing session
+        {
+            let sessions = self.active_sessions.read().await;
+            if let Some(session) = sessions.get(&info_hash)
+                && self.is_session_healthy(session).await
+            {
+                return Ok(Arc::clone(session));
+            }
+        } // Read lock is released here
+
+        // If not found or unhealthy, get a write lock to create a new one
         let mut sessions = self.active_sessions.write().await;
 
+        // Double-check if another thread created it while we waited for the write lock
         if let Some(session) = sessions.get(&info_hash) {
-            // Check if session is still healthy
             if self.is_session_healthy(session).await {
                 return Ok(Arc::clone(session));
             } else {
-                // Remove unhealthy session
                 sessions.remove(&info_hash);
             }
         }
 
-        // Check session limit
         if sessions.len() >= self.config.max_concurrent_sessions {
             return Err(StreamingError::FfmpegError {
                 reason: "Too many concurrent remuxing sessions".to_string(),
             });
         }
 
-        // Create new session
+        // Create a new session
         let file_size = self
             .file_assembler
             .file_size(info_hash)
@@ -157,21 +166,22 @@ impl RemuxStreamingStrategy {
             ffmpeg_process: RwLock::new(None),
             error: RwLock::new(None),
             head_data_ready: Notify::new(),
-            ready_for_output: Notify::new(),
+            ready_for_output: Notify::new(), // The crucial notifier
         });
 
         sessions.insert(info_hash, Arc::clone(&session));
 
-        // Start remuxing task
+        // Spawn the remuxing task in the background
         self.start_remuxing_task(Arc::clone(&session)).await?;
 
-        // Wait for FFmpeg to produce initial output before returning the session
+        // <<< FIX: Block here until the session signals it's ready.
+        // This will block the *first* request until the MP4 header is generated.
         session.ready_for_output.notified().await;
 
-        // Check if there was an error during output preparation
-        if let Some(_error) = session.error.read().await.as_ref() {
+        // After waiting, check if an error occurred during initialization.
+        if let Some(error) = session.error.read().await.as_ref() {
             return Err(StreamingError::FfmpegError {
-                reason: "Failed to prepare remux session for output".to_string(),
+                reason: format!("Failed to prepare remux session: {error:?}"),
             });
         }
 
@@ -318,29 +328,48 @@ impl RemuxStreamingStrategy {
             }
         });
 
-        // Wait for FFmpeg to produce initial output before marking as ready
-        let mut initial_output_wait = 0;
-        loop {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            let output_size = session
-                .output_size
-                .load(std::sync::atomic::Ordering::Relaxed);
-            if output_size > 0 {
-                tracing::info!("FFmpeg produced {} bytes of initial output", output_size);
-                // Notify that session is ready for output
-                session.ready_for_output.notify_waiters();
-                break;
-            }
+        // <<< FIX: Wait for FFmpeg to produce initial output before marking as ready.
+        let initial_output_wait_timeout = Duration::from_secs(15); // Increased timeout for slower machines
+        let initial_output_ready = tokio::time::timeout(initial_output_wait_timeout, async {
+            let mut wait_time = 0u64;
+            loop {
+                let output_size = session
+                    .output_size
+                    .load(std::sync::atomic::Ordering::Relaxed);
 
-            initial_output_wait += 100;
-            if initial_output_wait >= 5000 {
-                // 5 second timeout
-                tracing::warn!("FFmpeg didn't produce output within 5 seconds");
-                // Notify waiters about the timeout
-                session.ready_for_output.notify_waiters();
-                break;
+                // For small files, accept any output after a brief wait
+                // For larger files, wait for substantial output (header + some data)
+                if output_size > 0 && (output_size > 1024 || wait_time > 2000) {
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                wait_time += 100;
             }
+        })
+        .await;
+
+        // Handle timeout case
+        if initial_output_ready.is_err() {
+            let reason = "FFmpeg did not produce initial output within timeout".to_string();
+            tracing::error!(
+                "Remuxing pipeline for {} failed: {}",
+                session.info_hash,
+                reason
+            );
+            *session.error.write().await = Some(StreamingError::FfmpegError {
+                reason: reason.clone(),
+            });
+            session.ready_for_output.notify_waiters(); // Notify waiters about the failure
+            return Err(StreamingError::FfmpegError { reason });
         }
+
+        // Notify waiters that the session is now ready to serve initial content
+        session.ready_for_output.notify_waiters();
+        tracing::info!(
+            "Remux session for {} is now ready for output.",
+            session.info_hash
+        );
 
         // Update status to processing
         *session.status.write().await = RemuxingStatus::Processing {
@@ -472,17 +501,30 @@ impl RemuxStreamingStrategy {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        // Remuxing options
-        cmd.arg("-c:v")
-            .arg(&config.remuxing_options.video_codec)
-            .arg("-c:a")
-            .arg(&config.remuxing_options.audio_codec);
-
-        // MP4 output with streaming optimization
-        if config.remuxing_options.faststart {
-            cmd.arg("-movflags")
-                .arg("+faststart+frag_keyframe+empty_moov");
+        // Smart codec selection for MP4 compatibility
+        cmd.arg("-c:v");
+        if config.remuxing_options.video_codec == "copy" {
+            // For AVI files with raw video, use H.264 encoding since copy doesn't work
+            cmd.arg("libx264")
+                .arg("-preset")
+                .arg("ultrafast") // Fast encoding for real-time streaming
+                .arg("-crf")
+                .arg("23"); // Good quality/speed balance
+        } else {
+            cmd.arg(&config.remuxing_options.video_codec);
         }
+
+        cmd.arg("-c:a");
+        if config.remuxing_options.audio_codec == "copy" {
+            // Use AAC for MP4 compatibility
+            cmd.arg("aac").arg("-b:a").arg("128k"); // Standard bitrate
+        } else {
+            cmd.arg(&config.remuxing_options.audio_codec);
+        }
+
+        // MP4 output with streaming optimization - use fragmented MP4 for pipe output
+        cmd.arg("-movflags")
+            .arg("+frag_keyframe+empty_moov+default_base_moof");
 
         // Output format
         cmd.arg("-f").arg("mp4").arg("pipe:1"); // Output to stdout

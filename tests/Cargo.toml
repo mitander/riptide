@@ -7,6 +7,7 @@ edition = "2024"
 words = "0.1"
 tempfile = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 reqwest = { workspace = true }
 serde_json = { workspace = true }
 sha1 = { workspace = true }
@@ -21,6 +22,7 @@ riptide-search = { workspace = true }
 axum = { workspace = true }
 async-trait = { workspace = true }
 tower = { workspace = true }
+hyper = { workspace = true }
 
 [[test]]
 name = "tidy"
