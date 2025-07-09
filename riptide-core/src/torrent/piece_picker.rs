@@ -729,17 +729,17 @@ mod tests {
 
     #[test]
     fn test_download_phase_transitions() {
-        let mut picker = AdaptiveStreamingPiecePicker::new(20, 1024);
+        let mut picker = AdaptiveStreamingPiecePicker::new(30, 1024);
 
         // Initially should be in PrioritizeHeadTail phase
         assert_eq!(picker.download_phase(), DownloadPhase::PrioritizeHeadTail);
 
-        // Should prioritize head pieces first (pieces 0-4)
-        for _i in 0..5 {
+        // Should prioritize head pieces first (pieces 0-11)
+        for _i in 0..12 {
             let next = picker.next_piece().unwrap();
             assert!(
-                next.as_u32() < 5,
-                "Expected head piece (0-4), got {}",
+                next.as_u32() < 12,
+                "Expected head piece (0-11), got {}",
                 next.as_u32()
             );
             picker.mark_completed(next);
@@ -748,12 +748,12 @@ mod tests {
         // Should still be in PrioritizeHeadTail phase until tail is complete
         assert_eq!(picker.download_phase(), DownloadPhase::PrioritizeHeadTail);
 
-        // Should now prioritize tail pieces (pieces 10-19)
+        // Should now prioritize tail pieces (pieces 20-29)
         for _i in 0..10 {
             let next = picker.next_piece().unwrap();
             assert!(
-                next.as_u32() >= 10,
-                "Expected tail piece (10-19), got {}",
+                next.as_u32() >= 20,
+                "Expected tail piece (20-29), got {}",
                 next.as_u32()
             );
             picker.mark_completed(next);
@@ -768,8 +768,8 @@ mod tests {
 
         // Should now follow normal streaming logic for remaining pieces
         assert!(
-            next.as_u32() >= 5 && next.as_u32() < 10,
-            "Expected middle piece (5-9), got {}",
+            next.as_u32() >= 12 && next.as_u32() < 20,
+            "Expected middle piece (12-19), got {}",
             next.as_u32()
         );
 
@@ -791,7 +791,7 @@ mod tests {
         // Test with default head/tail sizes
         let head_pieces = picker.head_pieces;
         let tail_pieces = picker.tail_pieces;
-        assert_eq!(head_pieces, 5);
+        assert_eq!(head_pieces, 12);
         assert_eq!(tail_pieces, 10);
 
         // Verify head pieces are prioritized
