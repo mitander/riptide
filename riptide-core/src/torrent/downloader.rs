@@ -154,12 +154,12 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     /// - `TorrentError::StorageError` - Failed to store piece data
     pub async fn download_piece(&mut self, piece_index: PieceIndex) -> Result<(), TorrentError> {
         let download_start = Instant::now();
-        tracing::info!("download_piece: START piece={piece_index}");
+        tracing::debug!("download_piece: START piece={piece_index}");
 
         {
             let status_map = self.piece_status.read().await;
             if let Some(PieceStatus::Complete) = status_map.get(&piece_index) {
-                tracing::info!("download_piece: piece={piece_index} already complete, skipping");
+                tracing::debug!("download_piece: piece={piece_index} already complete, skipping");
                 return Ok(());
             }
         }
@@ -205,13 +205,13 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
 
             // Attempt to download the piece
             let peer_download_start = Instant::now();
-            tracing::info!("download_piece: attempting peer download for piece={piece_index}");
+            tracing::debug!("download_piece: attempting peer download for piece={piece_index}");
             match self.download_from_peers_with_recovery(piece_index).await {
                 Ok(piece_data) => {
                     let peer_download_duration = peer_download_start.elapsed();
                     let download_speed_kbps =
                         (piece_data.len() as f64 / 1024.0) / peer_download_duration.as_secs_f64();
-                    tracing::info!(
+                    tracing::debug!(
                         "download_piece: piece={piece_index} peer download COMPLETE, {} bytes in {:.2}s ({:.1} KB/s)",
                         piece_data.len(),
                         peer_download_duration.as_secs_f64(),
@@ -223,15 +223,12 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                     }
 
                     let hash_verify_start = Instant::now();
-                    tracing::debug!("download_piece: verifying hash for piece={piece_index}");
+                    tracing::trace!("download_piece: verifying hash for piece={piece_index}");
                     if !self.verify_piece_hash(piece_index, &piece_data) {
                         let hash_verify_duration = hash_verify_start.elapsed();
                         tracing::warn!(
-                            "download_piece: piece={piece_index} hash verification FAILED in {:.3}s",
+                            "piece {piece_index} hash verification failed in {:.3}s, retrying with different peer",
                             hash_verify_duration.as_secs_f64()
-                        );
-                        tracing::warn!(
-                            "download_piece: piece={piece_index} hash verification FAILED"
                         );
                         let hash_error = TorrentError::PieceHashMismatch { index: piece_index };
 
@@ -253,21 +250,17 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                             status_map.insert(piece_index, PieceStatus::Failed { attempts: 1 });
                         }
 
-                        tracing::warn!(
-                            "Piece {} hash verification failed, will retry with different peer",
-                            piece_index
-                        );
                         continue; // Retry the download
                     }
 
                     let hash_verify_duration = hash_verify_start.elapsed();
-                    tracing::info!(
+                    tracing::trace!(
                         "download_piece: piece={piece_index} hash verification PASSED in {:.3}s",
                         hash_verify_duration.as_secs_f64()
                     );
 
                     let storage_start = Instant::now();
-                    tracing::debug!("download_piece: storing piece={piece_index}");
+                    tracing::trace!("download_piece: storing piece={piece_index}");
                     match self
                         .storage
                         .store_piece(self.torrent_metadata.info_hash, piece_index, &piece_data)
@@ -279,12 +272,20 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                             let total_speed_kbps =
                                 (piece_data.len() as f64 / 1024.0) / total_duration.as_secs_f64();
 
-                            tracing::info!(
-                                "download_piece: piece={piece_index} COMPLETE - storage: {:.3}s, total: {:.2}s ({:.1} KB/s overall)",
-                                storage_duration.as_secs_f64(),
-                                total_duration.as_secs_f64(),
-                                total_speed_kbps
-                            );
+                            // Only log piece completion at info level for significant pieces (every 10th)
+                            if piece_index.as_u32() % 10 == 0 {
+                                tracing::info!(
+                                    "piece {piece_index} complete ({:.1} KB/s) - checkpoint",
+                                    total_speed_kbps
+                                );
+                            } else {
+                                tracing::debug!(
+                                    "download_piece: piece={piece_index} COMPLETE - storage: {:.3}s, total: {:.2}s ({:.1} KB/s overall)",
+                                    storage_duration.as_secs_f64(),
+                                    total_duration.as_secs_f64(),
+                                    total_speed_kbps
+                                );
+                            }
                             {
                                 let mut error_recovery = self.error_recovery.write().await;
                                 let dummy_peer = "0.0.0.0:0".parse().unwrap();
@@ -433,7 +434,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         let mut last_error = TorrentError::NoPeersAvailable;
 
         for (i, peer_addr) in available_peers.iter().enumerate() {
-            tracing::debug!(
+            tracing::trace!(
                 "download_from_peers_with_recovery: trying peer {} of {}: {}",
                 i + 1,
                 available_peers.len(),
@@ -441,7 +442,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
             );
             match self.download_piece_from_peer(*peer_addr, piece_index).await {
                 Ok(piece_data) => {
-                    tracing::debug!("download_from_peers_with_recovery: peer {peer_addr} SUCCESS");
+                    tracing::trace!("download_from_peers_with_recovery: peer {peer_addr} SUCCESS");
                     {
                         let mut error_recovery = self.error_recovery.write().await;
                         error_recovery.record_piece_success(piece_index, *peer_addr);
@@ -449,7 +450,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                     return Ok(piece_data);
                 }
                 Err(e) => {
-                    tracing::debug!(
+                    tracing::trace!(
                         "download_from_peers_with_recovery: peer {peer_addr} FAILED: {e}"
                     );
                     {
@@ -457,12 +458,6 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                         error_recovery.record_piece_failure(piece_index, *peer_addr, &e);
                     }
 
-                    tracing::debug!(
-                        "Failed to download piece {} from peer {}: {}",
-                        piece_index,
-                        peer_addr,
-                        e
-                    );
                     last_error = e;
                     continue;
                 }
@@ -486,12 +481,12 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         piece_index: PieceIndex,
     ) -> Result<Vec<u8>, TorrentError> {
         let total_start = Instant::now();
-        tracing::info!("download_piece_from_peer: START peer={peer_addr}, piece={piece_index}");
+        tracing::trace!("download_piece_from_peer: START peer={peer_addr}, piece={piece_index}");
 
         let connect_start = Instant::now();
         self.connect_to_peer(peer_addr).await?;
         let connect_duration = connect_start.elapsed();
-        tracing::info!(
+        tracing::trace!(
             "download_piece_from_peer: connection successful in {:.3}s, starting block download",
             connect_duration.as_secs_f64()
         );
@@ -500,7 +495,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         let piece_data = self.download_piece_blocks(peer_addr, piece_index).await?;
         let blocks_duration = blocks_start.elapsed();
         let blocks_speed_kbps = (piece_data.len() as f64 / 1024.0) / blocks_duration.as_secs_f64();
-        tracing::info!(
+        tracing::trace!(
             "download_piece_from_peer: blocks downloaded in {:.3}s ({:.1} KB/s), disconnecting",
             blocks_duration.as_secs_f64(),
             blocks_speed_kbps
@@ -512,7 +507,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
 
         let total_duration = total_start.elapsed();
         let total_speed_kbps = (piece_data.len() as f64 / 1024.0) / total_duration.as_secs_f64();
-        tracing::info!(
+        tracing::trace!(
             "download_piece_from_peer: SUCCESS peer={peer_addr}, piece={piece_index}, {} bytes - connect: {:.3}s, blocks: {:.3}s, disconnect: {:.3}s, total: {:.3}s ({:.1} KB/s)",
             piece_data.len(),
             connect_duration.as_secs_f64(),
@@ -526,14 +521,14 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
 
     /// Establishes connection to a peer for downloading.
     async fn connect_to_peer(&self, peer_addr: SocketAddr) -> Result<(), TorrentError> {
-        tracing::debug!("Connecting to peer: {peer_addr}");
+        tracing::trace!("Connecting to peer: {peer_addr}");
         let mut peer_manager = self.peer_manager.write().await;
         let result = peer_manager
             .connect_peer(peer_addr, self.torrent_metadata.info_hash, self.peer_id)
             .await;
         match &result {
-            Ok(_) => tracing::debug!("Successfully connected to peer: {peer_addr}"),
-            Err(e) => tracing::debug!("Failed to connect to peer {peer_addr}: {e}"),
+            Ok(_) => tracing::trace!("Successfully connected to peer: {peer_addr}"),
+            Err(e) => tracing::trace!("Failed to connect to peer {peer_addr}: {e}"),
         }
         result
     }
@@ -544,9 +539,9 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         peer_addr: SocketAddr,
         piece_index: PieceIndex,
     ) -> Result<Vec<u8>, TorrentError> {
-        tracing::debug!("download_piece_blocks: START peer={peer_addr}, piece={piece_index}");
+        tracing::trace!("download_piece_blocks: START peer={peer_addr}, piece={piece_index}");
         let piece_size = self.calculate_piece_size(piece_index);
-        tracing::debug!("download_piece_blocks: piece_size={piece_size}");
+        tracing::trace!("download_piece_blocks: piece_size={piece_size}");
         let mut piece_data = vec![0u8; piece_size];
         let mut offset = 0u32;
         let mut block_count = 0;
@@ -554,7 +549,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         while offset < piece_size as u32 {
             let request_length = std::cmp::min(BLOCK_SIZE, piece_size as u32 - offset);
             block_count += 1;
-            tracing::debug!(
+            tracing::trace!(
                 "download_piece_blocks: requesting block {block_count}, offset={offset}, length={request_length}"
             );
 
@@ -563,7 +558,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                 .await
             {
                 Ok(data) => {
-                    tracing::debug!(
+                    tracing::trace!(
                         "download_piece_blocks: block {block_count} received, {} bytes",
                         data.len()
                     );
@@ -579,7 +574,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
             offset += request_length;
         }
 
-        tracing::debug!(
+        tracing::trace!(
             "download_piece_blocks: SUCCESS downloaded {block_count} blocks, total {} bytes",
             piece_data.len()
         );

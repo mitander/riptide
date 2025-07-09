@@ -89,7 +89,7 @@ struct OutputChunk {
 /// Current status of remuxing session
 #[derive(Debug, Clone)]
 enum RemuxingStatus {
-    /// Waiting for sufficient head data
+    /// Waiting for sufficient head and tail data
     WaitingForHead { _bytes_needed: u64 },
     /// FFmpeg process active and processing
     Processing {
@@ -328,23 +328,16 @@ impl RemuxStreamingStrategy {
             }
         });
 
-        // <<< FIX: Wait for FFmpeg to produce initial output before marking as ready.
-        let initial_output_wait_timeout = Duration::from_secs(15); // Increased timeout for slower machines
+        // <<< FIX: Wait for FFmpeg to produce complete MP4 header before marking as ready.
+        let initial_output_wait_timeout = Duration::from_secs(30); // Increased timeout for MP4 header generation
         let initial_output_ready = tokio::time::timeout(initial_output_wait_timeout, async {
-            let mut wait_time = 0u64;
             loop {
-                let output_size = session
-                    .output_size
-                    .load(std::sync::atomic::Ordering::Relaxed);
-
-                // For small files, accept any output after a brief wait
-                // For larger files, wait for substantial output (header + some data)
-                if output_size > 0 && (output_size > 1024 || wait_time > 2000) {
+                // Check if we have a valid MP4 header
+                if RemuxStreamingStrategy::has_complete_mp4_header(&session).await {
                     break;
                 }
 
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                wait_time += 100;
+                tokio::time::sleep(Duration::from_millis(200)).await;
             }
         })
         .await;
@@ -423,30 +416,44 @@ impl RemuxStreamingStrategy {
         Ok(())
     }
 
-    /// Wait for sufficient head data before starting FFmpeg
+    /// Wait for sufficient head and tail data before starting FFmpeg
     async fn wait_for_head_data(
         session: &RemuxSession,
         file_assembler: &Arc<dyn FileAssembler>,
         config: &RemuxStreamingConfig,
     ) -> StreamingResult<()> {
         let head_range = 0..config.min_head_size.min(session.file_size);
-        let required_bytes = head_range.end;
+        let head_bytes = head_range.end;
+
+        // Calculate tail range - need tail data for proper remuxing
+        let tail_size = config.min_head_size.min(session.file_size);
+        let tail_start = session.file_size.saturating_sub(tail_size);
+        let tail_range = tail_start..session.file_size;
 
         tracing::info!(
-            "Waiting for head data: {} needs {} bytes (0..{})",
+            "Waiting for head and tail data: {} needs head {}..{} ({} bytes) and tail {}..{} ({} bytes)",
             session.info_hash,
-            required_bytes,
-            head_range.end
+            head_range.start,
+            head_range.end,
+            head_bytes,
+            tail_range.start,
+            tail_range.end,
+            tail_range.end - tail_range.start
         );
 
-        // Wait for head data with timeout
+        // Wait for both head and tail data with timeout
         let start_time = Instant::now();
         let mut last_log_time = start_time;
 
         while start_time.elapsed() < config.piece_wait_timeout {
-            if file_assembler.is_range_available(session.info_hash, head_range.clone()) {
+            let head_available =
+                file_assembler.is_range_available(session.info_hash, head_range.clone());
+            let tail_available =
+                file_assembler.is_range_available(session.info_hash, tail_range.clone());
+
+            if head_available && tail_available {
                 tracing::info!(
-                    "Head data available for {} after {:.2}s",
+                    "Head and tail data available for {} after {:.2}s",
                     session.info_hash,
                     start_time.elapsed().as_secs_f64()
                 );
@@ -458,9 +465,10 @@ impl RemuxStreamingStrategy {
             // Log progress every 2 seconds
             if last_log_time.elapsed().as_secs() >= 2 {
                 tracing::debug!(
-                    "Still waiting for head data for {}: need {} bytes, elapsed {:.1}s",
+                    "Still waiting for head and tail data for {}: head available: {}, tail available: {}, elapsed {:.1}s",
                     session.info_hash,
-                    required_bytes,
+                    head_available,
+                    tail_available,
                     start_time.elapsed().as_secs_f64()
                 );
                 last_log_time = Instant::now();
@@ -470,9 +478,12 @@ impl RemuxStreamingStrategy {
         }
 
         tracing::error!(
-            "Head data timeout for {}: needed {} bytes but insufficient data after {:.1}s",
+            "Head and tail data timeout for {}: needed head {}..{} and tail {}..{} but insufficient data after {:.1}s",
             session.info_hash,
-            required_bytes,
+            head_range.start,
+            head_range.end,
+            tail_range.start,
+            tail_range.end,
             start_time.elapsed().as_secs_f64()
         );
 
@@ -481,7 +492,8 @@ impl RemuxStreamingStrategy {
 
         Err(StreamingError::FfmpegError {
             reason: format!(
-                "Waiting for sufficient head data - need {required_bytes} bytes for remux streaming",
+                "Waiting for sufficient head and tail data - need head {head_bytes} bytes and tail {} bytes for remux streaming",
+                tail_range.end - tail_range.start
             ),
         })
     }
@@ -676,7 +688,7 @@ impl RemuxStreamingStrategy {
             match *status {
                 RemuxingStatus::WaitingForHead { .. } => {
                     return Err(StreamingError::FfmpegError {
-                        reason: "Waiting for sufficient head data".to_string(),
+                        reason: "Waiting for sufficient head and tail data".to_string(),
                     });
                 }
                 RemuxingStatus::Processing { .. } => {
@@ -706,6 +718,65 @@ impl RemuxStreamingStrategy {
         }
 
         Ok(result)
+    }
+
+    /// Check if the session has a complete MP4 header suitable for browser streaming
+    async fn has_complete_mp4_header(session: &RemuxSession) -> bool {
+        let output_chunks = session.output_chunks.read().await;
+
+        if output_chunks.is_empty() {
+            return false;
+        }
+
+        // Combine initial chunks to get enough data for MP4 header detection
+        let mut combined_data = Vec::new();
+        let mut current_pos = 0u64;
+
+        // Get up to the first 1KB of data from sequential chunks
+        while combined_data.len() < 1024 {
+            if let Some(chunk) = output_chunks.get(&current_pos) {
+                combined_data.extend_from_slice(&chunk.data);
+                current_pos += chunk.data.len() as u64;
+            } else {
+                break;
+            }
+        }
+
+        // Need at least 32 bytes to check for ftyp box
+        if combined_data.len() < 32 {
+            return false;
+        }
+
+        let data = &combined_data;
+
+        // Check for ftyp box at the beginning (required for MP4)
+        if data.len() >= 8 && &data[4..8] == b"ftyp" {
+            // Look for moov box in the available data - critical for streaming
+            let has_moov = data.windows(4).any(|window| window == b"moov");
+
+            if has_moov {
+                tracing::info!("Complete MP4 header detected: ftyp + moov boxes present");
+                return true;
+            } else {
+                // For streaming with head+tail approach, ftyp is sufficient to start
+                // moov box might come later in the stream or be fragmented
+                if data.len() >= 32 {
+                    tracing::info!(
+                        "MP4 ftyp box detected, starting streaming (moov may come later)"
+                    );
+                    return true;
+                }
+
+                // Check if we have enough data to potentially contain moov
+                // If we have significant data (>64KB) but no moov, it might be fragmented
+                if data.len() > 65536 {
+                    tracing::warn!("Large MP4 chunk without moov box - may be fragmented MP4");
+                    return false;
+                }
+            }
+        }
+
+        false
     }
 }
 

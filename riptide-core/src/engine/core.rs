@@ -345,7 +345,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             .map_err(|e| format!("Failed to announce to trackers: {e}"))?;
 
         tracing::info!(
-            "Tracker response received - interval: {}, complete: {}, incomplete: {}",
+            "tracker response: {} peers, interval {}s, seeders {}, leechers {}",
+            response.peers.len(),
             response.interval,
             response.complete,
             response.incomplete
@@ -355,9 +356,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
             return Err("No peers available for download".into());
         }
 
-        tracing::info!("Tracker responded with {} peers", response.peers.len());
         for (i, peer) in response.peers.iter().enumerate() {
-            tracing::debug!("Peer {i}: {peer}");
+            tracing::trace!("Peer {i}: {peer}");
         }
         Ok(response.peers)
     }
@@ -379,9 +379,8 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         params: DownloadParams<P>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         tracing::info!(
-            "Starting download of {} pieces for torrent {} with {} peers",
+            "starting download: {} pieces with {} peers",
             params.piece_count,
-            params.info_hash,
             params.peers.len()
         );
 
@@ -399,7 +398,7 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
 
         piece_downloader.update_peers(params.peers.clone()).await;
         tracing::debug!("Updated piece downloader with {} peers", params.peers.len());
-        tracing::debug!("Peer addresses: {:?}", params.peers);
+        tracing::trace!("Peer addresses: {:?}", params.peers);
 
         let start_time = Instant::now();
         let mut last_speed_update = start_time;
@@ -467,12 +466,23 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
                         last_speed_update = now;
                     }
 
-                    tracing::debug!(
-                        "Downloaded piece {} in {:?} ({} bytes) - priority-based selection",
-                        piece_idx.as_u32(),
-                        piece_duration,
-                        piece_downloader.metadata().piece_length
-                    );
+                    // Log download progress every 5 pieces instead of every piece
+                    if pieces_downloaded % 5 == 0 {
+                        tracing::info!(
+                            "download progress: {}/{} pieces ({:.1}%) - {:.1} KB/s avg",
+                            pieces_downloaded,
+                            params.piece_count,
+                            (pieces_downloaded as f64 / params.piece_count as f64) * 100.0,
+                            (bytes_downloaded as f64 / 1024.0) / start_time.elapsed().as_secs_f64()
+                        );
+                    } else {
+                        tracing::debug!(
+                            "Downloaded piece {} in {:?} ({} bytes) - priority-based selection",
+                            piece_idx.as_u32(),
+                            piece_duration,
+                            piece_downloader.metadata().piece_length
+                        );
+                    }
 
                     Self::notify_piece_completed(
                         params.info_hash,

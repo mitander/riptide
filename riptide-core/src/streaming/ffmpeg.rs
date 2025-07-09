@@ -149,9 +149,7 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
                 cmd.arg("-max_muxing_queue_size").arg("9999"); // Handle complex streams
                 cmd.arg("-err_detect").arg("ignore_err"); // Ignore non-fatal errors
                 cmd.arg("-copy_unknown"); // Copy unknown streams (compatibility)
-                // Enable streaming-friendly MP4 output
-                cmd.arg("-movflags")
-                    .arg("frag_keyframe+empty_moov+faststart");
+                // Note: movflags will be set later in the general faststart section
                 cmd.arg("-f").arg("mp4"); // Force MP4 format
             }
             "mkv" => {
