@@ -252,7 +252,7 @@ impl HttpStreamingService {
     ) -> Self {
         // Create unified remux streaming strategy
         let remux_config = RemuxStreamingConfig {
-            min_head_size: 3 * 1024 * 1024, // 3MB head required for reliable remux streaming
+            min_head_size: 64 * 1024, // 64KB head required for reliable remux streaming
             ..Default::default()
         };
 
@@ -302,7 +302,7 @@ impl HttpStreamingService {
     ) -> Self {
         // Create unified remux streaming strategy for testing
         let remux_config = RemuxStreamingConfig {
-            min_head_size: 3 * 1024 * 1024, // 3MB head required for reliable remux streaming
+            min_head_size: 64 * 1024, // 64KB head required for reliable remux streaming
             ..Default::default()
         };
 
@@ -700,7 +700,7 @@ impl HttpStreamingService {
                             // Return 503 and let browser retry - never serve AVI/MKV directly
                             let mut headers = HeaderMap::new();
                             headers.insert("Retry-After", HeaderValue::from_static("5"));
-                            headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
+                            headers.insert("Content-Type", HeaderValue::from_static("text/plain"));
 
                             return Ok(StreamingResponse {
                                 status: StatusCode::SERVICE_UNAVAILABLE,
@@ -708,7 +708,7 @@ impl HttpStreamingService {
                                 body: Body::from(
                                     "Video is being processed for browser compatibility. Please wait...",
                                 ),
-                                content_type: "video/mp4".to_string(),
+                                content_type: "text/plain".to_string(),
                             });
                         }
                     }
@@ -770,7 +770,28 @@ impl HttpStreamingService {
                 });
             }
 
-            // Get data from progressive strategy - check if remux is ready
+            // Always validate stream readiness by trying to get the first 1KB
+            // This ensures HEAD requests get the same status as GET requests
+            let readiness_check = remux_streaming
+                .stream_range(request.info_hash, 0..1024)
+                .await
+                .is_ok();
+
+            if !readiness_check {
+                // Stream not ready - return 503 with retry
+                let mut headers = HeaderMap::new();
+                headers.insert("Retry-After", HeaderValue::from_static("2"));
+                headers.insert("Content-Type", HeaderValue::from_static("text/plain"));
+
+                return Ok(StreamingResponse {
+                    status: StatusCode::SERVICE_UNAVAILABLE,
+                    headers,
+                    body: Body::from("Remux streaming in progress, please retry"),
+                    content_type: "text/plain".to_string(),
+                });
+            }
+
+            // Get data from progressive strategy - stream is confirmed ready
             let data = match remux_streaming
                 .stream_range(request.info_hash, start..end + 1)
                 .await
@@ -780,16 +801,16 @@ impl HttpStreamingService {
                     if e.to_string().contains("Insufficient output data available")
                         || e.to_string().contains("Waiting for sufficient head data") =>
                 {
-                    // FFmpeg hasn't produced output yet - return 503 with retry
+                    // This should not happen after readiness check, but handle it
                     let mut headers = HeaderMap::new();
                     headers.insert("Retry-After", HeaderValue::from_static("2"));
-                    headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
+                    headers.insert("Content-Type", HeaderValue::from_static("text/plain"));
 
                     return Ok(StreamingResponse {
                         status: StatusCode::SERVICE_UNAVAILABLE,
                         headers,
                         body: Body::from("Remux streaming in progress, please retry"),
-                        content_type: "video/mp4".to_string(),
+                        content_type: "text/plain".to_string(),
                     });
                 }
                 Err(e) => {
@@ -828,75 +849,89 @@ impl HttpStreamingService {
                 content_type: "video/mp4".to_string(),
             })
         } else {
-            // Full file request - for remux streaming with unknown size, treat as range request
-            if file_size == 0 {
-                // Unknown size - stream small first chunk and let browser make range requests
-                let data = match remux_streaming
-                    .stream_range(request.info_hash, 0..64 * 1024)
-                    .await
-                {
-                    Ok(data) => data,
-                    Err(e)
-                        if e.to_string().contains("Insufficient output data available")
-                            || e.to_string().contains("Waiting for sufficient head data") =>
-                    {
-                        // FFmpeg hasn't produced output yet - return 503 with retry
-                        let mut headers = HeaderMap::new();
-                        headers.insert("Retry-After", HeaderValue::from_static("2"));
-                        headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
+            // Full file request - for consistency with range requests, treat as range 0-64KB
+            // This ensures HEAD and GET requests return the same status codes and headers
 
-                        return Ok(StreamingResponse {
-                            status: StatusCode::SERVICE_UNAVAILABLE,
-                            headers,
-                            body: Body::from("Remux streaming in progress, please retry"),
-                            content_type: "video/mp4".to_string(),
-                        });
-                    }
-                    Err(e) => {
-                        return Err(HttpStreamingError::RemuxingFailed {
-                            reason: format!("Remux streaming failed: {e}"),
-                        });
-                    }
-                };
+            // Always validate stream readiness by trying to get the first 1KB
+            // This ensures HEAD requests get the same status as GET requests
+            let readiness_check = remux_streaming
+                .stream_range(request.info_hash, 0..1024)
+                .await
+                .is_ok();
 
+            if !readiness_check {
+                // Stream not ready - return 503 with retry
                 let mut headers = HeaderMap::new();
-                headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
-                headers.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
-                headers.insert(
-                    "Content-Length",
-                    HeaderValue::from_str(&data.len().to_string()).unwrap(),
-                );
+                headers.insert("Retry-After", HeaderValue::from_static("2"));
+                headers.insert("Content-Type", HeaderValue::from_static("text/plain"));
 
-                Ok(StreamingResponse {
-                    status: StatusCode::OK,
+                return Ok(StreamingResponse {
+                    status: StatusCode::SERVICE_UNAVAILABLE,
                     headers,
-                    body: Body::from(data),
-                    content_type: "video/mp4".to_string(),
-                })
-            } else {
-                // Known size - return full file
-                let data = remux_streaming
-                    .stream_range(request.info_hash, 0..file_size)
-                    .await
-                    .map_err(|e| HttpStreamingError::RemuxingFailed {
-                        reason: format!("Remux streaming failed: {e}"),
-                    })?;
-
-                let mut headers = HeaderMap::new();
-                headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
-                headers.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
-                headers.insert(
-                    "Content-Length",
-                    HeaderValue::from_str(&data.len().to_string()).unwrap(),
-                );
-
-                Ok(StreamingResponse {
-                    status: StatusCode::OK,
-                    headers,
-                    body: Body::from(data),
-                    content_type: "video/mp4".to_string(),
-                })
+                    body: Body::from("Remux streaming in progress, please retry"),
+                    content_type: "text/plain".to_string(),
+                });
             }
+
+            // For HEAD/GET consistency, always return first chunk as partial content
+            // This matches what browsers expect for streaming media
+            let chunk_size = 64 * 1024; // 64KB first chunk
+            let data = match remux_streaming
+                .stream_range(request.info_hash, 0..chunk_size)
+                .await
+            {
+                Ok(data) => data,
+                Err(e)
+                    if e.to_string().contains("Insufficient output data available")
+                        || e.to_string().contains("Waiting for sufficient head data") =>
+                {
+                    // This should not happen after readiness check, but handle it
+                    let mut headers = HeaderMap::new();
+                    headers.insert("Retry-After", HeaderValue::from_static("2"));
+                    headers.insert("Content-Type", HeaderValue::from_static("text/plain"));
+
+                    return Ok(StreamingResponse {
+                        status: StatusCode::SERVICE_UNAVAILABLE,
+                        headers,
+                        body: Body::from("Remux streaming in progress, please retry"),
+                        content_type: "text/plain".to_string(),
+                    });
+                }
+                Err(e) => {
+                    return Err(HttpStreamingError::StreamingNotReady {
+                        reason: format!("Remux streaming failed: {e}"),
+                    });
+                }
+            };
+
+            // Return as partial content for consistency with range requests
+            let actual_end = data.len() as u64 - 1;
+            let mut headers = HeaderMap::new();
+
+            // Use partial content status and headers for consistency
+            let content_range = if file_size == 0 {
+                format!("bytes 0-{actual_end}/*")
+            } else {
+                format!("bytes 0-{actual_end}/{file_size}")
+            };
+
+            headers.insert(
+                "Content-Range",
+                HeaderValue::from_str(&content_range).unwrap(),
+            );
+            headers.insert(
+                "Content-Length",
+                HeaderValue::from_str(&data.len().to_string()).unwrap(),
+            );
+            headers.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
+            headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
+
+            Ok(StreamingResponse {
+                status: StatusCode::PARTIAL_CONTENT,
+                headers,
+                body: Body::from(data),
+                content_type: "video/mp4".to_string(),
+            })
         }
     }
 

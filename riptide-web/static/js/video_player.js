@@ -5,51 +5,76 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let lastBufferCheck = 0;
   let streamReadyRetries = 0;
-  const maxRetries = 30; // Maximum retries for stream readiness
+  let streamReadinessCheckInProgress = false;
+  const maxRetries = 15; // Maximum retries for stream readiness
   let retryInterval = null;
+  const baseRetryDelay = 1000; // Base delay in milliseconds (1 second)
+  const maxRetryDelay = 30000; // Maximum delay in milliseconds (30 seconds)
   let originalVideoSrc = player.src || player.querySelector("source")?.src;
 
   // Function to check if stream is ready
   function checkStreamReadiness() {
+    if (streamReadinessCheckInProgress) {
+      console.log("Stream readiness check already in progress, skipping");
+      return;
+    }
+    
     const streamUrl = originalVideoSrc || player.src || player.currentSrc;
     if (!streamUrl) return;
+    
+    streamReadinessCheckInProgress = true;
 
     fetch(streamUrl, { method: "HEAD" })
       .then((response) => {
-        if (response.status === 425) {
-          // Stream not ready yet - retry
+        if (
+          response.status === 425 ||
+          response.status === 503 ||
+          response.status === 429
+        ) {
+          // Stream not ready yet - retry with exponential backoff
           streamReadyRetries++;
           if (streamReadyRetries < maxRetries) {
-            console.log(
-              `Stream not ready, retrying... (${streamReadyRetries}/${maxRetries})`,
+            // Calculate exponential backoff delay
+            const delay = Math.min(
+              baseRetryDelay * Math.pow(2, streamReadyRetries - 1),
+              maxRetryDelay,
             );
 
-            showStreamingIndicator(
-              `Preparing stream for playback... (${streamReadyRetries}/${maxRetries})`,
-              `Downloading file headers and metadata. Usually takes 10-30 seconds.`,
+            console.log(
+              `Stream not ready (${response.status}), retrying in ${delay}ms... (${streamReadyRetries}/${maxRetries})`,
             );
-            setTimeout(checkStreamReadiness, 3000); // Retry every 3 seconds for longer waits
+
+            const statusMessage =
+              response.status === 425
+                ? "Stream preparation in progress"
+                : response.status === 429
+                  ? "Service temporarily overloaded"
+                  : "Content being processed for streaming";
+
+            showStreamingIndicator(
+              `${statusMessage}... (${streamReadyRetries}/${maxRetries})`,
+              `Downloading torrent pieces and preparing stream. This may take 30-60 seconds.`,
+              delay,
+            );
+            setTimeout(() => {
+              streamReadinessCheckInProgress = false;
+              checkStreamReadiness();
+            }, delay);
           } else {
+            streamReadinessCheckInProgress = false;
             showError(
               "Stream Preparation Failed",
-              "The stream could not be prepared after multiple attempts. The file may need more time to download. Try refreshing the page.",
+              "The stream could not be prepared after multiple attempts. The torrent may need more time to download sufficient pieces. Try refreshing the page in a few minutes.",
             );
           }
         } else if (response.ok) {
           // Stream is ready
           console.log("Stream ready, starting playback");
+          streamReadinessCheckInProgress = false;
           hideStreamingIndicator();
-          const currentPlayer = document.getElementById("video-player");
-          if (currentPlayer && originalVideoSrc) {
-            // Restore the original src now that stream is ready
-            currentPlayer.src = originalVideoSrc;
-            if (currentPlayer.querySelector("source")) {
-              currentPlayer.querySelector("source").src = originalVideoSrc;
-            }
-            currentPlayer.load(); // Reload the video element
-          }
         } else {
           // Other error
+          streamReadinessCheckInProgress = false;
           showError(
             "Stream Error",
             `Server returned status: ${response.status}`,
@@ -58,16 +83,44 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .catch((error) => {
         console.error("Stream readiness check failed:", error);
-        showError(
-          "Network Error",
-          "Failed to check stream readiness. Please check your connection.",
-        );
+
+        // Handle network errors with retry logic
+        streamReadyRetries++;
+        if (streamReadyRetries < maxRetries) {
+          const delay = Math.min(
+            baseRetryDelay * Math.pow(2, streamReadyRetries - 1),
+            maxRetryDelay,
+          );
+
+          console.log(
+            `Network error, retrying in ${delay}ms... (${streamReadyRetries}/${maxRetries})`,
+          );
+          showStreamingIndicator(
+            `Connection error, retrying... (${streamReadyRetries}/${maxRetries})`,
+            `Network issue detected. Retrying connection.`,
+            delay,
+          );
+          setTimeout(() => {
+            streamReadinessCheckInProgress = false;
+            checkStreamReadiness();
+          }, delay);
+        } else {
+          streamReadinessCheckInProgress = false;
+          showError(
+            "Network Error",
+            "Failed to check stream readiness after multiple attempts. Please check your connection and try refreshing the page.",
+          );
+        }
       });
   }
 
   // Function to show streaming indicator
-  function showStreamingIndicator(message, subtitle = "") {
+  function showStreamingIndicator(message, subtitle = "", nextRetryIn = 0) {
     const container = document.getElementById("video-container");
+    const progressPercent = Math.round((streamReadyRetries / maxRetries) * 100);
+    const nextRetryText =
+      nextRetryIn > 0 ? `Next retry in ${Math.ceil(nextRetryIn / 1000)}s` : "";
+
     container.innerHTML = `
             <div style="background: #333; padding: 40px; text-align: center; border-radius: 8px;">
                 <div class="spinner" style="
@@ -82,11 +135,19 @@ document.addEventListener("DOMContentLoaded", function () {
                 <h3>Preparing Stream</h3>
                 <p>${message}</p>
                 ${subtitle ? `<p style="color: #007bff; margin-top: 10px;">${subtitle}</p>` : ""}
+                <div style="margin: 20px 0;">
+                    <div style="background: #555; height: 8px; border-radius: 4px; margin: 10px 0;">
+                        <div style="background: #007bff; height: 100%; width: ${progressPercent}%; border-radius: 4px; transition: width 0.3s ease;"></div>
+                    </div>
+                    <p style="color: #ccc; font-size: 0.9em; margin: 5px 0;">
+                        Progress: ${progressPercent}% • ${nextRetryText}
+                    </p>
+                </div>
                 <p style="color: #aaa; margin-top: 10px; font-size: 0.9em;">
-                    Smart streaming preparation in progress:<br>
-                    • Downloading file headers and metadata first<br>
-                    • This enables streaming while the rest downloads<br>
-                    • Much faster than previous approach</p>
+                    BitTorrent streaming preparation in progress:<br>
+                    • Downloading torrent pieces needed for streaming<br>
+                    • Processing video format for browser compatibility<br>
+                    • Stream will start automatically once ready</p>
                 </p>
             </div>
             <style>
@@ -127,10 +188,28 @@ document.addEventListener("DOMContentLoaded", function () {
   function showError(title, message) {
     const container = document.getElementById("video-container");
     container.innerHTML = `
-            <div style="background: #333; padding: 40px; text-align: center; border-radius: 8px;">
-                <h3>${title}</h3>
-                <p>${message}</p>
-                <p style="color: #aaa; margin-top: 10px;">
+            <div style="background: #333; padding: 40px; text-align: center; border-radius: 8px; border-left: 4px solid #dc3545;">
+                <div style="color: #dc3545; font-size: 48px; margin-bottom: 20px;">⚠</div>
+                <h3 style="color: #dc3545; margin-bottom: 15px;">${title}</h3>
+                <p style="margin-bottom: 20px;">${message}</p>
+                <button onclick="location.reload()" style="
+                    background: #007bff;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    margin-right: 10px;
+                ">Retry</button>
+                <button onclick="history.back()" style="
+                    background: #6c757d;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                ">Go Back</button>
+                <p style="color: #aaa; margin-top: 20px; font-size: 0.9em;">
                     For best compatibility, use MP4 format with H.264 video and AAC audio.
                 </p>
             </div>
@@ -220,7 +299,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (!originalVideoSrc) {
     originalVideoSrc = player.src || player.querySelector("source")?.src;
   }
-  
+
   // Clear the src to prevent browser from trying to load before stream is ready
   if (originalVideoSrc) {
     player.src = "";

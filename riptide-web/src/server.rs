@@ -19,7 +19,8 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
 use crate::handlers::streaming::{
-    cleanup_sessions, stream_torrent, streaming_health, streaming_stats,
+    cleanup_sessions, debug_stream_data, debug_stream_status, stream_torrent, streaming_health,
+    streaming_stats,
 };
 use crate::handlers::{
     api_add_torrent, api_download_torrent, api_library, api_search, api_search_movies,
@@ -160,6 +161,14 @@ pub async fn run_server(
         .route("/stream/health", axum::routing::get(streaming_health))
         .route("/stream/stats", axum::routing::get(streaming_stats))
         .route("/stream/cleanup", axum::routing::post(cleanup_sessions))
+        .route(
+            "/debug/stream/{info_hash}/status",
+            axum::routing::get(debug_stream_status),
+        )
+        .route(
+            "/debug/stream/{info_hash}/data",
+            axum::routing::get(debug_stream_data),
+        )
         // JSON API endpoints (for external clients)
         .route("/api/stats", axum::routing::get(api_stats))
         .route("/api/torrents", axum::routing::get(api_torrents))
