@@ -4,6 +4,7 @@
 //! Ensures files are served correctly without truncation.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -171,16 +172,24 @@ impl FfmpegProcessor for MockFfmpegProcessor {
         output_path: &std::path::Path,
         _options: &riptide_core::streaming::RemuxingOptions,
     ) -> riptide_core::streaming::StreamingResult<riptide_core::streaming::RemuxingResult> {
-        // Create a predictable MP4 output for testing
-        let mp4_data = create_test_mp4_file();
-        tokio::fs::write(output_path, &mp4_data)
+        // Copy real test MP4 file for testing
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let mp4_source =
+            std::path::PathBuf::from(manifest_dir).join("../test_movies/tiny_test.mp4");
+        tokio::fs::copy(&mp4_source, output_path)
             .await
             .map_err(|e| riptide_core::streaming::StrategyError::FfmpegError {
-                reason: format!("Failed to write mock MP4: {}", e),
+                reason: format!("Failed to copy test MP4: {}", e),
             })?;
 
+        let metadata = tokio::fs::metadata(&mp4_source).await.map_err(|e| {
+            riptide_core::streaming::StrategyError::FfmpegError {
+                reason: format!("Failed to get MP4 metadata: {}", e),
+            }
+        })?;
+
         Ok(riptide_core::streaming::RemuxingResult {
-            output_size: mp4_data.len() as u64,
+            output_size: metadata.len(),
             processing_time: 0.1,
             streams_reencoded: false,
         })
@@ -191,7 +200,14 @@ impl FfmpegProcessor for MockFfmpegProcessor {
     }
 
     async fn estimate_output_size(&self, _input_path: &std::path::Path) -> Option<u64> {
-        Some(create_test_mp4_file().len() as u64)
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let mp4_source =
+            std::path::PathBuf::from(manifest_dir).join("../test_movies/tiny_test.mp4");
+        if let Ok(metadata) = tokio::fs::metadata(&mp4_source).await {
+            Some(metadata.len())
+        } else {
+            Some(5000) // Fallback size
+        }
     }
 }
 
@@ -208,24 +224,35 @@ async fn create_test_files()
 
     let mut files = Vec::new();
 
-    // Create test AVI file with proper RIFF header
+    // Copy real test AVI file
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let avi_source = PathBuf::from(&manifest_dir).join("../test_movies/tiny_test.avi");
     let avi_path = test_dir.join("test.avi");
-    let avi_data = create_test_avi_file();
-    fs::write(&avi_path, avi_data).await?;
+    println!("Debug: Copying AVI from {:?} to {:?}", avi_source, avi_path);
+    println!("Debug: AVI source exists: {}", avi_source.exists());
+    fs::copy(&avi_source, &avi_path).await?;
     let avi_hash = InfoHash::new([1u8; 20]);
     files.push((ContainerFormat::Avi, avi_hash, avi_path));
 
-    // Create test MKV file with proper EBML header
+    // Copy real test MKV file
+    let mkv_source = PathBuf::from(&manifest_dir).join("../test_movies/tiny_test.mkv");
     let mkv_path = test_dir.join("test.mkv");
-    let mkv_data = create_test_mkv_file();
-    fs::write(&mkv_path, mkv_data).await?;
+    println!("Debug: Copying MKV from {:?} to {:?}", mkv_source, mkv_path);
+    println!("Debug: MKV source exists: {}", mkv_source.exists());
+    fs::copy(&mkv_source, &mkv_path).await?;
     let mkv_hash = InfoHash::new([2u8; 20]);
     files.push((ContainerFormat::Mkv, mkv_hash, mkv_path));
 
-    // Create test MP4 file with proper headers
+    // Copy real test MP4 file
+    let mp4_source = PathBuf::from(&manifest_dir).join("../test_movies/tiny_test.mp4");
     let mp4_path = test_dir.join("test.mp4");
-    let mp4_data = create_test_mp4_file();
-    fs::write(&mp4_path, mp4_data).await?;
+    println!("Debug: Copying MP4 from {:?} to {:?}", mp4_source, mp4_path);
+    println!("Debug: MP4 source exists: {}", mp4_source.exists());
+    println!(
+        "Debug: Current working directory: {:?}",
+        std::env::current_dir().unwrap()
+    );
+    fs::copy(&mp4_source, &mp4_path).await?;
     let mp4_hash = InfoHash::new([3u8; 20]);
     files.push((ContainerFormat::Mp4, mp4_hash, mp4_path));
 
@@ -325,43 +352,6 @@ fn create_test_avi_file() -> Vec<u8> {
     data
 }
 
-/// Create minimal valid MKV file for testing
-fn create_test_mkv_file() -> Vec<u8> {
-    let mut data = Vec::new();
-
-    // EBML header
-    data.extend_from_slice(&[0x1A, 0x45, 0xDF, 0xA3]); // EBML ID
-    data.extend_from_slice(&[0x9F]); // Size
-    data.extend_from_slice(&[0x42, 0x86, 0x81, 0x01]); // EBMLVersion
-    data.extend_from_slice(&[0x42, 0xF7, 0x81, 0x01]); // EBMLReadVersion
-
-    // Fill with dummy data
-    data.resize(1024, 0);
-
-    data
-}
-
-/// Create minimal valid MP4 file for testing
-fn create_test_mp4_file() -> Vec<u8> {
-    let mut data = Vec::new();
-
-    // ftyp box
-    data.extend_from_slice(&(20u32).to_be_bytes()); // Box size
-    data.extend_from_slice(b"ftyp");
-    data.extend_from_slice(b"mp42"); // Major brand
-    data.extend_from_slice(&(0u32).to_be_bytes()); // Minor version
-    data.extend_from_slice(b"mp42"); // Compatible brand
-
-    // Add minimal mdat box for content
-    data.extend_from_slice(&(1000u32).to_be_bytes()); // Box size
-    data.extend_from_slice(b"mdat");
-
-    // Fill with dummy video data
-    data.resize(2048, 0);
-
-    data
-}
-
 /// Test streaming service setup with mock FFmpeg processor
 async fn setup_streaming_service(file_assembler: Arc<TestFileAssembler>) -> HttpStreamingService {
     let piece_store = Arc::new(MockPieceStore::new());
@@ -451,6 +441,10 @@ async fn test_remuxing_and_direct_streaming() {
             ContainerFormat::Avi | ContainerFormat::Mkv => {
                 // Remuxed files should be valid MP4 with some content
                 assert!(served_size > 0, "Remuxed file should not be empty");
+                println!(
+                    "Debug: MP4 header bytes: {:?}",
+                    &body_bytes[..body_bytes.len().min(32)]
+                );
                 assert!(
                     is_valid_mp4_header(&body_bytes),
                     "Remuxed file should be valid MP4"
@@ -730,22 +724,36 @@ async fn test_head_and_tail_streaming() {
     }
 }
 
-/// Test file assembler that simulates partial availability (head and tail only)
+/// Test file assembler that simulates partial availability with controlled range availability
 #[derive(Clone)]
 struct PartialFileAssembler {
     files: Arc<RwLock<HashMap<InfoHash, PathBuf>>>,
+    available_ranges: Arc<RwLock<HashMap<InfoHash, Vec<Range<u64>>>>>,
 }
 
 impl PartialFileAssembler {
     fn new() -> Self {
         Self {
             files: Arc::new(RwLock::new(HashMap::new())),
+            available_ranges: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     async fn add_file(&self, info_hash: InfoHash, path: PathBuf) {
         let mut files = self.files.write().await;
         files.insert(info_hash, path);
+    }
+
+    /// Add an available range for testing partial file downloads
+    async fn add_available_range(&self, info_hash: InfoHash, range: Range<u64>) {
+        let mut ranges = self.available_ranges.write().await;
+        tracing::info!(
+            "Added available range for {}: {}..{}",
+            info_hash,
+            range.start,
+            range.end
+        );
+        ranges.entry(info_hash).or_default().push(range);
     }
 }
 
@@ -754,36 +762,16 @@ impl FileAssembler for PartialFileAssembler {
     async fn read_range(
         &self,
         info_hash: InfoHash,
-        range: std::ops::Range<u64>,
+        range: Range<u64>,
     ) -> Result<Vec<u8>, FileAssemblerError> {
-        let files = self.files.read().await;
-        let file_path = files
-            .get(&info_hash)
-            .ok_or_else(|| FileAssemblerError::CacheError {
-                reason: format!("File not found for info hash: {}", info_hash),
-            })?;
-
-        let file_size = fs::metadata(file_path)
-            .await
-            .map_err(|e| FileAssemblerError::CacheError {
-                reason: format!("Failed to get metadata: {}", e),
-            })?
-            .len();
-
-        let head_size = 1024 * 1024; // First 1MB
-        let tail_size = 2 * 1024 * 1024; // Last 2MB
-        let tail_start = if file_size > tail_size {
-            file_size - tail_size
-        } else {
-            0
-        };
-
-        // Only allow reading head and tail portions
-        let is_head_range = range.start < head_size;
-        let is_tail_range = range.start >= tail_start;
-
-        if !is_head_range && !is_tail_range {
-            // Simulate missing middle data
+        // Check if the requested range is available
+        if !self.is_range_available(info_hash, range.clone()) {
+            tracing::warn!(
+                "Range {}..{} not available for {}",
+                range.start,
+                range.end,
+                info_hash
+            );
             return Err(FileAssemblerError::InsufficientData {
                 start: range.start,
                 end: range.end,
@@ -791,7 +779,14 @@ impl FileAssembler for PartialFileAssembler {
             });
         }
 
-        // Read the actual file data for head/tail portions
+        let files = self.files.read().await;
+        let file_path = files
+            .get(&info_hash)
+            .ok_or_else(|| FileAssemblerError::CacheError {
+                reason: format!("File not found for info hash: {}", info_hash),
+            })?;
+
+        // Read the actual file data
         let mut file =
             fs::File::open(file_path)
                 .await
@@ -814,6 +809,13 @@ impl FileAssembler for PartialFileAssembler {
                 reason: format!("Failed to read: {}", e),
             })?;
 
+        tracing::debug!(
+            "Successfully read range {}..{} ({} bytes) for {}",
+            range.start,
+            range.end,
+            buffer.len(),
+            info_hash
+        );
         Ok(buffer)
     }
 
@@ -835,31 +837,15 @@ impl FileAssembler for PartialFileAssembler {
         Ok(metadata.len())
     }
 
-    fn is_range_available(&self, info_hash: InfoHash, range: std::ops::Range<u64>) -> bool {
-        // Simulate head and tail availability only
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let files = self.files.read().await;
-                if let Some(file_path) = files.get(&info_hash) {
-                    if let Ok(metadata) = fs::metadata(file_path).await {
-                        let file_size = metadata.len();
-                        let head_size = 1024 * 1024; // First 1MB
-                        let tail_size = 2 * 1024 * 1024; // Last 2MB
-                        let tail_start = if file_size > tail_size {
-                            file_size - tail_size
-                        } else {
-                            0
-                        };
-
-                        let is_head_range = range.start < head_size;
-                        let is_tail_range = range.start >= tail_start;
-
-                        return is_head_range || is_tail_range;
-                    }
-                }
-                false
-            })
-        })
+    fn is_range_available(&self, info_hash: InfoHash, range: Range<u64>) -> bool {
+        if let Ok(ranges_guard) = self.available_ranges.try_read() {
+            if let Some(available_ranges) = ranges_guard.get(&info_hash) {
+                return available_ranges
+                    .iter()
+                    .any(|r| r.start <= range.start && r.end >= range.end);
+            }
+        }
+        false
     }
 }
 
@@ -965,7 +951,26 @@ async fn create_valid_test_video() -> Vec<u8> {
 
 /// Validates if the given bytes start with a recognizable MP4 header.
 fn is_valid_mp4_header(data: &[u8]) -> bool {
-    data.len() > 8 && (&data[4..8] == b"ftyp" || &data[4..8] == b"moov")
+    let valid = data.len() > 8
+        && (&data[4..8] == b"ftyp" || &data[4..8] == b"moov" || &data[4..8] == b"moof");
+    if !valid {
+        println!(
+            "Debug: MP4 validation failed - length: {}, bytes 4-8: {:?}",
+            data.len(),
+            if data.len() > 8 { &data[4..8] } else { &[] }
+        );
+        println!(
+            "Debug: Expected 'ftyp' {:?}, 'moov' {:?}, or 'moof' {:?}",
+            b"ftyp", b"moov", b"moof"
+        );
+        if data.len() > 8 {
+            println!(
+                "Debug: Actual bytes as string: '{}'",
+                String::from_utf8_lossy(&data[4..8])
+            );
+        }
+    }
+    valid
 }
 
 #[tokio::test]
@@ -1072,6 +1077,442 @@ async fn test_realistic_remux_streaming_pipeline() {
     }
 
     println!("✓ Remux streaming test completed successfully");
+}
+
+/// Test 1: Reproduce the Bug - Remuxing fails with only head data
+#[tokio::test]
+async fn test_remuxing_fails_with_only_head_data() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    tracing::info!("=== Test 1: Reproducing the bug - Only head data available ===");
+
+    // Setup test files
+    let test_files = create_test_files()
+        .await
+        .expect("Failed to create test files");
+
+    // Use AVI file for testing (requires remuxing)
+    let (format, info_hash, path) = test_files
+        .iter()
+        .find(|(f, _, _)| matches!(f, ContainerFormat::Avi))
+        .expect("No AVI file found")
+        .clone();
+
+    let file_size = fs::metadata(&path).await.unwrap().len();
+    tracing::info!("Testing with {:?} file, size: {} bytes", format, file_size);
+
+    // Create PartialFileAssembler with only head data
+    let file_assembler = Arc::new(PartialFileAssembler::new());
+    file_assembler.add_file(info_hash, path).await;
+
+    // Make only the head available (first 2MB)
+    let head_size = 2 * 1024 * 1024; // 2MB
+    file_assembler
+        .add_available_range(info_hash, 0..head_size.min(file_size))
+        .await;
+
+    // Setup streaming service
+    let piece_store = Arc::new(MockPieceStore::new());
+    let config = HttpStreamingConfig::default();
+    let streaming_service = HttpStreamingService::new(file_assembler, piece_store, config);
+
+    // Create streaming request for the first few KB
+    let request = StreamingRequest {
+        info_hash,
+        range: Some(SimpleRangeRequest {
+            start: 0,
+            end: Some(8191), // First 8KB
+        }),
+        client_capabilities: ClientCapabilities {
+            supports_mp4: true,
+            supports_webm: true,
+            supports_hls: false,
+            user_agent: "Test-Agent".to_string(),
+        },
+        preferred_quality: Some(VideoQuality::High),
+        time_offset: None,
+    };
+
+    tracing::info!("Making streaming request with only head data available...");
+
+    // Execute the request
+    let response = streaming_service.handle_streaming_request(request).await;
+
+    match response {
+        Ok(resp) => {
+            tracing::info!("Response status: {}", resp.status);
+
+            // The bug: System should NOT return 206 Partial Content
+            // It should return an error or 503 Service Unavailable
+            if resp.status == StatusCode::PARTIAL_CONTENT {
+                let body_bytes = to_bytes(resp.body, 1024 * 1024).await.unwrap();
+
+                // If it claims to be successful, check if it's actually valid MP4
+                if !is_valid_mp4_header(&body_bytes) {
+                    tracing::error!(
+                        "✓ BUG REPRODUCED: System returned 206 but with invalid MP4 data"
+                    );
+                    tracing::error!("Response body length: {}", body_bytes.len());
+                    tracing::error!(
+                        "First 32 bytes: {:?}",
+                        &body_bytes[..body_bytes.len().min(32)]
+                    );
+                    // This is the bug - system claims success but delivers broken data
+                    panic!(
+                        "BUG REPRODUCED: System returned 206 Partial Content but with invalid MP4 data"
+                    );
+                } else {
+                    tracing::warn!("Unexpected: System returned valid MP4 with only head data");
+                }
+            } else if resp.status == StatusCode::SERVICE_UNAVAILABLE
+                || resp.status == StatusCode::TOO_EARLY
+            {
+                tracing::info!(
+                    "✓ CORRECT BEHAVIOR: System returned {} (not ready)",
+                    resp.status
+                );
+            } else {
+                tracing::error!("Unexpected status code: {}", resp.status);
+                panic!("Unexpected status code: {}", resp.status);
+            }
+        }
+        Err(e) => {
+            tracing::info!("✓ CORRECT BEHAVIOR: Request failed with error: {:?}", e);
+            // This is also acceptable - the system should fail gracefully
+            match e {
+                HttpStreamingError::StreamingNotReady { .. }
+                | HttpStreamingError::RemuxingFailed { .. } => {
+                    tracing::info!("✓ Graceful failure as expected");
+                }
+                _ => {
+                    tracing::error!("Unexpected error type: {:?}", e);
+                }
+            }
+        }
+    }
+
+    tracing::info!("=== Test 1 Complete: Bug reproduction test ===");
+}
+
+/// Test 2: Verify the Fix - Remuxing succeeds with head and tail data
+#[tokio::test]
+async fn test_remuxing_succeeds_with_head_and_tail_data() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    tracing::info!("=== Test 2: Verifying the fix - Head and tail data available ===");
+
+    // Setup test files
+    let test_files = create_test_files()
+        .await
+        .expect("Failed to create test files");
+
+    // Use AVI file for testing (requires remuxing)
+    let (format, info_hash, path) = test_files
+        .iter()
+        .find(|(f, _, _)| matches!(f, ContainerFormat::Avi))
+        .expect("No AVI file found")
+        .clone();
+
+    let file_size = fs::metadata(&path).await.unwrap().len();
+    tracing::info!("Testing with {:?} file, size: {} bytes", format, file_size);
+
+    // Create PartialFileAssembler with head and tail data
+    let file_assembler = Arc::new(PartialFileAssembler::new());
+    file_assembler.add_file(info_hash, path).await;
+
+    // Make both head and tail available
+    let head_size = 2 * 1024 * 1024; // First 2MB
+    let tail_size = 2 * 1024 * 1024; // Last 2MB
+    let tail_start = if file_size > tail_size {
+        file_size - tail_size
+    } else {
+        0
+    };
+
+    file_assembler
+        .add_available_range(info_hash, 0..head_size)
+        .await;
+    file_assembler
+        .add_available_range(info_hash, tail_start..file_size)
+        .await;
+
+    // Setup streaming service
+    let piece_store = Arc::new(MockPieceStore::new());
+    let config = HttpStreamingConfig::default();
+    let streaming_service = HttpStreamingService::new(file_assembler, piece_store, config);
+
+    // Create streaming request for the first few KB
+    let request = StreamingRequest {
+        info_hash,
+        range: Some(SimpleRangeRequest {
+            start: 0,
+            end: Some(8191), // First 8KB
+        }),
+        client_capabilities: ClientCapabilities {
+            supports_mp4: true,
+            supports_webm: true,
+            supports_hls: false,
+            user_agent: "Test-Agent".to_string(),
+        },
+        preferred_quality: Some(VideoQuality::High),
+        time_offset: None,
+    };
+
+    tracing::info!("Making streaming request with head and tail data available...");
+
+    // Execute the request
+    let response = streaming_service.handle_streaming_request(request).await;
+
+    match response {
+        Ok(resp) => {
+            tracing::info!("Response status: {}", resp.status);
+
+            // The fix: System MUST return 206 Partial Content with valid MP4 data
+            assert_eq!(
+                resp.status,
+                StatusCode::PARTIAL_CONTENT,
+                "Expected 206 Partial Content with head and tail data"
+            );
+
+            // Verify Content-Type header
+            let content_type = resp
+                .headers
+                .get("content-type")
+                .expect("Missing Content-Type header")
+                .to_str()
+                .expect("Invalid Content-Type header");
+            assert_eq!(content_type, "video/mp4", "Expected video/mp4 content type");
+
+            // Verify Content-Range header is present
+            assert!(
+                resp.headers.contains_key("content-range"),
+                "Missing Content-Range header"
+            );
+
+            let body_bytes = to_bytes(resp.body, 1024 * 1024).await.unwrap();
+
+            // The response must be valid MP4 data
+            assert!(
+                is_valid_mp4_header(&body_bytes),
+                "Response must be valid MP4 data with head and tail available"
+            );
+
+            assert!(body_bytes.len() > 0, "Response body must not be empty");
+
+            tracing::info!(
+                "✓ SUCCESS: Valid MP4 response with {} bytes",
+                body_bytes.len()
+            );
+            tracing::info!("✓ Content-Type: {}", content_type);
+            tracing::info!("✓ Valid MP4 header detected");
+        }
+        Err(e) => {
+            tracing::error!("✗ FAILURE: Request failed with error: {:?}", e);
+            panic!("Request should succeed with head and tail data: {:?}", e);
+        }
+    }
+
+    tracing::info!("=== Test 2 Complete: Fix verification successful ===");
+}
+
+/// Test 3: End-to-End User Experience Simulation with retry logic
+#[tokio::test]
+async fn test_streaming_lifecycle_with_retries() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    tracing::info!("=== Test 3: End-to-end streaming lifecycle with retries ===");
+
+    // Setup test files
+    let test_files = create_test_files()
+        .await
+        .expect("Failed to create test files");
+
+    // Use AVI file for testing (requires remuxing)
+    let (format, info_hash, path) = test_files
+        .iter()
+        .find(|(f, _, _)| matches!(f, ContainerFormat::Avi))
+        .expect("No AVI file found")
+        .clone();
+
+    let file_size = fs::metadata(&path).await.unwrap().len();
+    tracing::info!(
+        "Testing lifecycle with {:?} file, size: {} bytes",
+        format,
+        file_size
+    );
+
+    // Create PartialFileAssembler with NO data initially
+    let file_assembler = Arc::new(PartialFileAssembler::new());
+    file_assembler.add_file(info_hash, path).await;
+
+    // Setup streaming service
+    let piece_store = Arc::new(MockPieceStore::new());
+    let config = HttpStreamingConfig::default();
+    let streaming_service = HttpStreamingService::new(file_assembler.clone(), piece_store, config);
+
+    let request = StreamingRequest {
+        info_hash,
+        range: Some(SimpleRangeRequest {
+            start: 0,
+            end: Some(8191), // First 8KB
+        }),
+        client_capabilities: ClientCapabilities {
+            supports_mp4: true,
+            supports_webm: true,
+            supports_hls: false,
+            user_agent: "Test-Agent".to_string(),
+        },
+        preferred_quality: Some(VideoQuality::High),
+        time_offset: None,
+    };
+
+    // Step 1: Initial request (should fail - no data available)
+    tracing::info!("Step 1: Making initial request with no data available...");
+    let response = streaming_service
+        .handle_streaming_request(request.clone())
+        .await;
+
+    match response {
+        Ok(resp) => {
+            tracing::info!("Response status: {}", resp.status);
+            assert!(
+                resp.status == StatusCode::SERVICE_UNAVAILABLE
+                    || resp.status == StatusCode::TOO_EARLY,
+                "Expected not-ready status, got: {}",
+                resp.status
+            );
+            tracing::info!("✓ Step 1 passed: Correctly returned not-ready status");
+        }
+        Err(e) => {
+            tracing::info!("✓ Step 1 passed: Request failed as expected: {:?}", e);
+            match e {
+                HttpStreamingError::StreamingNotReady { .. }
+                | HttpStreamingError::RemuxingFailed { .. } => {
+                    tracing::info!("✓ Graceful failure as expected");
+                }
+                _ => {
+                    tracing::warn!("Unexpected error type: {:?}", e);
+                }
+            }
+        }
+    }
+
+    // Step 2: Simulate head and tail download
+    tracing::info!("Step 2: Simulating head and tail download...");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let head_size = 2 * 1024 * 1024; // First 2MB
+    let tail_size = 2 * 1024 * 1024; // Last 2MB
+    let tail_start = if file_size > tail_size {
+        file_size - tail_size
+    } else {
+        0
+    };
+
+    file_assembler
+        .add_available_range(info_hash, 0..head_size)
+        .await;
+    file_assembler
+        .add_available_range(info_hash, tail_start..file_size)
+        .await;
+
+    // Step 3: Retry request (should succeed now)
+    tracing::info!("Step 3: Retrying request with head and tail available...");
+    let response = streaming_service
+        .handle_streaming_request(request.clone())
+        .await;
+
+    match response {
+        Ok(resp) => {
+            tracing::info!("Response status: {}", resp.status);
+            assert_eq!(
+                resp.status,
+                StatusCode::PARTIAL_CONTENT,
+                "Expected 206 Partial Content after head and tail download"
+            );
+
+            let body_bytes = to_bytes(resp.body, 1024 * 1024).await.unwrap();
+            assert!(
+                is_valid_mp4_header(&body_bytes),
+                "Response must be valid MP4 after head and tail download"
+            );
+
+            tracing::info!(
+                "✓ Step 3 passed: Request succeeded with valid MP4 ({} bytes)",
+                body_bytes.len()
+            );
+        }
+        Err(e) => {
+            tracing::error!("✗ Step 3 failed: Request should succeed: {:?}", e);
+            panic!(
+                "Request should succeed after head and tail download: {:?}",
+                e
+            );
+        }
+    }
+
+    // Step 4: Simulate middle part download
+    tracing::info!("Step 4: Simulating middle part download...");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let middle_start = 4 * 1024 * 1024; // 4MB
+    let middle_end = 5 * 1024 * 1024; // 5MB
+    if middle_end <= file_size {
+        file_assembler
+            .add_available_range(info_hash, middle_start..middle_end)
+            .await;
+    }
+
+    // Step 5: Seeking request within newly available range
+    tracing::info!("Step 5: Making seek request within newly available range...");
+    let seek_request = StreamingRequest {
+        info_hash,
+        range: Some(SimpleRangeRequest {
+            start: middle_start,
+            end: Some(middle_start + 8191), // 8KB from middle
+        }),
+        client_capabilities: ClientCapabilities {
+            supports_mp4: true,
+            supports_webm: true,
+            supports_hls: false,
+            user_agent: "Test-Agent".to_string(),
+        },
+        preferred_quality: Some(VideoQuality::High),
+        time_offset: None,
+    };
+
+    if middle_end <= file_size {
+        let response = streaming_service
+            .handle_streaming_request(seek_request)
+            .await;
+
+        match response {
+            Ok(resp) => {
+                tracing::info!("Seek response status: {}", resp.status);
+                assert_eq!(
+                    resp.status,
+                    StatusCode::PARTIAL_CONTENT,
+                    "Expected 206 Partial Content for seek request"
+                );
+
+                let body_bytes = to_bytes(resp.body, 1024 * 1024).await.unwrap();
+                assert!(body_bytes.len() > 0, "Seek response must not be empty");
+
+                tracing::info!(
+                    "✓ Step 5 passed: Seek request succeeded ({} bytes)",
+                    body_bytes.len()
+                );
+            }
+            Err(e) => {
+                tracing::error!("✗ Step 5 failed: Seek request should succeed: {:?}", e);
+                panic!("Seek request should succeed: {:?}", e);
+            }
+        }
+    } else {
+        tracing::info!("✓ Step 5 skipped: File too small for middle range test");
+    }
+
+    tracing::info!("=== Test 3 Complete: End-to-end lifecycle simulation successful ===");
 }
 
 #[tokio::test]

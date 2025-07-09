@@ -52,3 +52,7 @@ path = "browser_streaming_test.rs"
 [[test]]
 name = "unified_streaming_test"
 path = "unified_streaming_test.rs"
+
+[[test]]
+name = "real_movie_streaming_test"
+path = "real_movie_streaming_test.rs"
