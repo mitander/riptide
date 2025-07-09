@@ -370,24 +370,54 @@ impl FileAssembler for PieceFileAssembler {
     }
 
     fn is_range_available(&self, info_hash: InfoHash, range: Range<u64>) -> bool {
-        // This is a synchronous check, so we can't get metadata here
-        // In a real implementation, we might want to cache this information
-        // For now, we'll do a simple piece availability check
+        // Try to get cached metadata for accurate piece size calculation
+        let piece_size = if let Ok(metadata_cache) = self.metadata_cache.try_read() {
+            metadata_cache
+                .get(&info_hash)
+                .map(|metadata| metadata.piece_size as u64)
+                .unwrap_or(262_144) // 256KB default (common torrent piece size)
+        } else {
+            262_144 // 256KB default if cache is locked
+        };
 
-        // Assume standard piece size for availability check
-        // This is not perfect but provides a quick estimate
-        let estimated_piece_size = 1024 * 1024; // 1MB pieces
-        let start_piece = (range.start / estimated_piece_size) as u32;
-        let end_piece = ((range.end.saturating_sub(1)) / estimated_piece_size) as u32;
+        let start_piece = (range.start / piece_size) as u32;
+        let end_piece = ((range.end.saturating_sub(1)) / piece_size) as u32;
+
+        tracing::debug!(
+            "Checking range availability for {} range {}-{}, piece_size={}, checking pieces {}-{}",
+            info_hash,
+            range.start,
+            range.end,
+            piece_size,
+            start_piece,
+            end_piece
+        );
 
         for piece_index in start_piece..=end_piece {
-            if !self
+            let has_piece = self
                 .piece_store
-                .has_piece(info_hash, PieceIndex::new(piece_index))
-            {
+                .has_piece(info_hash, PieceIndex::new(piece_index));
+
+            if !has_piece {
+                tracing::debug!(
+                    "Range {}-{} not available for {}: missing piece {}",
+                    range.start,
+                    range.end,
+                    info_hash,
+                    piece_index
+                );
                 return false;
             }
         }
+
+        tracing::debug!(
+            "Range {}-{} fully available for {} (pieces {}-{})",
+            range.start,
+            range.end,
+            info_hash,
+            start_piece,
+            end_piece
+        );
         true
     }
 }

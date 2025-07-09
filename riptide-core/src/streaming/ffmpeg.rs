@@ -142,13 +142,17 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
 
         match input_extension.to_lowercase().as_str() {
             "avi" => {
-                tracing::info!("Applying AVI-specific FFmpeg options");
+                tracing::info!("Applying AVI-specific FFmpeg options for streaming");
                 // AVI files often have problematic timestamps and indexing
                 cmd.arg("-fflags").arg("+genpts+igndts"); // Generate timestamps, ignore DTS
                 cmd.arg("-avoid_negative_ts").arg("make_zero"); // Fix negative timestamps
                 cmd.arg("-max_muxing_queue_size").arg("9999"); // Handle complex streams
                 cmd.arg("-err_detect").arg("ignore_err"); // Ignore non-fatal errors
                 cmd.arg("-copy_unknown"); // Copy unknown streams (compatibility)
+                // Enable streaming-friendly MP4 output
+                cmd.arg("-movflags")
+                    .arg("frag_keyframe+empty_moov+faststart");
+                cmd.arg("-f").arg("mp4"); // Force MP4 format
             }
             "mkv" => {
                 tracing::info!("Applying MKV-specific FFmpeg options");

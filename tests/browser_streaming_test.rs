@@ -194,12 +194,8 @@ async fn test_avi_streaming() {
         .add_torrent_data(info_hash, avi_data, 256 * 1024)
         .await;
 
-    let streaming_service = HttpStreamingService::new_with_ffmpeg(
-        file_assembler,
-        piece_store,
-        ffmpeg,
-        HttpStreamingConfig::default(),
-    );
+    let streaming_service =
+        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
 
     // Test streaming request
     let request = StreamingRequest {
@@ -255,12 +251,8 @@ async fn test_mkv_streaming() {
         .add_torrent_data(info_hash, mkv_data, 256 * 1024)
         .await;
 
-    let streaming_service = HttpStreamingService::new_with_ffmpeg(
-        file_assembler,
-        piece_store,
-        ffmpeg,
-        HttpStreamingConfig::default(),
-    );
+    let streaming_service =
+        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
 
     // Test successful MKV to MP4 remux and range requests
     let test_ranges = vec![(0, None), (0, Some(1023)), (1024, None), (512, Some(1535))];
@@ -320,12 +312,8 @@ async fn test_cache_behavior() {
         .add_torrent_data(info_hash, avi_data, 128 * 1024)
         .await;
 
-    let streaming_service = HttpStreamingService::new_with_ffmpeg(
-        file_assembler,
-        piece_store,
-        ffmpeg,
-        HttpStreamingConfig::default(),
-    );
+    let streaming_service =
+        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
 
     // First request - should trigger remux
     let start_time = std::time::Instant::now();
@@ -386,10 +374,9 @@ async fn test_concurrent_remux_prevention() {
         .add_torrent_data(info_hash, mkv_data, 256 * 1024)
         .await;
 
-    let streaming_service = Arc::new(HttpStreamingService::new_with_ffmpeg(
+    let streaming_service = Arc::new(HttpStreamingService::new(
         file_assembler,
         piece_store,
-        ffmpeg,
         HttpStreamingConfig::default(),
     ));
 
@@ -450,12 +437,8 @@ async fn test_error_conditions() {
     let piece_store = Arc::new(MockPieceStore::new());
     let ffmpeg = ProductionFfmpegProcessor::new(None);
 
-    let streaming_service = HttpStreamingService::new_with_ffmpeg(
-        file_assembler,
-        piece_store,
-        ffmpeg,
-        HttpStreamingConfig::default(),
-    );
+    let streaming_service =
+        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
 
     // Test invalid info hash
     let invalid_request = StreamingRequest {
@@ -496,12 +479,8 @@ async fn test_mp4_direct_streaming() {
         .add_torrent_data(info_hash, mp4_data, 256 * 1024)
         .await;
 
-    let streaming_service = HttpStreamingService::new_with_ffmpeg(
-        file_assembler,
-        piece_store,
-        ffmpeg,
-        HttpStreamingConfig::default(),
-    );
+    let streaming_service =
+        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
 
     let request = StreamingRequest {
         info_hash,

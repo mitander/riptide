@@ -176,7 +176,7 @@ impl AdaptiveStreamingPiecePicker {
             min_buffer_size: 3,
             max_buffer_size: 20,
             phase: DownloadPhase::PrioritizeHeadTail,
-            head_pieces: 5,  // Default: first 5 pieces
+            head_pieces: 12, // Increased for 3MB remux streaming head requirement
             tail_pieces: 10, // Default: last 10 pieces
         }
     }

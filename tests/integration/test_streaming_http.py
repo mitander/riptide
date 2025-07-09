@@ -41,6 +41,7 @@ class StreamingTester:
             "SUCCESS": "\033[92m",  # Green
             "WARNING": "\033[93m",  # Yellow
             "ERROR": "\033[91m",    # Red
+            "DEBUG": "\033[94m",    # Blue
         }.get(level, "\033[0m")
 
         print(f"{color}[{timestamp}] [{level}] {message}\033[0m")
@@ -63,7 +64,27 @@ class StreamingTester:
                 html_content = response.text
                 # Extract info hashes from HTML (40 character hex strings)
                 info_hashes = re.findall(r'[0-9a-f]{40}', html_content)
-                return [{"info_hash": hash_val} for hash_val in info_hashes]
+
+                # Also try to get file names and formats
+                torrents = []
+                for hash_val in info_hashes:
+                    # Try to extract additional info from the HTML
+                    torrent_info = {"info_hash": hash_val}
+
+                    # Look for file format indicators near the hash
+                    hash_context = html_content[max(0, html_content.find(hash_val) - 200):
+                                              html_content.find(hash_val) + 200]
+
+                    if '.avi' in hash_context.lower():
+                        torrent_info["format"] = "avi"
+                    elif '.mkv' in hash_context.lower():
+                        torrent_info["format"] = "mkv"
+                    elif '.mp4' in hash_context.lower():
+                        torrent_info["format"] = "mp4"
+
+                    torrents.append(torrent_info)
+
+                return torrents
         except Exception as e:
             self.log("ERROR", f"Failed to get torrents: {e}")
             return []
@@ -148,6 +169,19 @@ class StreamingTester:
                 "content_type": response.headers.get("Content-Type", ""),
                 "success": response.status_code == expected_status
             }
+
+            # Enhanced 503 error handling and debugging
+            if response.status_code == 503:
+                response_text = response.text
+                result["response_text"] = response_text
+                result["retry_after"] = response.headers.get("Retry-After", "unknown")
+
+                # Log detailed 503 information
+                self.log("DEBUG", f"503 Error Details for {info_hash}:")
+                self.log("DEBUG", f"  Response: {response_text}")
+                self.log("DEBUG", f"  Retry-After: {result['retry_after']}")
+                self.log("DEBUG", f"  Content-Type: {result['content_type']}")
+                self.log("DEBUG", f"  All Headers: {dict(response.headers)}")
 
             # For successful responses, validate content
             if response.status_code in [200, 206]:
@@ -369,6 +403,10 @@ class StreamingTester:
             if not passed:
                 all_passed = False
 
+            # Test 503 error handling specifically
+            if not self.test_503_error_handling(info_hash):
+                self.log("WARNING", "503 error handling test had issues")
+
             # Test concurrent requests
             if not self.test_concurrent_requests(info_hash):
                 self.log("WARNING", "Concurrent request test had issues")
@@ -391,14 +429,26 @@ class StreamingTester:
 
         # Handle "Stream is being prepared" responses
         retry_count = 0
+        consecutive_503s = 0
         while result["status_code"] in [425, 503] and retry_count < 10:
-            self.log("INFO", "Stream being prepared, waiting...")
+            if result["status_code"] == 503:
+                consecutive_503s += 1
+                self.log("WARNING", f"503 error #{consecutive_503s}: {result.get('response_text', 'No response text')}")
+
+                # If we get too many 503s, this indicates a persistent issue
+                if consecutive_503s >= 5:
+                    self.log("ERROR", "Too many consecutive 503 errors - possible streaming issue")
+                    return False
+
+            self.log("INFO", f"Stream being prepared (attempt {retry_count + 1}/10), waiting...")
             time.sleep(2)
             result = self.test_streaming_request(info_hash)
             retry_count += 1
 
         if result["status_code"] not in [200, 206]:
-            self.log("ERROR", f"Unexpected status: {result['status_code']}")
+            self.log("ERROR", f"Unexpected status after retries: {result['status_code']}")
+            if result["status_code"] == 503:
+                self.log("ERROR", f"Final 503 error: {result.get('response_text', 'No response text')}")
             return False
 
         # Check if response is valid MP4 if content type indicates it
@@ -408,6 +458,61 @@ class StreamingTester:
 
         self.log("SUCCESS", f"Basic streaming test passed in {result['elapsed']:.2f}s")
         return True
+
+    def test_503_error_handling(self, info_hash: str) -> bool:
+        """Test 503 error handling and debugging"""
+        self.log("INFO", f"Testing 503 error handling for {info_hash}")
+
+        # Make multiple rapid requests to potentially trigger 503s
+        error_503_count = 0
+        total_requests = 5
+
+        for i in range(total_requests):
+            result = self.test_streaming_request(info_hash)
+
+            if result["status_code"] == 503:
+                error_503_count += 1
+                self.log("DEBUG", f"Request {i+1}: Got 503 error")
+                self.log("DEBUG", f"  Response: {result.get('response_text', 'No response')}")
+                self.log("DEBUG", f"  Retry-After: {result.get('retry_after', 'Not specified')}")
+
+                # Test that retry-after header is present
+                if "retry_after" not in result or result["retry_after"] == "unknown":
+                    self.log("WARNING", "503 response missing Retry-After header")
+
+                # Test that content type is appropriate
+                if result.get("content_type") != "video/mp4":
+                    self.log("WARNING", f"503 response has unexpected content type: {result.get('content_type')}")
+
+            elif result["status_code"] == 200:
+                self.log("DEBUG", f"Request {i+1}: Got 200 response")
+            else:
+                self.log("DEBUG", f"Request {i+1}: Got {result['status_code']} response")
+
+            time.sleep(0.5)  # Small delay between requests
+
+        if error_503_count > 0:
+            self.log("WARNING", f"Found {error_503_count}/{total_requests} 503 errors")
+            self.log("INFO", "This indicates remux streaming issues that need investigation")
+
+            # Additional debugging: check if this is a remux-required file
+            self.log("DEBUG", "Checking if this file requires remuxing...")
+
+            # Try to get file info to understand format
+            try:
+                response = self.session.head(f"{self.server_url}/stream/{info_hash}")
+                if response.status_code == 200:
+                    content_type = response.headers.get("Content-Type", "")
+                    self.log("DEBUG", f"File content type: {content_type}")
+
+                    if "mp4" not in content_type.lower():
+                        self.log("INFO", "File appears to need remuxing (non-MP4 format)")
+                else:
+                    self.log("DEBUG", f"HEAD request failed with {response.status_code}")
+            except Exception as e:
+                self.log("DEBUG", f"HEAD request error: {e}")
+
+        return True  # We expect 503s in some cases, so don't fail the test
 
 
 def main():
@@ -427,20 +532,61 @@ def main():
         action="store_true",
         help="Enable verbose output"
     )
+    parser.add_argument(
+        "--detect-503",
+        action="store_true",
+        help="Focus on detecting and debugging 503 errors"
+    )
 
     args = parser.parse_args()
 
     tester = StreamingTester(args.server_url)
 
     try:
-        success = tester.run_all_tests(args.info_hash)
+        if args.detect_503:
+            tester.log("INFO", "Running in 503 error detection mode")
+            # Get all available torrents and test each one specifically for 503s
+            torrents = tester.get_available_torrents()
+            if not torrents:
+                tester.log("ERROR", "No torrents available for 503 testing")
+                sys.exit(1)
 
-        if success:
-            tester.log("SUCCESS", "All tests passed! ✅")
-            sys.exit(0)
+            found_503_errors = False
+            for torrent in torrents:
+                info_hash = torrent["info_hash"]
+                tester.log("INFO", f"Testing {info_hash} for 503 errors...")
+
+                # Test this specific hash multiple times
+                for attempt in range(3):
+                    result = tester.test_streaming_request(info_hash)
+                    if result["status_code"] == 503:
+                        found_503_errors = True
+                        tester.log("ERROR", f"Found 503 error on attempt {attempt + 1}")
+                        tester.log("ERROR", f"Response: {result.get('response_text', 'No response')}")
+                        break
+                    elif result["status_code"] == 200:
+                        tester.log("SUCCESS", f"Request successful on attempt {attempt + 1}")
+                        break
+                    else:
+                        tester.log("INFO", f"Got status {result['status_code']} on attempt {attempt + 1}")
+
+                    time.sleep(1)
+
+            if found_503_errors:
+                tester.log("ERROR", "503 errors detected! Check server logs for remux issues.")
+                sys.exit(1)
+            else:
+                tester.log("SUCCESS", "No 503 errors found in testing")
+                sys.exit(0)
         else:
-            tester.log("ERROR", "Some tests failed! ❌")
-            sys.exit(1)
+            success = tester.run_all_tests(args.info_hash)
+
+            if success:
+                tester.log("SUCCESS", "All tests passed! ✅")
+                sys.exit(0)
+            else:
+                tester.log("ERROR", "Some tests failed! ❌")
+                sys.exit(1)
 
     except KeyboardInterrupt:
         tester.log("INFO", "Tests interrupted by user")

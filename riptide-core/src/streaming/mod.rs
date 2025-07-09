@@ -8,12 +8,13 @@ pub mod file_assembler;
 pub mod file_reconstruction;
 pub mod performance_tests;
 pub mod piece_reader;
-pub mod progressive_remuxing;
+
 pub mod range_handler;
-pub mod remuxed_streaming;
+pub mod remux_streaming;
+
 pub mod storage_cache;
 pub mod strategy;
-pub mod strategy_manager;
+
 pub mod stream_coordinator;
 
 use std::sync::Arc;
@@ -27,11 +28,11 @@ pub use file_reconstruction::{FileReconstructor, create_file_reconstructor_from_
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
-pub use progressive_remuxing::{
-    ProgressiveRemuxingConfig, ProgressiveRemuxingStrategy, create_progressive_remuxing_strategy,
-};
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
-pub use remuxed_streaming::{RemuxedStreaming, RemuxingConfig};
+pub use remux_streaming::{
+    RemuxStreamingConfig, RemuxStreamingStrategy, create_remux_streaming_strategy,
+    create_remux_streaming_strategy_with_config,
+};
 pub use storage_cache::{
     CacheEntry, CacheKey, CacheStatistics, StorageCache, StorageCacheConfig, StorageCacheError,
 };
@@ -39,7 +40,6 @@ pub use strategy::{
     ContainerDetector, ContainerFormat, StreamingError as StrategyError, StreamingResult,
     StreamingStrategy,
 };
-pub use strategy_manager::{StreamingCapability, StreamingStrategyManager};
 pub use stream_coordinator::{StreamCoordinator, StreamingError, StreamingSession, StreamingStats};
 use tokio::sync::RwLock;
 

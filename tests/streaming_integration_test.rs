@@ -288,7 +288,7 @@ async fn setup_streaming_service(file_assembler: Arc<TestFileAssembler>) -> Http
     let ffmpeg_processor = create_ffmpeg_processor();
     let config = HttpStreamingConfig::default();
 
-    HttpStreamingService::new_with_ffmpeg(file_assembler, piece_store, ffmpeg_processor, config)
+    HttpStreamingService::new(file_assembler, piece_store, config)
 }
 
 /// Test app state for integration testing
@@ -545,12 +545,7 @@ async fn test_file_assembler_integration() {
 
     // Create service - uses file assembler properly
     let ffmpeg_processor = create_ffmpeg_processor();
-    let streaming_service = HttpStreamingService::new_with_ffmpeg(
-        file_assembler.clone(),
-        piece_store,
-        ffmpeg_processor,
-        config,
-    );
+    let streaming_service = HttpStreamingService::new(file_assembler.clone(), piece_store, config);
 
     let test_files = create_test_files()
         .await
@@ -614,12 +609,8 @@ async fn test_head_and_tail_streaming() {
         let piece_store = Arc::new(MockPieceStore::new());
         let ffmpeg_processor = create_ffmpeg_processor();
         let config = HttpStreamingConfig::default();
-        let streaming_service = HttpStreamingService::new_with_ffmpeg(
-            file_assembler.clone(),
-            piece_store,
-            ffmpeg_processor,
-            config,
-        );
+        let streaming_service =
+            HttpStreamingService::new(file_assembler.clone(), piece_store, config);
         let app_state = TestAppState::new(streaming_service);
 
         // Test streaming request - should work with head-and-tail data

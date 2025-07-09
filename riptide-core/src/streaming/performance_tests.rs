@@ -430,7 +430,7 @@ mod tests {
             }
         }
 
-        async fn add_torrent_pieces(&self, info_hash: InfoHash, pieces: Vec<TorrentPiece>) {
+        async fn add_torrent_pieces(&self, _info_hash: InfoHash, _pieces: Vec<TorrentPiece>) {
             // Note: This would need Arc<RwLock<>> in real implementation
             // For test purposes, we'll skip the actual storage
         }
