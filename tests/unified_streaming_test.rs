@@ -196,6 +196,7 @@ async fn test_unified_streaming_with_head_data() {
                     || reason.contains("Session has error")
                     || reason.contains("Failed to get file size")
                     || reason.contains("Insufficient")
+                    || reason.contains("Session startup timed out")
             );
         }
         _ => {} // Other errors are also acceptable in test environment

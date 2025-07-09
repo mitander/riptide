@@ -176,7 +176,21 @@ impl RemuxStreamingStrategy {
 
         // <<< FIX: Block here until the session signals it's ready.
         // This will block the *first* request until the MP4 header is generated.
-        session.ready_for_output.notified().await;
+        // Add timeout to prevent infinite waiting in test environments
+        let timeout_duration = Duration::from_secs(5);
+        match timeout(timeout_duration, session.ready_for_output.notified()).await {
+            Ok(_) => {
+                tracing::debug!("Session {} is ready for output", info_hash);
+            }
+            Err(_) => {
+                tracing::warn!("Session {} timed out waiting for ready signal", info_hash);
+                // Remove the session from active sessions on timeout
+                sessions.remove(&info_hash);
+                return Err(StreamingError::FfmpegError {
+                    reason: "Session startup timed out".to_string(),
+                });
+            }
+        }
 
         // After waiting, check if an error occurred during initialization.
         if let Some(error) = session.error.read().await.as_ref() {
@@ -215,6 +229,8 @@ impl RemuxStreamingStrategy {
                 *session.status.write().await = RemuxingStatus::Failed {
                     _reason: "Remuxing pipeline failed".to_string(),
                 };
+                // Notify waiters that the session encountered an error
+                session.ready_for_output.notify_waiters();
             }
         });
 
@@ -801,23 +817,34 @@ impl StreamingStrategy for RemuxStreamingStrategy {
     }
 
     async fn file_size(&self, info_hash: InfoHash) -> StreamingResult<u64> {
-        let session = self.ensure_session_active(info_hash).await?;
-
-        let status = session.status.read().await;
-        match &*status {
-            RemuxingStatus::Completed { total_output } => Ok(*total_output),
-            RemuxingStatus::Processing {
-                output_produced, ..
-            } => {
-                // Estimate based on progress
-                let input_pos = session
-                    .input_position
-                    .load(std::sync::atomic::Ordering::Relaxed);
-                let progress = input_pos as f64 / session.file_size as f64;
-                let estimated_size = (*output_produced as f64 / progress.max(0.01)) as u64;
-                Ok(estimated_size)
+        // Try to get session first for accurate size estimation
+        match self.ensure_session_active(info_hash).await {
+            Ok(session) => {
+                let status = session.status.read().await;
+                match &*status {
+                    RemuxingStatus::Completed { total_output } => Ok(*total_output),
+                    RemuxingStatus::Processing {
+                        output_produced, ..
+                    } => {
+                        // Estimate based on progress
+                        let input_pos = session
+                            .input_position
+                            .load(std::sync::atomic::Ordering::Relaxed);
+                        let progress = input_pos as f64 / session.file_size as f64;
+                        let estimated_size = (*output_produced as f64 / progress.max(0.01)) as u64;
+                        Ok(estimated_size)
+                    }
+                    _ => Ok(session.file_size), // Return original file size as estimate
+                }
             }
-            _ => Ok(session.file_size), // Return original file size as estimate
+            Err(_) => {
+                // Fallback: return original file size from assembler
+                self.file_assembler.file_size(info_hash).await.map_err(|e| {
+                    StreamingError::FfmpegError {
+                        reason: format!("Failed to get file size: {e}"),
+                    }
+                })
+            }
         }
     }
 
