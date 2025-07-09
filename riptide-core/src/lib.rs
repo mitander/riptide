@@ -12,6 +12,7 @@ pub mod server_components;
 pub mod storage;
 pub mod streaming;
 pub mod torrent;
+pub mod tracing_setup;
 pub mod video;
 
 // Re-export main types for convenient access
@@ -21,6 +22,7 @@ pub use server_components::{ConversionProgress, ConversionStatus, ServerComponen
 pub use storage::{FileLibraryManager, FileStorage, LibraryFile, StorageError};
 pub use streaming::{DirectStreamingService, StreamingError};
 pub use torrent::{EngineStats, TorrentCreator, TorrentEngineHandle, TorrentError};
+pub use tracing_setup::{CliLogLevel, init_tracing};
 
 /// Core errors that can bubble up from any Riptide subsystem.
 ///

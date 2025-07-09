@@ -34,7 +34,10 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 ffmpeg-next = { workspace = true }
+parking_lot = { workspace = true }
+clap = { workspace = true }
 
 
 # Optional simulation dependencies
