@@ -48,24 +48,22 @@ class StreamingTester:
     def check_server_health(self) -> bool:
         """Check if the server is running and accessible"""
         try:
-            response = self.session.get(f"{self.server_url}/health", timeout=5)
-            return response.status_code in [200, 404]  # 404 if no health endpoint
+            response = self.session.get(f"{self.server_url}/", timeout=5)
+            return response.status_code == 200
         except requests.exceptions.RequestException:
             return False
 
     def get_available_torrents(self) -> List[Dict]:
         """Get list of available torrents from the server"""
         try:
-            response = self.session.get(f"{self.server_url}/api/torrents", timeout=10)
+            response = self.session.get(f"{self.server_url}/torrents", timeout=10)
             if response.status_code == 200:
-                return response.json()
-            else:
-                # Try alternate endpoint
-                response = self.session.get(f"{self.server_url}/torrents", timeout=10)
-                if response.status_code == 200:
-                    # Parse HTML response to extract torrent info
-                    # This is a simplified version - adjust based on actual HTML structure
-                    return []
+                # Parse HTML response to extract torrent info hashes
+                import re
+                html_content = response.text
+                # Extract info hashes from HTML (40 character hex strings)
+                info_hashes = re.findall(r'[0-9a-f]{40}', html_content)
+                return [{"info_hash": hash_val} for hash_val in info_hashes]
         except Exception as e:
             self.log("ERROR", f"Failed to get torrents: {e}")
             return []
@@ -358,18 +356,15 @@ class StreamingTester:
                     "242d88012018d71594f073d03736ae99fc52f1c6"   # MKV
                 ]
             else:
-                info_hashes = [t.get("info_hash") for t in torrents]
+                info_hashes = [t["info_hash"] for t in torrents if "info_hash" in t]
 
         # Test each file
         all_passed = True
         for info_hash in info_hashes:
             self.log("INFO", f"\nTesting torrent: {info_hash}")
 
-            # Determine file type (simplified - would need actual detection)
-            if info_hash.endswith("820f"):  # AVI hash pattern
-                passed = self.test_avi_streaming(info_hash)
-            else:  # Assume MKV
-                passed = self.test_mkv_streaming(info_hash)
+            # Test basic streaming functionality
+            passed = self.test_basic_streaming(info_hash)
 
             if not passed:
                 all_passed = False
@@ -382,6 +377,37 @@ class StreamingTester:
         self.test_cache_directory()
 
         return all_passed
+
+    def test_basic_streaming(self, info_hash: str) -> bool:
+        """Test basic streaming functionality"""
+        self.log("INFO", f"Testing basic streaming for {info_hash}")
+
+        # Test 1: Initial request
+        result = self.test_streaming_request(info_hash)
+
+        if result["status_code"] == 0:
+            self.log("ERROR", f"Connection failed: {result.get('error')}")
+            return False
+
+        # Handle "Stream is being prepared" responses
+        retry_count = 0
+        while result["status_code"] in [425, 503] and retry_count < 10:
+            self.log("INFO", "Stream being prepared, waiting...")
+            time.sleep(2)
+            result = self.test_streaming_request(info_hash)
+            retry_count += 1
+
+        if result["status_code"] not in [200, 206]:
+            self.log("ERROR", f"Unexpected status: {result['status_code']}")
+            return False
+
+        # Check if response is valid MP4 if content type indicates it
+        if result.get("mp4_valid") is False:
+            self.log("ERROR", f"Invalid MP4: {result.get('mp4_validation_message')}")
+            return False
+
+        self.log("SUCCESS", f"Basic streaming test passed in {result['elapsed']:.2f}s")
+        return True
 
 
 def main():

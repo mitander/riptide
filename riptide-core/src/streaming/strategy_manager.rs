@@ -4,6 +4,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use super::ffmpeg::FfmpegProcessor;
+use super::file_assembler::{FileAssembler, PieceFileAssembler};
+use super::progressive_remuxing::{ProgressiveRemuxingConfig, ProgressiveRemuxingStrategy};
 use super::remuxed_streaming::{RemuxedStreaming, RemuxingConfig};
 use super::strategy::{
     ContainerDetector, ContainerFormat, StreamingError, StreamingResult, StreamingStrategy,
@@ -16,19 +18,41 @@ pub struct StreamingStrategyManager<
     F: FfmpegProcessor = super::ffmpeg::SimulationFfmpegProcessor,
 > {
     piece_store: Arc<P>,
+    progressive_remuxing: Option<ProgressiveRemuxingStrategy<PieceFileAssembler, F>>,
     remuxed_streaming: Option<RemuxedStreaming<P, F>>,
 }
 
-impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
+impl<P: PieceStore + 'static, F: FfmpegProcessor + 'static> StreamingStrategyManager<P, F> {
     /// Create new strategy manager with piece store (direct streaming only)
     pub fn new(piece_store: Arc<P>) -> Self {
         Self {
             piece_store,
+            progressive_remuxing: None,
             remuxed_streaming: None,
         }
     }
 
-    /// Create strategy manager with remuxing support
+    /// Create strategy manager with progressive remuxing support
+    pub fn with_progressive_remuxing(
+        piece_store: Arc<P>,
+        ffmpeg_processor: F,
+        config: ProgressiveRemuxingConfig,
+    ) -> StreamingResult<Self> {
+        let file_assembler = Arc::new(PieceFileAssembler::new(
+            piece_store.clone() as Arc<dyn crate::torrent::PieceStore>,
+            None,
+        ));
+        let progressive_remuxing =
+            ProgressiveRemuxingStrategy::new(file_assembler, ffmpeg_processor, config)?;
+
+        Ok(Self {
+            piece_store,
+            progressive_remuxing: Some(progressive_remuxing),
+            remuxed_streaming: None,
+        })
+    }
+
+    /// Create strategy manager with legacy remuxing support
     pub fn with_remuxing(
         piece_store: Arc<P>,
         ffmpeg_processor: F,
@@ -42,6 +66,7 @@ impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
 
         Ok(Self {
             piece_store,
+            progressive_remuxing: None,
             remuxed_streaming: Some(remuxed_streaming),
         })
     }
@@ -61,6 +86,14 @@ impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
             Err(StreamingError::UnsupportedFormat {
                 format: format!("Direct streaming for {format:?} not yet implemented"),
             })
+        } else if let Some(ref progressive) = self.progressive_remuxing {
+            if progressive.supports_format(&format) {
+                Ok(progressive as &dyn StreamingStrategy)
+            } else {
+                Err(StreamingError::UnsupportedFormat {
+                    format: format!("{format:?}"),
+                })
+            }
         } else if let Some(ref remuxed) = self.remuxed_streaming {
             if remuxed.supports_format(&format) {
                 Ok(remuxed as &dyn StreamingStrategy)
@@ -142,7 +175,7 @@ pub struct StreamingCapability {
     pub estimated_delay: Option<std::time::Duration>,
 }
 
-impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
+impl<P: PieceStore + 'static, F: FfmpegProcessor + 'static> StreamingStrategyManager<P, F> {
     /// Returns detailed streaming capability information
     pub async fn streaming_capability(
         &self,
@@ -153,6 +186,24 @@ impl<P: PieceStore, F: FfmpegProcessor> StreamingStrategyManager<P, F> {
         let (can_stream, requires_remuxing, estimated_delay) = if format.is_browser_compatible() {
             // Direct streaming would be supported if implemented
             (false, false, None) // Set to false until DirectPieceStreaming is implemented
+        } else if let Some(ref progressive) = self.progressive_remuxing {
+            if progressive.supports_format(&format) {
+                // Progressive remuxing can start with head pieces
+                let head_size = 2 * 1024 * 1024; // 2MB head requirement
+                let file_assembler = PieceFileAssembler::new(
+                    self.piece_store.clone() as Arc<dyn crate::torrent::PieceStore>,
+                    None,
+                );
+                let head_available = file_assembler.is_range_available(info_hash, 0..head_size);
+
+                if head_available {
+                    (true, true, Some(std::time::Duration::from_secs(10))) // Quick start
+                } else {
+                    (false, true, None) // Missing head pieces
+                }
+            } else {
+                (false, false, None)
+            }
         } else if let Some(ref remuxed) = self.remuxed_streaming {
             if remuxed.supports_format(&format) {
                 // Check if all pieces are available for remuxing
@@ -285,7 +336,66 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_strategy_manager_mkv_with_remuxing() {
+    async fn test_strategy_manager_mkv_with_progressive_remuxing() {
+        let info_hash = InfoHash::new([2u8; 20]);
+
+        // Create MKV data with enough head data
+        let mut mkv_data = vec![
+            0x1A, 0x45, 0xDF, 0xA3, // EBML signature
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x42, 0x86, // DocType element
+            0x81, 0x01, // size 1
+            b'm', // start of "matroska"
+        ];
+        mkv_data.resize(2 * 1024 * 1024, 0); // 2MB head data
+
+        let pieces = vec![
+            TorrentPiece {
+                index: 0,
+                hash: [0u8; 20],
+                data: mkv_data,
+            },
+            TorrentPiece {
+                index: 1,
+                hash: [0u8; 20],
+                data: vec![0u8; 512],
+            },
+        ];
+
+        let mut piece_store = MockPieceStore::new();
+        piece_store.add_pieces(info_hash, pieces);
+
+        let temp_dir = tempdir().unwrap();
+        let config = ProgressiveRemuxingConfig {
+            temp_dir: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+
+        let manager = StreamingStrategyManager::with_progressive_remuxing(
+            Arc::new(piece_store),
+            SimulationFfmpegProcessor::new(),
+            config,
+        )
+        .unwrap();
+
+        // Test streaming capability
+        let capability = manager.streaming_capability(info_hash).await.unwrap();
+        assert!(capability.can_stream);
+        assert_eq!(capability.container_format, ContainerFormat::Mkv);
+        assert!(capability.requires_remuxing);
+        assert!(capability.estimated_delay.is_some());
+
+        // Test content info - should return MP4 for progressive remuxing
+        let (format, mime_type) = manager.content_info(info_hash).await.unwrap();
+        assert_eq!(format, ContainerFormat::Mp4);
+        assert_eq!(mime_type, "video/mp4");
+
+        // Test file size
+        let file_size = manager.file_size(info_hash).await.unwrap();
+        assert!(file_size > 0);
+    }
+
+    #[tokio::test]
+    async fn test_strategy_manager_mkv_with_legacy_remuxing() {
         let info_hash = InfoHash::new([2u8; 20]);
 
         // Create MKV data

@@ -8,6 +8,7 @@ pub mod file_assembler;
 pub mod file_reconstruction;
 pub mod performance_tests;
 pub mod piece_reader;
+pub mod progressive_remuxing;
 pub mod range_handler;
 pub mod remuxed_streaming;
 pub mod storage_cache;
@@ -25,6 +26,9 @@ pub use file_assembler::{CacheStats, FileAssembler, FileAssemblerError, PieceFil
 pub use file_reconstruction::{FileReconstructor, create_file_reconstructor_from_trait_object};
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
+};
+pub use progressive_remuxing::{
+    ProgressiveRemuxingConfig, ProgressiveRemuxingStrategy, create_progressive_remuxing_strategy,
 };
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
 pub use remuxed_streaming::{RemuxedStreaming, RemuxingConfig};

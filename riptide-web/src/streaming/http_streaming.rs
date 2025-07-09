@@ -12,12 +12,14 @@ use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
 use riptide_core::streaming::{
     ContainerDetector, ContainerFormat, FfmpegProcessor, FileAssembler, FileAssemblerError,
-    ProductionFfmpegProcessor, create_file_reconstructor_from_trait_object,
+    PieceFileAssembler, ProductionFfmpegProcessor, ProgressiveRemuxingConfig,
+    ProgressiveRemuxingStrategy, StreamingStrategy as CoreStreamingStrategy,
+    create_file_reconstructor_from_trait_object, create_progressive_remuxing_strategy,
 };
 use riptide_core::torrent::InfoHash;
 use riptide_core::video::{VideoFormat, VideoQuality};
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Simple range request for streaming
 #[derive(Debug, Clone, Default)]
@@ -46,6 +48,8 @@ pub struct HttpStreamingService {
     #[allow(dead_code)]
     piece_store: Arc<dyn riptide_core::torrent::PieceStore>,
     ffmpeg_processor: Box<dyn FfmpegProcessor>,
+    progressive_remuxing:
+        Option<ProgressiveRemuxingStrategy<PieceFileAssembler, ProductionFfmpegProcessor>>,
     sessions: Arc<RwLock<HashMap<InfoHash, StreamingSession>>>,
     config: HttpStreamingConfig,
     performance_metrics: Arc<RwLock<StreamingPerformanceMetrics>>,
@@ -252,10 +256,21 @@ impl HttpStreamingService {
         // Create FFmpeg processor for remuxing
         let ffmpeg_processor = ProductionFfmpegProcessor::new(None);
 
+        // Create progressive remuxing strategy
+        let progressive_config = ProgressiveRemuxingConfig {
+            temp_dir: std::env::temp_dir().join("riptide-progressive"),
+            min_head_size: 2 * 1024 * 1024, // 2MB head required
+            ..Default::default()
+        };
+
+        let progressive_remuxing =
+            create_progressive_remuxing_strategy(piece_store.clone(), progressive_config).ok();
+
         Self {
             file_assembler,
             piece_store,
             ffmpeg_processor: Box::new(ffmpeg_processor),
+            progressive_remuxing,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             config,
 
@@ -278,10 +293,21 @@ impl HttpStreamingService {
         ffmpeg_processor: F,
         config: HttpStreamingConfig,
     ) -> Self {
+        // Create progressive remuxing strategy for testing
+        let progressive_config = ProgressiveRemuxingConfig {
+            temp_dir: std::env::temp_dir().join("riptide-progressive-test"),
+            min_head_size: 512 * 1024, // 512KB for testing
+            ..Default::default()
+        };
+
+        let progressive_remuxing =
+            create_progressive_remuxing_strategy(piece_store.clone(), progressive_config).ok();
+
         Self {
             file_assembler,
             piece_store,
             ffmpeg_processor: Box::new(ffmpeg_processor),
+            progressive_remuxing,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             config,
 
@@ -438,8 +464,19 @@ impl HttpStreamingService {
             return Ok(StreamingStrategy::Adaptive);
         }
 
-        // For non-MP4 sources, use remuxed streaming if client supports MP4
+        // For non-MP4 sources, use progressive remuxed streaming if available and client supports MP4
         if session.client_capabilities.supports_mp4 {
+            // Check if progressive remuxing is available and can handle this format
+            if let Some(ref progressive) = self.progressive_remuxing
+                && progressive.supports_format(&container_format)
+            {
+                info!("Using progressive remuxing for {}", request.info_hash);
+                let quality = VideoQuality::Medium;
+                let format = VideoFormat::Mp4;
+                return Ok(StreamingStrategy::Remuxed { quality, format });
+            }
+
+            // Fall back to legacy remuxing
             let quality = VideoQuality::Medium;
             let format = VideoFormat::Mp4;
             return Ok(StreamingStrategy::Remuxed { quality, format });
@@ -518,41 +555,126 @@ impl HttpStreamingService {
         }
     }
 
-    /// Serve remuxed stream by creating MP4 from original file
+    /// Serve remuxed stream using progressive remuxing for streaming while downloading
     async fn serve_remuxed_stream(
         &self,
         request: &StreamingRequest,
     ) -> Result<StreamingResponse, HttpStreamingError> {
+        // Try progressive remuxing first if available
+        if let Some(ref progressive) = self.progressive_remuxing {
+            match self
+                .serve_progressive_remuxed_stream(progressive, request)
+                .await
+            {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    warn!("Progressive remuxing failed, falling back to legacy: {}", e);
+                }
+            }
+        }
+
+        // Fall back to legacy remuxing if progressive fails or isn't available
+        self.serve_legacy_remuxed_stream(request).await
+    }
+
+    /// Serve stream using progressive remuxing strategy
+    async fn serve_progressive_remuxed_stream(
+        &self,
+        progressive: &ProgressiveRemuxingStrategy<PieceFileAssembler, ProductionFfmpegProcessor>,
+        request: &StreamingRequest,
+    ) -> Result<StreamingResponse, HttpStreamingError> {
+        info!("Using progressive remuxing for {}", request.info_hash);
+
+        // Get file size from progressive strategy
+        let file_size = progressive
+            .file_size(request.info_hash)
+            .await
+            .map_err(|e| HttpStreamingError::RemuxingFailed {
+                reason: format!("Progressive remuxing failed: {e}"),
+            })?;
+
+        // Handle range request vs full file request
+        if let Some(range) = &request.range {
+            // Range request - return 206 Partial Content
+            let start = range.start;
+            let end = range.end.unwrap_or(file_size - 1).min(file_size - 1);
+            let length = end - start + 1;
+
+            // Get data from progressive strategy
+            let data = progressive
+                .stream_range(request.info_hash, start..end + 1)
+                .await
+                .map_err(|e| HttpStreamingError::StreamingNotReady {
+                    reason: format!("Progressive streaming failed: {e}"),
+                })?;
+
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "Content-Range",
+                HeaderValue::from_str(&format!("bytes {start}-{end}/{file_size}")).unwrap(),
+            );
+            headers.insert(
+                "Content-Length",
+                HeaderValue::from_str(&length.to_string()).unwrap(),
+            );
+            headers.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
+            headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
+
+            Ok(StreamingResponse {
+                status: StatusCode::PARTIAL_CONTENT,
+                headers,
+                body: Body::from(data),
+                content_type: "video/mp4".to_string(),
+            })
+        } else {
+            // Full file request
+            let data = progressive
+                .stream_range(request.info_hash, 0..file_size)
+                .await
+                .map_err(|e| HttpStreamingError::RemuxingFailed {
+                    reason: format!("Progressive streaming failed: {e}"),
+                })?;
+
+            let mut headers = HeaderMap::new();
+            headers.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
+            headers.insert(
+                "Content-Length",
+                HeaderValue::from_str(&file_size.to_string()).unwrap(),
+            );
+            headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
+
+            Ok(StreamingResponse {
+                status: StatusCode::OK,
+                headers,
+                body: Body::from(data),
+                content_type: "video/mp4".to_string(),
+            })
+        }
+    }
+
+    /// Legacy remuxing that requires all pieces (fallback)
+    async fn serve_legacy_remuxed_stream(
+        &self,
+        request: &StreamingRequest,
+    ) -> Result<StreamingResponse, HttpStreamingError> {
+        warn!(
+            "Using legacy remuxing for {} - requires full download",
+            request.info_hash
+        );
+
         // Get cache path for remuxed file
         let cache_dir = std::env::temp_dir().join("riptide-remux-cache");
-        tracing::debug!("Cache directory: {}", cache_dir.display());
-
         std::fs::create_dir_all(&cache_dir).map_err(|e| HttpStreamingError::RemuxFailed {
             reason: format!("Failed to create cache directory: {e}"),
         })?;
 
         let cache_path = cache_dir.join(format!("{}.mp4", request.info_hash));
-        tracing::debug!(
-            "Cache path for {}: {}",
-            request.info_hash,
-            cache_path.display()
-        );
 
         // Check if cached MP4 exists
         if !cache_path.exists() {
-            tracing::info!(
-                "Cache miss for {} - remuxed file does not exist",
-                request.info_hash
-            );
-
             // Check if a remux operation is already in progress
             let lock_path = cache_dir.join(format!("{}.lock", request.info_hash));
             if lock_path.exists() {
-                tracing::info!(
-                    "Remux already in progress for {} (lock file exists)",
-                    request.info_hash
-                );
-                // Another process is already remuxing this file
                 return Err(HttpStreamingError::StreamingNotReady {
                     reason: "Stream is being prepared. Please wait...".to_string(),
                 });
@@ -580,13 +702,6 @@ impl HttpStreamingService {
                         reason: format!("Failed to get piece count: {e}"),
                     })?;
 
-                tracing::info!(
-                    "Cannot remux yet - missing {}/{} pieces for {}",
-                    missing.len(),
-                    piece_count,
-                    request.info_hash
-                );
-
                 return Err(HttpStreamingError::StreamingNotReady {
                     reason: format!(
                         "Downloading file... {:.1}% complete",
@@ -595,11 +710,7 @@ impl HttpStreamingService {
                 });
             }
 
-            // All pieces available - create lock file to prevent concurrent remuxing
-            tracing::info!(
-                "Creating lock file and starting remux for {}",
-                request.info_hash
-            );
+            // All pieces available - create lock file and start remuxing
             std::fs::write(&lock_path, "").map_err(|e| HttpStreamingError::RemuxFailed {
                 reason: format!("Failed to create lock file: {e}"),
             })?;
@@ -610,22 +721,13 @@ impl HttpStreamingService {
                 .await
             {
                 Ok(_) => {
-                    // Success - remove lock file
-                    tracing::info!("Remux completed successfully for {}", request.info_hash);
                     let _ = std::fs::remove_file(&lock_path);
                 }
                 Err(e) => {
-                    // Failed - remove lock file and propagate error
-                    tracing::error!("Remux failed for {}: {:?}", request.info_hash, e);
                     let _ = std::fs::remove_file(&lock_path);
                     return Err(e);
                 }
             }
-        } else {
-            tracing::info!(
-                "Cache hit for {} - serving existing remuxed file",
-                request.info_hash
-            );
         }
 
         // Get file size from cached MP4
@@ -637,7 +739,6 @@ impl HttpStreamingService {
 
         // Handle range request vs full file request
         if let Some(range) = &request.range {
-            // Range request - return 206 Partial Content
             let start = range.start;
             let end = range.end.unwrap_or(file_size - 1).min(file_size - 1);
             let length = end - start + 1;
@@ -654,7 +755,7 @@ impl HttpStreamingService {
                 HeaderValue::from_str(&length.to_string()).unwrap(),
             );
             headers.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
-            headers.insert("Content-Type", HeaderValue::from_str("video/mp4").unwrap());
+            headers.insert("Content-Type", HeaderValue::from_static("video/mp4"));
 
             Ok(StreamingResponse {
                 status: StatusCode::PARTIAL_CONTENT,
@@ -663,7 +764,6 @@ impl HttpStreamingService {
                 content_type: "video/mp4".to_string(),
             })
         } else {
-            // Full file request - serve complete remuxed file
             let data = tokio::fs::read(&cache_path).await.map_err(|e| {
                 HttpStreamingError::RemuxFailed {
                     reason: format!("Failed to read cached file: {e}"),

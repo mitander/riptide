@@ -42,3 +42,11 @@ path = "message_flow_test.rs"
 [[test]]
 name = "streaming_integration_test"
 path = "streaming_integration_test.rs"
+
+[[test]]
+name = "browser_streaming_test"
+path = "browser_streaming_test.rs"
+
+[[test]]
+name = "progressive_streaming_integration_test"
+path = "progressive_streaming_integration_test.rs"
