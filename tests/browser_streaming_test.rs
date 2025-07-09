@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use riptide_core::streaming::{
-    ContainerFormat, FileAssembler, FileAssemblerError, ProductionFfmpegProcessor,
+    ContainerFormat, FileAssembler, FileAssemblerError, RemuxStreamingConfig,
 };
 use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore, TorrentError};
 use riptide_web::streaming::{
@@ -176,6 +176,7 @@ fn create_test_video_data(format: ContainerFormat, size: usize) -> Vec<u8> {
 }
 
 #[tokio::test]
+#[ignore] // Requires FFmpeg to be available for remux streaming
 async fn test_avi_streaming() {
     let _temp_dir = TempDir::new().unwrap();
 
@@ -193,8 +194,16 @@ async fn test_avi_streaming() {
         .add_torrent_data(info_hash, avi_data, 256 * 1024)
         .await;
 
-    let streaming_service =
-        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
+    // Create test remux config with short timeout for test environment
+    let mut remux_config = RemuxStreamingConfig::default();
+    remux_config.ffmpeg_timeout = std::time::Duration::from_secs(5);
+
+    let streaming_service = HttpStreamingService::new_with_remux_config(
+        file_assembler,
+        piece_store,
+        HttpStreamingConfig::default(),
+        remux_config,
+    );
 
     // Test streaming request
     let request = StreamingRequest {
@@ -232,6 +241,7 @@ async fn test_avi_streaming() {
 }
 
 #[tokio::test]
+#[ignore] // Requires FFmpeg to be available for remux streaming
 async fn test_mkv_streaming() {
     let _temp_dir = TempDir::new().unwrap();
 
@@ -249,8 +259,16 @@ async fn test_mkv_streaming() {
         .add_torrent_data(info_hash, mkv_data, 256 * 1024)
         .await;
 
-    let streaming_service =
-        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
+    // Create test remux config with short timeout for test environment
+    let mut remux_config = RemuxStreamingConfig::default();
+    remux_config.ffmpeg_timeout = std::time::Duration::from_secs(5);
+
+    let streaming_service = HttpStreamingService::new_with_remux_config(
+        file_assembler,
+        piece_store,
+        HttpStreamingConfig::default(),
+        remux_config,
+    );
 
     // Test successful MKV to MP4 remux and range requests
     let test_ranges = vec![(0, None), (0, Some(1023)), (1024, None), (512, Some(1535))];
@@ -309,8 +327,16 @@ async fn test_cache_behavior() {
         .add_torrent_data(info_hash, avi_data, 128 * 1024)
         .await;
 
-    let streaming_service =
-        HttpStreamingService::new(file_assembler, piece_store, HttpStreamingConfig::default());
+    // Create test remux config with short timeout for test environment
+    let mut remux_config = RemuxStreamingConfig::default();
+    remux_config.ffmpeg_timeout = std::time::Duration::from_secs(5);
+
+    let streaming_service = HttpStreamingService::new_with_remux_config(
+        file_assembler,
+        piece_store,
+        HttpStreamingConfig::default(),
+        remux_config,
+    );
 
     // First request - should trigger remux
     let start_time = std::time::Instant::now();
@@ -358,6 +384,7 @@ async fn test_cache_behavior() {
 }
 
 #[tokio::test]
+#[ignore] // Requires FFmpeg to be available for remux streaming
 async fn test_concurrent_remux_prevention() {
     let file_assembler = Arc::new(MockFileAssembler::new());
     let piece_store = Arc::new(MockPieceStore::new());
@@ -370,10 +397,15 @@ async fn test_concurrent_remux_prevention() {
         .add_torrent_data(info_hash, mkv_data, 256 * 1024)
         .await;
 
-    let streaming_service = Arc::new(HttpStreamingService::new(
+    // Create test remux config with short timeout for test environment
+    let mut remux_config = RemuxStreamingConfig::default();
+    remux_config.ffmpeg_timeout = std::time::Duration::from_secs(5);
+
+    let streaming_service = Arc::new(HttpStreamingService::new_with_remux_config(
         file_assembler,
         piece_store,
         HttpStreamingConfig::default(),
+        remux_config,
     ));
 
     // Launch multiple concurrent requests

@@ -177,7 +177,7 @@ impl RemuxStreamingStrategy {
         // <<< FIX: Block here until the session signals it's ready.
         // This will block the *first* request until the MP4 header is generated.
         // Add timeout to prevent infinite waiting in test environments
-        let timeout_duration = Duration::from_secs(5);
+        let timeout_duration = self.config.ffmpeg_timeout;
         match timeout(timeout_duration, session.ready_for_output.notified()).await {
             Ok(_) => {
                 tracing::debug!("Session {} is ready for output", info_hash);
