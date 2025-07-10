@@ -21,6 +21,9 @@ pub enum StreamingError {
     #[error("Container remuxing failed: {reason}")]
     RemuxingFailed { reason: String },
 
+    #[error("Stream not ready: {reason}")]
+    StreamingNotReady { reason: String },
+
     #[error("Piece data unavailable: {info_hash}")]
     PieceDataUnavailable { info_hash: InfoHash },
 
@@ -49,7 +52,7 @@ pub enum StreamingError {
 }
 
 /// Detected container format from file headers
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ContainerFormat {
     Mp4,
     WebM,

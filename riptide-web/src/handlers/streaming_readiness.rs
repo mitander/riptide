@@ -101,7 +101,7 @@ async fn check_streaming_readiness(
     buffer_status: &riptide_core::torrent::BufferStatus,
 ) -> ReadinessResult {
     // Try to get actual file size from torrent engine
-    let estimated_file_size = match state.engine().download_statistics().await {
+    let _estimated_file_size = match state.engine().download_statistics().await {
         Ok(_stats) => {
             // Try to get file size from torrent metadata if available
             // For now, use a conservative estimate based on buffer status
@@ -123,8 +123,9 @@ async fn check_streaming_readiness(
     // Check remux streaming readiness - make this less strict initially
     let remux_ready = state
         .streaming_service
-        .check_streaming_readiness(info_hash, estimated_file_size)
+        .check_stream_readiness(info_hash)
         .await
+        .map(|status| status.readiness == riptide_core::streaming::StreamReadiness::Ready)
         .unwrap_or(false);
 
     // More realistic buffer requirements for early streaming

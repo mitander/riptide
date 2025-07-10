@@ -4,6 +4,7 @@
 //! FileAssembler and FFmpeg remuxing components.
 
 pub mod browser_compatibility;
+pub mod coordinator;
 pub mod debug;
 pub mod http_streaming;
 

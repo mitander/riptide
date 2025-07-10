@@ -11,6 +11,7 @@ pub mod performance_tests;
 pub mod piece_reader;
 
 pub mod range_handler;
+pub mod remux;
 pub mod remux_streaming;
 
 pub mod storage_cache;
@@ -30,6 +31,10 @@ pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
+pub use remux::{
+    RemuxError, RemuxProgress, RemuxSessionManager, RemuxState, RemuxStreamStrategy, StreamData,
+    StreamHandle, StreamReadiness, StreamingStatus,
+};
 pub use remux_streaming::{
     RemuxStreamingConfig, RemuxStreamingStrategy, create_remux_streaming_strategy,
     create_remux_streaming_strategy_with_config,
