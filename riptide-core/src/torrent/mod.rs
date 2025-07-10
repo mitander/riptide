@@ -21,6 +21,7 @@ pub mod test_data;
 pub mod tracker;
 
 use std::fmt;
+use std::str::FromStr;
 
 pub use creation::{DEFAULT_PIECE_SIZE, SimulationTorrentCreator, TorrentCreator, TorrentPiece};
 pub use downloader::{PieceDownloader, PieceProgress, PieceRequest, PieceStatus};
@@ -100,6 +101,14 @@ impl InfoHash {
         }
 
         Ok(InfoHash::new(bytes))
+    }
+}
+
+impl FromStr for InfoHash {
+    type Err = TorrentError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_hex(s)
     }
 }
 

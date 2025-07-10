@@ -22,7 +22,7 @@ use crate::handlers::streaming::{
     cleanup_sessions, debug_stream_data, debug_stream_status, stream_torrent, streaming_health,
     streaming_stats,
 };
-use crate::handlers::streaming_readiness::check_streaming_readiness;
+use crate::handlers::streaming_readiness::streaming_readiness_handler;
 use crate::handlers::{
     api_add_torrent, api_download_torrent, api_library, api_search, api_search_movies,
     api_seek_torrent, api_settings, api_stats, api_torrents, video_player_page,
@@ -161,7 +161,7 @@ pub async fn run_server(
         .route("/stream/{info_hash}", axum::routing::get(stream_torrent))
         .route(
             "/stream/{info_hash}/ready",
-            axum::routing::get(check_streaming_readiness),
+            axum::routing::get(streaming_readiness_handler),
         )
         .route("/stream/health", axum::routing::get(streaming_health))
         .route("/stream/stats", axum::routing::get(streaming_stats))

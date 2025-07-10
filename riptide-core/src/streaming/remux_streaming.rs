@@ -77,12 +77,15 @@ struct RemuxSession {
     error: RwLock<Option<StreamingError>>,
     head_data_ready: Notify,
     ready_for_output: Notify,
+    // Download speed tracking
+    download_speed_bytes_per_sec: std::sync::atomic::AtomicU64,
+    bytes_downloaded_at_last_update: std::sync::atomic::AtomicU64,
+    last_speed_update: RwLock<Instant>,
 }
 
 /// Output chunk with range and timestamp
 #[derive(Debug, Clone)]
 struct OutputChunk {
-    range: Range<u64>,
     data: Vec<u8>,
     _timestamp: Instant,
 }
@@ -195,6 +198,9 @@ impl RemuxStreamingStrategy {
             error: RwLock::new(None),
             head_data_ready: Notify::new(),
             ready_for_output: Notify::new(), // The crucial notifier
+            download_speed_bytes_per_sec: std::sync::atomic::AtomicU64::new(0),
+            bytes_downloaded_at_last_update: std::sync::atomic::AtomicU64::new(0),
+            last_speed_update: RwLock::new(Instant::now()),
         });
 
         sessions.insert(info_hash, Arc::clone(&session));
@@ -647,6 +653,9 @@ impl RemuxStreamingStrategy {
                         .input_position
                         .store(position, std::sync::atomic::Ordering::Relaxed);
 
+                    // Update download speed tracking
+                    Self::update_download_speed(&session, position).await;
+
                     if position % (10 * 1024 * 1024) == 0 {
                         tracing::debug!(
                             "Fed {} MB to FFmpeg for {}",
@@ -716,10 +725,7 @@ impl RemuxStreamingStrategy {
 
                     // Store the new data as chunks
                     let chunk_size = buffer.len() as u64;
-                    let range = current_position..current_position + chunk_size;
-
                     let output_chunk = OutputChunk {
-                        range: range.clone(),
                         data: buffer,
                         _timestamp: Instant::now(),
                     };
@@ -797,10 +803,7 @@ impl RemuxStreamingStrategy {
                         })?;
 
                         let chunk_size = buffer.len() as u64;
-                        let range = current_position..current_position + chunk_size;
-
                         let output_chunk = OutputChunk {
-                            range: range.clone(),
                             data: buffer,
                             _timestamp: Instant::now(),
                         };
@@ -853,61 +856,111 @@ impl RemuxStreamingStrategy {
         session: &RemuxSession,
         range: Range<u64>,
     ) -> StreamingResult<Vec<u8>> {
-        let chunks = session.output_chunks.read().await;
-        let mut result = Vec::new();
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-        // Find chunks that overlap with the requested range
-        for (&chunk_start, chunk) in chunks.iter() {
-            if chunk.range.end > range.start && chunk.range.start < range.end {
-                // This chunk overlaps with our range
-                let chunk_offset = range.start.saturating_sub(chunk_start) as usize;
-                let chunk_len =
-                    (chunk.range.end - range.start).min(range.end - range.start) as usize;
+        let temp_file = format!("/tmp/riptide_remux_{}.mp4", session.info_hash);
 
-                if chunk_offset < chunk.data.len() {
-                    let copy_len = chunk_len.min(chunk.data.len() - chunk_offset);
-                    result.extend_from_slice(&chunk.data[chunk_offset..chunk_offset + copy_len]);
-                }
-            }
-        }
-
-        if result.len() < (range.end - range.start) as usize {
-            // Check if FFmpeg is still processing
-            let status = session.status.read().await;
-
-            match *status {
-                RemuxingStatus::WaitingForHead { .. } => {
-                    return Err(StreamingError::FfmpegError {
-                        reason: "Waiting for sufficient head and tail data".to_string(),
-                    });
-                }
-                RemuxingStatus::Processing { .. } => {
-                    // For streaming, return whatever data is available
-                    if result.is_empty() {
+        // Try to read from the temporary file
+        let mut file = match tokio::fs::File::open(&temp_file).await {
+            Ok(file) => file,
+            Err(_) => {
+                // File doesn't exist yet, check if we're still processing
+                let status = session.status.read().await;
+                match *status {
+                    RemuxingStatus::WaitingForHead { .. } => {
+                        return Err(StreamingError::FfmpegError {
+                            reason: "Waiting for sufficient head and tail data".to_string(),
+                        });
+                    }
+                    RemuxingStatus::Processing { .. } => {
                         return Err(StreamingError::FfmpegError {
                             reason: "FFmpeg is processing, output not ready yet".to_string(),
                         });
                     }
-                    // Return available data even if it's less than requested
-                }
-                RemuxingStatus::Failed { .. } => {
-                    return Err(StreamingError::FfmpegError {
-                        reason: "FFmpeg process failed".to_string(),
-                    });
-                }
-                RemuxingStatus::Completed { .. } => {
-                    // For completed sessions, return whatever data is available
-                    if result.is_empty() {
+                    RemuxingStatus::Failed { .. } => {
                         return Err(StreamingError::FfmpegError {
-                            reason: "Insufficient output data available".to_string(),
+                            reason: "FFmpeg process failed".to_string(),
                         });
                     }
-                    // Return available data even if it's less than requested
+                    RemuxingStatus::Completed { .. } => {
+                        return Err(StreamingError::FfmpegError {
+                            reason: "Output file not found".to_string(),
+                        });
+                    }
+                }
+            }
+        };
+
+        // Get file size
+        let file_size = file
+            .metadata()
+            .await
+            .map_err(|e| StreamingError::FfmpegError {
+                reason: format!("Failed to get file metadata: {e}"),
+            })?
+            .len();
+
+        // Check if the requested range is beyond the file
+        if range.start >= file_size {
+            let status = session.status.read().await;
+            match *status {
+                RemuxingStatus::Completed { .. } => {
+                    return Err(StreamingError::FfmpegError {
+                        reason: "Requested range beyond file size".to_string(),
+                    });
+                }
+                _ => {
+                    return Err(StreamingError::FfmpegError {
+                        reason: "FFmpeg is processing, output not ready yet".to_string(),
+                    });
                 }
             }
         }
 
-        Ok(result)
+        // Seek to the requested position
+        file.seek(std::io::SeekFrom::Start(range.start))
+            .await
+            .map_err(|e| StreamingError::FfmpegError {
+                reason: format!("Failed to seek in temp file: {e}"),
+            })?;
+
+        // Calculate how much data to read
+        let available_bytes = file_size - range.start;
+        let bytes_to_read = (range.end - range.start).min(available_bytes) as usize;
+
+        // Read the requested data
+        let mut buffer = vec![0u8; bytes_to_read];
+        let bytes_read = file
+            .read(&mut buffer)
+            .await
+            .map_err(|e| StreamingError::FfmpegError {
+                reason: format!("Failed to read from temp file: {e}"),
+            })?;
+
+        // Adjust buffer to actual bytes read
+        buffer.truncate(bytes_read);
+
+        // If we couldn't read the full range, check if we're still processing
+        if bytes_read < (range.end - range.start) as usize {
+            let status = session.status.read().await;
+            match *status {
+                RemuxingStatus::Completed { .. } => {
+                    // File is complete, return whatever we have
+                    Ok(buffer)
+                }
+                _ => {
+                    // Still processing, return available data
+                    if buffer.is_empty() {
+                        return Err(StreamingError::FfmpegError {
+                            reason: "FFmpeg is processing, output not ready yet".to_string(),
+                        });
+                    }
+                    Ok(buffer)
+                }
+            }
+        } else {
+            Ok(buffer)
+        }
     }
 
     /// Check if the session has a complete MP4 header suitable for browser streaming
@@ -916,11 +969,41 @@ impl RemuxStreamingStrategy {
 
         let temp_file = format!("/tmp/riptide_remux_{}.mp4", session.info_hash);
 
+        tracing::debug!("Checking MP4 header readiness for {}", session.info_hash);
+
         // Try to read from the temporary file
         let mut file = match tokio::fs::File::open(&temp_file).await {
             Ok(file) => file,
+            Err(_) => {
+                tracing::debug!("Temp file not found for {}", session.info_hash);
+                return false;
+            }
+        };
+
+        // Get file size - just need basic MP4 header for now
+        let file_size = match file.metadata().await {
+            Ok(metadata) => metadata.len(),
             Err(_) => return false,
         };
+
+        // Need at least 10MB for smooth streaming playback
+        const MIN_BUFFER_FOR_STREAMING: u64 = 10 * 1024 * 1024; // 10MB
+
+        tracing::info!(
+            "MP4 file size check for {}: {}MB available",
+            session.info_hash,
+            file_size / (1024 * 1024)
+        );
+
+        if file_size < MIN_BUFFER_FOR_STREAMING {
+            tracing::info!(
+                "Insufficient buffer for smooth streaming {}: have {}MB, need {}MB - marking NOT READY",
+                session.info_hash,
+                file_size / (1024 * 1024),
+                MIN_BUFFER_FOR_STREAMING / (1024 * 1024)
+            );
+            return false;
+        }
 
         // Read the first 4KB to validate MP4 header
         let mut buffer = vec![0u8; 4096];
@@ -941,7 +1024,11 @@ impl RemuxStreamingStrategy {
         let analysis = analyze_mp4_for_streaming(&buffer);
 
         if analysis.is_streaming_ready {
-            tracing::info!("MP4 header validation passed - streaming ready");
+            tracing::info!(
+                "MP4 header validation PASSED for {} - streaming READY with {}MB buffered",
+                session.info_hash,
+                file_size / (1024 * 1024)
+            );
             return true;
         } else {
             // Log specific issues for debugging
@@ -952,12 +1039,55 @@ impl RemuxStreamingStrategy {
 
             // For streaming, we need at least the ftyp box
             if buffer.len() >= 8 && &buffer[4..8] == b"ftyp" {
-                tracing::info!("MP4 ftyp box detected, allowing streaming start");
+                tracing::info!(
+                    "MP4 ftyp box detected for {} - allowing streaming start with {}MB buffered",
+                    session.info_hash,
+                    file_size / (1024 * 1024)
+                );
                 return true;
             }
         }
 
+        tracing::warn!(
+            "MP4 header validation FAILED for {} - not ready for streaming",
+            session.info_hash
+        );
         false
+    }
+
+    /// Update download speed tracking
+    async fn update_download_speed(session: &RemuxSession, _bytes_downloaded: u64) {
+        let now = Instant::now();
+        let mut last_update = session.last_speed_update.write().await;
+        let time_elapsed = now.duration_since(*last_update).as_secs_f64();
+
+        if time_elapsed >= 2.0 {
+            // Update every 2 seconds
+            let previous_bytes = session
+                .bytes_downloaded_at_last_update
+                .load(std::sync::atomic::Ordering::Relaxed);
+            let current_bytes = session
+                .input_position
+                .load(std::sync::atomic::Ordering::Relaxed);
+            let bytes_in_period = current_bytes.saturating_sub(previous_bytes);
+
+            if time_elapsed > 0.0 {
+                let speed = (bytes_in_period as f64 / time_elapsed) as u64;
+                session
+                    .download_speed_bytes_per_sec
+                    .store(speed, std::sync::atomic::Ordering::Relaxed);
+                session
+                    .bytes_downloaded_at_last_update
+                    .store(current_bytes, std::sync::atomic::Ordering::Relaxed);
+                *last_update = now;
+
+                tracing::debug!(
+                    "Download speed updated for {}: {} KB/s",
+                    session.info_hash,
+                    speed / 1024
+                );
+            }
+        }
     }
 
     /// Get session information for readiness checking without creating a new session
@@ -1026,6 +1156,83 @@ impl RemuxStreamingStrategy {
     /// Get minimum head size requirement
     pub fn get_min_head_size(&self) -> u64 {
         self.config.min_head_size
+    }
+
+    /// Check if streaming is ready based on remuxed MP4 output availability
+    pub async fn check_streaming_readiness(
+        &self,
+        info_hash: InfoHash,
+        _file_size: u64,
+    ) -> Result<bool, StreamingError> {
+        use tracing::info;
+
+        // Get session to check remuxed output status
+        let session = {
+            let sessions = self.active_sessions.read().await;
+            sessions.get(&info_hash).cloned()
+        };
+
+        let Some(session) = session else {
+            info!(
+                "Streaming not ready for {}: no active remux session",
+                info_hash
+            );
+            return Ok(false);
+        };
+
+        // Check if session is ready for streaming
+        let status_guard = session.status.read().await;
+        let is_session_ready = matches!(*status_guard, RemuxingStatus::Completed { .. });
+        drop(status_guard);
+
+        if !is_session_ready {
+            info!(
+                "Streaming not ready for {}: remux session not completed",
+                info_hash
+            );
+            return Ok(false);
+        }
+
+        // Check if we have sufficient remuxed output data
+        let output_size = session
+            .output_size
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let min_output_needed = 5 * 1024 * 1024; // 5MB of remuxed output minimum
+
+        if output_size < min_output_needed {
+            info!(
+                "Streaming not ready for {}: insufficient remuxed output ({} bytes, need {} bytes)",
+                info_hash, output_size, min_output_needed
+            );
+            return Ok(false);
+        }
+
+        // Try to read a small amount of remuxed data to verify it's accessible
+        let test_range = 0..64 * 1024; // 64KB test read
+        match self.stream_range(info_hash, test_range).await {
+            Ok(data) if data.len() >= 32 * 1024 => {
+                info!(
+                    "Streaming ready for {}: {} bytes remuxed output available, test read successful",
+                    info_hash, output_size
+                );
+                Ok(true)
+            }
+            Ok(data) => {
+                info!(
+                    "Streaming not ready for {}: test read only returned {} bytes",
+                    info_hash,
+                    data.len()
+                );
+                Ok(false)
+            }
+            Err(e) => {
+                info!(
+                    "Streaming not ready for {}: test read failed: {}",
+                    info_hash, e
+                );
+                Ok(false)
+            }
+        }
     }
 
     /// Check data availability for remuxing

@@ -1,130 +1,187 @@
-//! Streaming readiness endpoint
-//!
-//! Provides information about whether a torrent file is ready for streaming.
-
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::response::Json;
-use riptide_core::torrent::InfoHash;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::server::AppState;
-use crate::streaming::http_streaming::{ClientCapabilities, SimpleRangeRequest, StreamingRequest};
 
-/// Response for streaming readiness check
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingReadinessResponse {
-    /// Whether the file is ready to stream immediately
     pub ready: bool,
-
-    /// Container format of the source file
     pub container_format: String,
-
-    /// Whether remuxing is required for this file
     pub requires_remuxing: bool,
-
-    /// Human-readable status message
     pub message: String,
-
-    /// File size if available
     pub file_size: Option<u64>,
-
-    /// Rough progress estimate (0.0 - 1.0) if available
     pub progress: Option<f64>,
 }
 
-/// Handler for checking streaming readiness
-pub async fn check_streaming_readiness(
+#[derive(Debug)]
+enum ReadinessResult {
+    Ready,
+    NotReady(String),
+    #[allow(dead_code)]
+    Error(String),
+}
+
+pub async fn streaming_readiness_handler(
     State(state): State<AppState>,
-    Path(info_hash_str): Path<String>,
-) -> Result<Json<StreamingReadinessResponse>, StatusCode> {
-    let info_hash = InfoHash::from_hex(&info_hash_str).map_err(|_| {
-        warn!("Invalid info hash format: {}", info_hash_str);
-        StatusCode::BAD_REQUEST
-    })?;
+    Path(hash): Path<String>,
+) -> Result<Json<StreamingReadinessResponse>, axum::http::StatusCode> {
+    info!("Checking streaming readiness for {}", hash);
 
-    info!("Checking streaming readiness for {}", info_hash);
+    // Parse info hash first
+    let info_hash = match hash.parse() {
+        Ok(hash) => hash,
+        Err(_) => {
+            return Ok(Json(StreamingReadinessResponse {
+                ready: false,
+                container_format: "unknown".to_string(),
+                requires_remuxing: true,
+                message: "Invalid info hash".to_string(),
+                file_size: None,
+                progress: None,
+            }));
+        }
+    };
 
-    // Try to get file information through the streaming service
+    // Get buffer status from torrent engine
+    let buffer_status = match state.engine().buffer_status(info_hash).await {
+        Ok(status) => status,
+        Err(_) => {
+            return Ok(Json(StreamingReadinessResponse {
+                ready: false,
+                container_format: "unknown".to_string(),
+                requires_remuxing: true,
+                message: "Torrent not found or not active".to_string(),
+                file_size: None,
+                progress: None,
+            }));
+        }
+    };
 
-    // For now, we'll do a simple readiness check by trying a small test request
-    let readiness_check = check_remux_readiness(&state, info_hash).await;
-
-    // Default to unknown format - we'd need to implement format detection
-    let format_str = "unknown";
-    let file_size = None;
-
-    // For this simplified version, assume all files might need remuxing
-    let requires_remuxing = true;
+    let readiness_check = check_streaming_readiness(&state, info_hash, &buffer_status).await;
 
     let (is_ready, message, progress) = match readiness_check {
         ReadinessResult::Ready => (true, "Ready to stream".to_string(), Some(1.0)),
-        ReadinessResult::NotReady(msg) => (false, msg, Some(0.3)),
+        ReadinessResult::NotReady(msg) => {
+            // Calculate progress based on buffer status
+            let buffer_progress = if buffer_status.bytes_ahead > 0 {
+                let target_buffer = 2 * 1024 * 1024; // 2MB target
+                (buffer_status.bytes_ahead as f64 / target_buffer as f64).min(0.8)
+            } else {
+                0.1
+            };
+
+            let health_progress = buffer_status.buffer_health * 0.5;
+            let duration_progress = if buffer_status.buffer_duration > 0.0 {
+                (buffer_status.buffer_duration / 5.0).min(0.3)
+            } else {
+                0.0
+            };
+
+            let total_progress = (buffer_progress + health_progress + duration_progress).min(0.9);
+            (false, msg, Some(total_progress.max(0.1)))
+        }
         ReadinessResult::Error(err) => (false, format!("Error: {err}"), None),
     };
 
     Ok(Json(StreamingReadinessResponse {
         ready: is_ready,
-        container_format: format_str.to_string(),
-        requires_remuxing,
+        container_format: "unknown".to_string(),
+        requires_remuxing: true,
         message,
-        file_size,
+        file_size: None,
         progress,
     }))
 }
 
-/// Result of readiness check
-#[derive(Debug)]
-enum ReadinessResult {
-    Ready,
-    NotReady(String),
-    Error(String),
-}
-
-/// Simplified check for remux readiness using HttpStreamingService
-async fn check_remux_readiness(state: &AppState, info_hash: InfoHash) -> ReadinessResult {
-    // Create a small test request to check readiness
-    let test_request = StreamingRequest {
-        info_hash,
-        range: Some(SimpleRangeRequest {
-            start: 0,
-            end: Some(1023),
-        }),
-        client_capabilities: ClientCapabilities {
-            supports_mp4: true,
-            supports_webm: false,
-            supports_hls: false,
-            user_agent: "riptide-readiness-check".to_string(),
-        },
-        preferred_quality: None,
-        time_offset: None,
-    };
-
-    match state
-        .streaming_service
-        .handle_streaming_request(test_request)
-        .await
-    {
-        Ok(response) => {
-            // Check response status to determine readiness
-            match response.status {
-                StatusCode::OK | StatusCode::PARTIAL_CONTENT => {
-                    // Success status means streaming is ready
-                    ReadinessResult::Ready
-                }
-                StatusCode::ACCEPTED => {
-                    // Accepted usually means processing in progress
-                    ReadinessResult::NotReady("Processing in progress...".to_string())
-                }
-                StatusCode::SERVICE_UNAVAILABLE => {
-                    ReadinessResult::NotReady("Service temporarily unavailable".to_string())
-                }
-                StatusCode::NOT_FOUND => ReadinessResult::Error("Torrent not found".to_string()),
-                _ => ReadinessResult::NotReady("Preparing stream...".to_string()),
+async fn check_streaming_readiness(
+    state: &AppState,
+    info_hash: riptide_core::torrent::InfoHash,
+    buffer_status: &riptide_core::torrent::BufferStatus,
+) -> ReadinessResult {
+    // Try to get actual file size from torrent engine
+    let estimated_file_size = match state.engine().download_statistics().await {
+        Ok(_stats) => {
+            // Try to get file size from torrent metadata if available
+            // For now, use a conservative estimate based on buffer status
+            if buffer_status.current_position > 0 {
+                // If we have position info, estimate based on that
+                (buffer_status.current_position + buffer_status.bytes_ahead * 10)
+                    .max(50 * 1024 * 1024)
+            } else {
+                // Conservative 50MB estimate for initial streaming
+                50 * 1024 * 1024
             }
         }
-        Err(e) => ReadinessResult::Error(format!("Streaming error: {e}")),
+        Err(_) => {
+            // Very conservative estimate when we can't get stats
+            10 * 1024 * 1024 // 10MB
+        }
+    };
+
+    // Check remux streaming readiness - make this less strict initially
+    let remux_ready = state
+        .streaming_service
+        .check_streaming_readiness(info_hash, estimated_file_size)
+        .await
+        .unwrap_or(false);
+
+    // More realistic buffer requirements for early streaming
+    const MIN_BUFFER_SIZE: u64 = 2 * 1024 * 1024; // 2MB minimum buffer (reduced from 5MB)
+    const MIN_BUFFER_HEALTH: f64 = 0.15; // 15% buffer health minimum (reduced from 30%)
+    const MIN_BUFFER_DURATION: f64 = 5.0; // 5 seconds of content minimum (reduced from 10s)
+
+    // Check multiple readiness criteria
+    let has_sufficient_buffer = buffer_status.bytes_ahead >= MIN_BUFFER_SIZE;
+    let has_good_health = buffer_status.buffer_health >= MIN_BUFFER_HEALTH;
+    let has_sufficient_duration = buffer_status.buffer_duration >= MIN_BUFFER_DURATION;
+
+    // Both buffer and remux readiness are required for proper streaming
+    // Without remux readiness, MP4 metadata won't be available causing decode errors
+    let stream_ready =
+        remux_ready && has_sufficient_buffer && (has_good_health || has_sufficient_duration);
+
+    if stream_ready {
+        ReadinessResult::Ready
+    } else {
+        // Provide specific feedback about what's missing
+        let mut missing_reasons = Vec::new();
+
+        // Metadata is always required for proper streaming
+        if !remux_ready {
+            missing_reasons.push("Preparing stream metadata".to_string());
+        }
+
+        if !has_sufficient_buffer {
+            let current_mb = buffer_status.bytes_ahead as f64 / 1024.0 / 1024.0;
+            missing_reasons.push(format!(
+                "Buffer: {:.1}MB/{:.1}MB",
+                current_mb,
+                MIN_BUFFER_SIZE as f64 / 1024.0 / 1024.0
+            ));
+        }
+
+        if !has_good_health && buffer_status.buffer_health > 0.0 {
+            missing_reasons.push(format!(
+                "Buffer health: {:.1}%",
+                buffer_status.buffer_health * 100.0
+            ));
+        }
+
+        if !has_sufficient_duration && buffer_status.buffer_duration > 0.0 {
+            missing_reasons.push(format!(
+                "Duration: {:.1}s/{:.1}s",
+                buffer_status.buffer_duration, MIN_BUFFER_DURATION
+            ));
+        }
+
+        let message = if missing_reasons.is_empty() {
+            "Building buffer for smooth streaming...".to_string()
+        } else {
+            format!("Building buffer: {}", missing_reasons.join(", "))
+        };
+
+        ReadinessResult::NotReady(message)
     }
 }

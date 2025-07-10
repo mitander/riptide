@@ -252,7 +252,7 @@ impl HttpStreamingService {
     ) -> Self {
         // Create unified remux streaming strategy
         let remux_config = RemuxStreamingConfig {
-            min_head_size: 64 * 1024, // 64KB head required for reliable remux streaming
+            min_head_size: 3 * 1024 * 1024, // 3MB head required for reliable MP4 metadata
             ..Default::default()
         };
 
@@ -302,7 +302,7 @@ impl HttpStreamingService {
     ) -> Self {
         // Create unified remux streaming strategy for testing
         let remux_config = RemuxStreamingConfig {
-            min_head_size: 64 * 1024, // 64KB head required for reliable remux streaming
+            min_head_size: 3 * 1024 * 1024, // 3MB head required for reliable MP4 metadata
             ..Default::default()
         };
 
@@ -951,6 +951,24 @@ impl HttpStreamingService {
             .write()
             .await
             .retain(|_, session| session.last_request_time > cutoff);
+    }
+
+    /// Check if streaming is ready for the given torrent
+    pub async fn check_streaming_readiness(
+        &self,
+        info_hash: InfoHash,
+        file_size: u64,
+    ) -> Result<bool, HttpStreamingError> {
+        if let Some(ref remux_streaming) = self.remux_streaming {
+            remux_streaming
+                .check_streaming_readiness(info_hash, file_size)
+                .await
+                .map_err(|e| HttpStreamingError::RemuxingFailed {
+                    reason: format!("Streaming readiness check failed: {e}"),
+                })
+        } else {
+            Ok(false)
+        }
     }
 
     /// Detect container format of the file
