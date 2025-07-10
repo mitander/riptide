@@ -6,6 +6,7 @@
 pub mod ffmpeg;
 pub mod file_assembler;
 pub mod file_reconstruction;
+pub mod mp4_validation;
 pub mod performance_tests;
 pub mod piece_reader;
 
@@ -16,6 +17,9 @@ pub mod storage_cache;
 pub mod strategy;
 
 pub mod stream_coordinator;
+
+#[cfg(test)]
+pub mod tests;
 
 use std::sync::Arc;
 
@@ -149,34 +153,4 @@ pub struct StreamingServiceStats {
     pub peer_connections: usize,
     pub healthy_peers: usize,
     pub bandwidth_utilization: f64,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_streaming_service_creation() {
-        let config = RiptideConfig::default();
-        let service = DirectStreamingService::new(config);
-
-        let stats = service.statistics().await;
-        assert_eq!(stats.active_streams, 0);
-        assert_eq!(stats.total_bytes_streamed, 0);
-    }
-
-    #[tokio::test]
-    async fn test_invalid_torrent_source() {
-        let config = RiptideConfig::default();
-        let service = DirectStreamingService::new(config);
-
-        let result = service.add_torrent("invalid://source".to_string()).await;
-        assert!(result.is_err());
-
-        if let Err(StreamingError::UnsupportedSource) = result {
-            // Test passed
-        } else {
-            panic!("Expected UnsupportedSource error");
-        }
-    }
 }

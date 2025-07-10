@@ -18,6 +18,7 @@ use tokio::time::timeout;
 
 use crate::streaming::ffmpeg::RemuxingOptions;
 use crate::streaming::file_assembler::FileAssembler;
+use crate::streaming::mp4_validation::{analyze_mp4_for_streaming, debug_mp4_structure};
 use crate::streaming::strategy::{
     ContainerFormat, StreamingError, StreamingResult, StreamingStrategy,
 };
@@ -550,9 +551,8 @@ impl RemuxStreamingStrategy {
             cmd.arg(&config.remuxing_options.audio_codec);
         }
 
-        // MP4 output with streaming optimization - use fragmented MP4 for pipe output
-        cmd.arg("-movflags")
-            .arg("+frag_keyframe+empty_moov+default_base_moof");
+        // MP4 output with streaming optimization - use faststart for browser compatibility
+        cmd.arg("-movflags").arg("+faststart");
 
         // Output format
         cmd.arg("-f").arg("mp4").arg("pipe:1"); // Output to stdout
@@ -744,12 +744,12 @@ impl RemuxStreamingStrategy {
             return false;
         }
 
-        // Combine initial chunks to get enough data for MP4 header detection
+        // Combine initial chunks to get enough data for MP4 validation
         let mut combined_data = Vec::new();
         let mut current_pos = 0u64;
 
-        // Get up to the first 1KB of data from sequential chunks
-        while combined_data.len() < 1024 {
+        // Get up to the first 4KB of data from sequential chunks for proper validation
+        while combined_data.len() < 4096 {
             if let Some(chunk) = output_chunks.get(&current_pos) {
                 combined_data.extend_from_slice(&chunk.data);
                 current_pos += chunk.data.len() as u64;
@@ -763,32 +763,23 @@ impl RemuxStreamingStrategy {
             return false;
         }
 
-        let data = &combined_data;
+        // Use proper MP4 validation to check streaming compatibility
+        let analysis = analyze_mp4_for_streaming(&combined_data);
 
-        // Check for ftyp box at the beginning (required for MP4)
-        if data.len() >= 8 && &data[4..8] == b"ftyp" {
-            // Look for moov box in the available data - critical for streaming
-            let has_moov = data.windows(4).any(|window| window == b"moov");
+        if analysis.is_streaming_ready {
+            tracing::info!("MP4 header validation passed - streaming ready");
+            return true;
+        } else {
+            // Log specific issues for debugging
+            if !analysis.issues.is_empty() {
+                tracing::warn!("MP4 validation issues: {}", analysis.issues.join(", "));
+                debug_mp4_structure(&combined_data, 5);
+            }
 
-            if has_moov {
-                tracing::info!("Complete MP4 header detected: ftyp + moov boxes present");
+            // For streaming, we need at least the ftyp box
+            if combined_data.len() >= 8 && &combined_data[4..8] == b"ftyp" {
+                tracing::info!("MP4 ftyp box detected, allowing streaming start");
                 return true;
-            } else {
-                // For streaming with head+tail approach, ftyp is sufficient to start
-                // moov box might come later in the stream or be fragmented
-                if data.len() >= 32 {
-                    tracing::info!(
-                        "MP4 ftyp box detected, starting streaming (moov may come later)"
-                    );
-                    return true;
-                }
-
-                // Check if we have enough data to potentially contain moov
-                // If we have significant data (>64KB) but no moov, it might be fragmented
-                if data.len() > 65536 {
-                    tracing::warn!("Large MP4 chunk without moov box - may be fragmented MP4");
-                    return false;
-                }
             }
         }
 
