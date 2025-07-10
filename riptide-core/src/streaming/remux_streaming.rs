@@ -46,7 +46,7 @@ pub struct RemuxStreamingConfig {
 impl Default for RemuxStreamingConfig {
     fn default() -> Self {
         Self {
-            min_head_size: 2 * 1024 * 1024, // 2MB minimum head for AVI/MKV
+            min_head_size: 10 * 1024 * 1024, // 10MB minimum head for AVI/MKV - ensures FFmpeg has enough data for metadata parsing
             max_output_buffer_size: 50 * 1024 * 1024, // 50MB buffer limit
             piece_wait_timeout: Duration::from_secs(30),
             input_chunk_size: 256 * 1024, // 256KB chunks
@@ -98,6 +98,36 @@ enum RemuxingStatus {
     Completed { total_output: u64 },
     /// Failed with error
     Failed { _reason: String },
+}
+
+/// Session status information for readiness checking
+#[derive(Debug)]
+pub enum SessionStatus {
+    Ready,
+    WaitingForData {
+        bytes_needed: u64,
+        bytes_available: u64,
+    },
+    Remuxing {
+        progress: Option<f64>,
+    },
+    Error {
+        error: String,
+    },
+}
+
+/// Session information for readiness checking
+#[derive(Debug)]
+pub struct SessionInfo {
+    pub status: SessionStatus,
+    pub output_size: u64,
+}
+
+/// Data availability check result
+#[derive(Debug)]
+pub enum DataAvailability {
+    Sufficient,
+    Insufficient { available: u64, needed: u64 },
 }
 
 impl RemuxStreamingStrategy {
@@ -547,9 +577,9 @@ impl RemuxStreamingStrategy {
             cmd.arg(&config.remuxing_options.audio_codec);
         }
 
-        // Use standard MP4 format for browser compatibility
-        // Remove fragmentation flags that cause moov-first output
-        cmd.arg("-movflags").arg("empty_moov+omit_tfhd_offset");
+        // Generate proper MP4 structure for browser compatibility
+        // Use faststart to move moov box before mdat for progressive streaming
+        cmd.arg("-movflags").arg("faststart");
 
         // Output format - use MP4
         cmd.arg("-f").arg("mp4").arg("pipe:1"); // Output to stdout
@@ -833,6 +863,127 @@ impl RemuxStreamingStrategy {
         }
 
         false
+    }
+
+    /// Get session information for readiness checking without creating a new session
+    pub async fn get_session_info(&self, info_hash: InfoHash) -> Option<SessionInfo> {
+        let sessions = self.active_sessions.read().await;
+        let session = sessions.get(&info_hash)?;
+
+        let status_guard = session.status.read().await;
+        let output_size = session
+            .output_size
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        let status = match &*status_guard {
+            RemuxingStatus::WaitingForHead { _bytes_needed } => {
+                // Check actual data availability
+                let head_range = 0..self.config.min_head_size.min(session.file_size);
+                let tail_size = self.config.min_head_size.min(session.file_size);
+                let tail_start = session.file_size.saturating_sub(tail_size);
+                let tail_range = tail_start..session.file_size;
+
+                let head_available = self
+                    .file_assembler
+                    .is_range_available(info_hash, head_range);
+                let tail_available = self
+                    .file_assembler
+                    .is_range_available(info_hash, tail_range);
+
+                if head_available && tail_available {
+                    SessionStatus::WaitingForData {
+                        bytes_needed: self.config.min_head_size,
+                        bytes_available: self.config.min_head_size,
+                    }
+                } else {
+                    // Estimate available bytes (simplified)
+                    let available = if head_available {
+                        self.config.min_head_size / 2
+                    } else {
+                        0
+                    };
+                    SessionStatus::WaitingForData {
+                        bytes_needed: self.config.min_head_size,
+                        bytes_available: available,
+                    }
+                }
+            }
+            RemuxingStatus::Processing { _input_consumed } => {
+                let progress = if session.file_size > 0 {
+                    Some(*_input_consumed as f64 / session.file_size as f64)
+                } else {
+                    None
+                };
+                SessionStatus::Remuxing { progress }
+            }
+            RemuxingStatus::Completed { total_output: _ } => SessionStatus::Ready,
+            RemuxingStatus::Failed { _reason } => SessionStatus::Error {
+                error: _reason.clone(),
+            },
+        };
+
+        Some(SessionInfo {
+            status,
+            output_size,
+        })
+    }
+
+    /// Get minimum head size requirement
+    pub fn get_min_head_size(&self) -> u64 {
+        self.config.min_head_size
+    }
+
+    /// Check data availability for remuxing
+    pub async fn check_data_availability(
+        &self,
+        info_hash: InfoHash,
+        head_size_needed: u64,
+        file_size: u64,
+    ) -> DataAvailability {
+        let head_range = 0..head_size_needed.min(file_size);
+        let tail_size = head_size_needed.min(file_size);
+        let tail_start = file_size.saturating_sub(tail_size);
+        let tail_range = tail_start..file_size;
+
+        let head_available = self
+            .file_assembler
+            .is_range_available(info_hash, head_range.clone());
+        let tail_available = self
+            .file_assembler
+            .is_range_available(info_hash, tail_range.clone());
+
+        if head_available && tail_available {
+            DataAvailability::Sufficient
+        } else {
+            // Estimate available bytes by checking smaller ranges
+            let mut available = 0u64;
+            let chunk_size = 1024 * 1024; // 1MB chunks
+
+            // Check head availability in chunks
+            let mut pos = 0u64;
+            while pos < head_range.end {
+                let chunk_end = (pos + chunk_size).min(head_range.end);
+                if self
+                    .file_assembler
+                    .is_range_available(info_hash, pos..chunk_end)
+                {
+                    available += chunk_end - pos;
+                    pos = chunk_end;
+                } else {
+                    break;
+                }
+            }
+
+            // Check tail availability
+            if tail_available {
+                available += tail_range.end - tail_range.start;
+            }
+
+            DataAvailability::Insufficient {
+                available,
+                needed: head_size_needed * 2, // Head + tail
+            }
+        }
     }
 }
 
