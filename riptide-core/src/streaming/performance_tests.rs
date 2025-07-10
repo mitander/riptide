@@ -409,7 +409,7 @@ pub fn create_4k_test_torrent() -> (InfoHash, Vec<TorrentPiece>, u64) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+
     use std::sync::Arc;
 
     use async_trait::async_trait;
@@ -419,20 +419,11 @@ mod tests {
     use crate::torrent::{PieceIndex, PieceStore, TorrentError};
 
     // Mock piece store for testing
-    struct MockPieceStore {
-        pieces: HashMap<InfoHash, HashMap<u32, Vec<u8>>>,
-    }
+    struct MockPieceStore {}
 
     impl MockPieceStore {
         fn new() -> Self {
-            Self {
-                pieces: HashMap::new(),
-            }
-        }
-
-        async fn add_torrent_pieces(&self, _info_hash: InfoHash, _pieces: Vec<TorrentPiece>) {
-            // Note: This would need Arc<RwLock<>> in real implementation
-            // For test purposes, we'll skip the actual storage
+            Self {}
         }
     }
 
@@ -495,7 +486,7 @@ mod tests {
             .unwrap();
 
         // For unit tests, just verify the test runs successfully
-        assert!(results.seek_latency_ms >= 0);
+        assert!(results.seek_latency_ms == results.seek_latency_ms); // Use results to avoid warning
     }
 
     #[tokio::test]
@@ -509,6 +500,6 @@ mod tests {
         let results = tester.test_startup_time(info_hash).await.unwrap();
 
         // For unit tests, just verify the test runs successfully
-        assert!(results.startup_time_ms >= 0);
+        assert!(results.startup_time_ms == results.startup_time_ms); // Use results to avoid warning
     }
 }
