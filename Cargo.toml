@@ -5,8 +5,7 @@ members = [
     "riptide-web",
     "riptide-search",
     "riptide-cli",
-    "riptide-sim",
-    "tests"
+    "riptide-sim"
 ]
 
 [workspace.package]

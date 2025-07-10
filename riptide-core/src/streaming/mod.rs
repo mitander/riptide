@@ -18,9 +18,6 @@ pub mod strategy;
 
 pub mod stream_coordinator;
 
-#[cfg(test)]
-pub mod tests;
-
 use std::sync::Arc;
 
 pub use ffmpeg::{

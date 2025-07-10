@@ -1,4 +1,8 @@
-//! Simple download test to debug piece download issues
+//! BitTorrent protocol core functionality test
+//!
+//! Tests fundamental BitTorrent protocol mechanics: piece downloading,
+//! hash validation, peer communication, and data integrity.
+//! These tests validate the core protocol implementation.
 
 use std::net::SocketAddr;
 use std::sync::Arc;

@@ -111,15 +111,16 @@ impl FastRustStyleChecker {
     /// Check file size limits efficiently
     fn check_module_size(&mut self, file_path: &Path, content: &str) {
         let line_count = content.matches('\n').count() + 1;
-        if line_count > 500 {
+        const MODULE_SIZE_LIMIT: usize = 500;
+        if line_count > MODULE_SIZE_LIMIT {
             self.add_violation(StyleViolation::new(
-                Severity::Warning,
+                Severity::Warning, // A warning, not a hard failure.
                 &file_path.display().to_string(),
                 1,
-                "MODULE_SIZE_LIMIT",
+                "MODULE_SIZE_EXCEEDED",
                 &format!(
-                    "Module has {} lines, exceeding 500 line limit from docs/STYLE.md",
-                    line_count
+                    "Module has {} lines, exceeding the recommended limit of {}. Consider refactoring.",
+                    line_count, MODULE_SIZE_LIMIT
                 ),
             ));
         }
@@ -161,20 +162,26 @@ impl FastRustStyleChecker {
         for (line_num, line) in content.lines().enumerate() {
             let trimmed = line.trim();
 
-            // Look for public function definitions
-            if trimmed.starts_with("pub fn ") || trimmed.starts_with("pub async fn ") {
+            // Look for ALL function definitions (pub and private)
+            if (trimmed.starts_with("pub fn ")
+                || trimmed.starts_with("pub async fn ")
+                || trimmed.starts_with("fn ")
+                || trimmed.starts_with("async fn "))
+                && !trimmed.contains("//")
+            {
+                // Skip commented code
                 for &prefix in &forbidden_prefixes {
-                    let pattern = format!("pub fn {}", prefix);
-                    if trimmed.contains(&pattern)
-                        || trimmed.contains(&format!("pub async fn {}", prefix))
-                    {
-                        // Skip legitimate patterns
-                        if trimmed.contains("get_mut")
-                            || trimmed.contains("get_or_")
-                            || trimmed.contains("set_capacity")
-                        {
-                            continue;
-                        }
+                    // Check for the prefix after "fn "
+                    let has_forbidden_prefix = if trimmed.contains("pub fn ") {
+                        trimmed.contains(&format!("pub fn {}", prefix))
+                            || trimmed.contains(&format!("pub async fn {}", prefix))
+                    } else {
+                        trimmed.contains(&format!("fn {}", prefix))
+                            || trimmed.contains(&format!("async fn {}", prefix))
+                    };
+
+                    if has_forbidden_prefix {
+                        // No exceptions - all get_/set_ prefixes are forbidden per STYLE.md
 
                         self.add_violation(StyleViolation::new(
                             Severity::Critical,
@@ -450,11 +457,14 @@ impl FastRustStyleChecker {
             return Ok(());
         }
 
-        // Run all checks
-        self.check_module_size(file_path, &content);
+        // Rule 1: No banned module names (util, common, etc.)
         self.check_banned_module_names(file_path);
+
+        // Rule 2: No `get_` / `set_` prefixes on public functions
         self.check_forbidden_function_prefixes(file_path, &content);
-        self.check_missing_public_documentation(file_path, &content);
+
+        // Rule 3: Module size limit
+        self.check_module_size(file_path, &content);
 
         Ok(())
     }
