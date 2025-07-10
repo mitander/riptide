@@ -814,15 +814,17 @@ impl StreamingStrategy for RemuxStreamingStrategy {
                 let status = session.status.read().await;
                 match &*status {
                     RemuxingStatus::Completed { total_output } => Ok(*total_output),
-                    RemuxingStatus::Processing {
-                        output_produced, ..
-                    } => {
+                    RemuxingStatus::Processing { .. } => {
                         // Estimate based on progress
                         let input_pos = session
                             .input_position
                             .load(std::sync::atomic::Ordering::Relaxed);
+                        let actual_output_size = session
+                            .output_size
+                            .load(std::sync::atomic::Ordering::Relaxed);
                         let progress = input_pos as f64 / session.file_size as f64;
-                        let estimated_size = (*output_produced as f64 / progress.max(0.01)) as u64;
+                        let estimated_size =
+                            (actual_output_size as f64 / progress.max(0.01)) as u64;
                         Ok(estimated_size)
                     }
                     _ => Ok(session.file_size), // Return original file size as estimate
