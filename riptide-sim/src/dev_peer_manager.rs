@@ -470,16 +470,12 @@ mod tests {
         let total_bytes = 10 * 65536;
         let throughput_mbps = (total_bytes as f64 * 8.0) / (elapsed.as_secs_f64() * 1_000_000.0);
 
-        println!(
-            "BENCHMARK: DevPeerManager realistic throughput = {:.1} Mbps",
-            throughput_mbps
-        );
+        println!("BENCHMARK: DevPeerManager realistic throughput = {throughput_mbps:.1} Mbps");
 
         // Should be realistic for streaming (2-50000 Mbps range for efficient simulation)
         assert!(
-            throughput_mbps >= 2.0 && throughput_mbps <= 50000.0,
-            "Unrealistic throughput: {:.1} Mbps (expected 2-50000 Mbps)",
-            throughput_mbps
+            (2.0..=50000.0).contains(&throughput_mbps),
+            "Unrealistic throughput: {throughput_mbps:.1} Mbps (expected 2-50000 Mbps)"
         );
 
         // Verify stats
@@ -503,16 +499,12 @@ mod tests {
         let elapsed = start_time.elapsed();
         let throughput_mbps = (test_bytes as f64 * 8.0) / (elapsed.as_secs_f64() * 1_000_000.0);
 
-        println!(
-            "BENCHMARK: Rate limiter throughput = {:.1} Mbps",
-            throughput_mbps
-        );
+        println!("BENCHMARK: Rate limiter throughput = {throughput_mbps:.1} Mbps");
 
         // Should be within reasonable streaming range for efficient simulation
         assert!(
             throughput_mbps <= 10000000.0,
-            "Rate limiter not working: {:.1} Mbps",
-            throughput_mbps
+            "Rate limiter not working: {throughput_mbps:.1} Mbps"
         );
     }
 

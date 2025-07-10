@@ -255,8 +255,10 @@ mod tests {
 
     #[test]
     fn test_progress_update_from_ffmpeg() {
-        let mut progress = RemuxProgress::default();
-        progress.total_duration = Some(std::time::Duration::from_secs(100));
+        let mut progress = RemuxProgress {
+            total_duration: Some(std::time::Duration::from_secs(100)),
+            ..Default::default()
+        };
 
         progress.update_from_ffmpeg_line(
             "frame=50 fps=25 q=-1.0 size=1024kB time=00:00:50.00 bitrate=1000.0kbits/s speed=1.0x",

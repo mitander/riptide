@@ -1434,12 +1434,12 @@ mod tests {
         }
 
         fn is_range_available(&self, info_hash: InfoHash, range: Range<u64>) -> bool {
-            if let Ok(ranges) = self.available_ranges.try_read() {
-                if let Some(available) = ranges.get(&info_hash) {
-                    return available
-                        .iter()
-                        .any(|r| r.start <= range.start && r.end >= range.end);
-                }
+            if let Ok(ranges) = self.available_ranges.try_read()
+                && let Some(available) = ranges.get(&info_hash)
+            {
+                return available
+                    .iter()
+                    .any(|r| r.start <= range.start && r.end >= range.end);
             }
             false
         }

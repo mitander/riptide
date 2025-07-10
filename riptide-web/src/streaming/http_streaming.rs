@@ -6,9 +6,10 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::body::{Body, HttpBody};
+use axum::body::Body;
 use axum::http::{HeaderMap, Response, StatusCode};
 use axum::response::IntoResponse;
+use bytes::Bytes;
 use riptide_core::streaming::{FileAssembler, FileAssemblerError};
 use riptide_core::torrent::InfoHash;
 use riptide_core::video::{VideoFormat, VideoQuality};
@@ -143,7 +144,7 @@ pub struct StreamingRequest {
 pub struct StreamingResponse {
     pub status: StatusCode,
     pub headers: HeaderMap,
-    pub body: Body,
+    pub body: Bytes,
     pub content_type: String,
 }
 
@@ -286,7 +287,7 @@ impl HttpStreamingService {
             let mut metrics = self.performance_metrics.write().await;
             metrics.total_requests += 1;
             if response.status == StatusCode::OK || response.status == StatusCode::PARTIAL_CONTENT {
-                metrics.total_bytes_served += response.body.size_hint().lower();
+                metrics.total_bytes_served += response.body.len() as u64;
             }
         }
 

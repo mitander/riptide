@@ -494,7 +494,7 @@ mod tests {
         assert!(!results.is_empty());
         let matrix_result = &results[0];
 
-        println!("Matrix result: {:?}", matrix_result);
+        println!("Matrix result: {matrix_result:?}");
 
         // Development mode should provide rich metadata for known movies
         // Note: The development provider provides metadata in the search results

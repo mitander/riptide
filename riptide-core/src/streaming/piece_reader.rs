@@ -312,6 +312,7 @@ mod tests {
         let reader = PieceBasedStreamReader::new(Arc::new(store), 1024);
         let info_hash = create_test_info_hash();
 
+        #[allow(clippy::reversed_empty_ranges)]
         let result = reader.read_range(info_hash, 10..5).await;
         assert!(matches!(result, Err(PieceReaderError::InvalidRange { .. })));
     }

@@ -24,3 +24,4 @@ urlencoding = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 async-trait = { workspace = true }
+bytes = { workspace = true }

@@ -414,11 +414,13 @@ mod tests {
         // Update some debug info
         {
             let mut debug_vec = debug_info.lock().await;
-            let mut entry = StreamingDebugInfo::default();
-            entry.info_hash = info_hash;
-            entry.request_count = 5;
-            entry.cache_hits = 2;
-            entry.cache_misses = 3;
+            let entry = StreamingDebugInfo {
+                info_hash,
+                request_count: 5,
+                cache_hits: 2,
+                cache_misses: 3,
+                ..Default::default()
+            };
             debug_vec.push(entry);
         }
 

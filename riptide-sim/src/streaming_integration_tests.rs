@@ -64,11 +64,8 @@ mod tests {
         println!("CORE STREAMING LOGIC VERIFIED");
         println!("   - Same PieceBasedStreamReader used in production");
         println!("   - Same trait-based PieceStore abstraction");
-        println!(
-            "   - Range requests work correctly: {}..{}",
-            range_start, range_end
-        );
-        println!("   - File size calculation: {} bytes", file_size);
+        println!("   - Range requests work correctly: {range_start}..{range_end}");
+        println!("   - File size calculation: {file_size} bytes");
     }
 
     /// Test that demonstrates production/simulation equivalence

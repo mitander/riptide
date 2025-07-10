@@ -275,8 +275,7 @@ mod tests {
             let status = handle.buffer_status(info_hash).await.unwrap();
             assert_eq!(
                 status.current_position, expected_position,
-                "Torrent {} should maintain independent position",
-                i
+                "Torrent {i} should maintain independent position"
             );
         }
 

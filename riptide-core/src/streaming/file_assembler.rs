@@ -590,6 +590,7 @@ mod tests {
         let assembler = PieceFileAssembler::new(Arc::new(store), Some(32));
 
         // Invalid range where start >= end
+        #[allow(clippy::reversed_empty_ranges)]
         let result = assembler.read_range(info_hash, 10..5).await;
         assert!(matches!(
             result,

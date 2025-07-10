@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::body::Body;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use bytes::Bytes;
 use riptide_core::streaming::remux::{
     DirectStreamStrategy, RemuxConfig, RemuxStreamStrategy, StreamingStrategy,
 };
@@ -32,6 +32,7 @@ pub struct StreamingCoordinator {
     file_assembler: Arc<dyn FileAssembler>,
     strategies: HashMap<ContainerFormat, Box<dyn StreamingStrategy>>,
     active_sessions: Arc<RwLock<HashMap<InfoHash, StreamingSession>>>,
+    #[allow(dead_code)]
     config: HttpStreamingConfig,
 }
 
@@ -211,7 +212,7 @@ impl StreamingCoordinator {
                 Ok(StreamingResponse {
                     status: StatusCode::TOO_EARLY,
                     headers: HeaderMap::new(),
-                    body: Body::from("Stream is being processed"),
+                    body: Bytes::from("Stream is being processed"),
                     content_type: "text/plain".to_string(),
                 })
             }
@@ -220,7 +221,7 @@ impl StreamingCoordinator {
                 Ok(StreamingResponse {
                     status: StatusCode::SERVICE_UNAVAILABLE,
                     headers: HeaderMap::new(),
-                    body: Body::from("Waiting for data"),
+                    body: Bytes::from("Waiting for data"),
                     content_type: "text/plain".to_string(),
                 })
             }
@@ -234,7 +235,7 @@ impl StreamingCoordinator {
                 Ok(StreamingResponse {
                     status: StatusCode::SERVICE_UNAVAILABLE,
                     headers,
-                    body: Body::from("Processing failed, retry available"),
+                    body: Bytes::from("Processing failed, retry available"),
                     content_type: "text/plain".to_string(),
                 })
             }
@@ -300,7 +301,7 @@ impl StreamingCoordinator {
         Ok(StreamingResponse {
             status,
             headers,
-            body: Body::from(stream_data.data),
+            body: Bytes::from(stream_data.data),
             content_type: stream_data.content_type,
         })
     }
@@ -402,6 +403,7 @@ mod tests {
             let file_size = data.len() as u64;
             self.files.insert(info_hash, data);
             // Make entire file available by default
+            #[allow(clippy::single_range_in_vec_init)]
             self.available_ranges.insert(info_hash, vec![0..file_size]);
         }
     }

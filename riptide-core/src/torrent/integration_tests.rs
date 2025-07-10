@@ -94,7 +94,7 @@ impl BitTorrentTestHarness {
 
         // Generate deterministic piece data that matches expected hashes
         let mut pieces = HashMap::new();
-        let mut bitfield = vec![0u8; (self.metadata.piece_hashes.len() + 7) / 8];
+        let mut bitfield = vec![0u8; self.metadata.piece_hashes.len().div_ceil(8)];
 
         for piece_index in has_pieces {
             let piece_data = self.generate_valid_piece_data(piece_index);
@@ -471,7 +471,7 @@ mod tests {
 
         match result {
             Ok(Ok(())) => {} // Test passed
-            Ok(Err(e)) => panic!("Test failed: {}", e),
+            Ok(Err(e)) => panic!("Test failed: {e}"),
             Err(_) => panic!("Test timed out - likely deadlock in connection logic"),
         }
     }
@@ -483,7 +483,7 @@ mod tests {
 
         match result {
             Ok(Ok(())) => {} // Test passed
-            Ok(Err(e)) => panic!("Test failed: {}", e),
+            Ok(Err(e)) => panic!("Test failed: {e}"),
             Err(_) => panic!("Test timed out - likely deadlock in error recovery logic"),
         }
     }
@@ -496,7 +496,7 @@ mod tests {
 
         match result {
             Ok(Ok(())) => {} // Test passed
-            Ok(Err(e)) => panic!("Test failed: {}", e),
+            Ok(Err(e)) => panic!("Test failed: {e}"),
             Err(_) => panic!("Test timed out - likely deadlock in piece download logic"),
         }
     }

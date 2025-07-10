@@ -837,7 +837,7 @@ mod tests {
         for i in 0..3 {
             let result = downloader.download_piece(PieceIndex::new(i)).await;
             if let Err(e) = &result {
-                eprintln!("Failed to download piece {}: {:?}", i, e);
+                eprintln!("Failed to download piece {i}: {e:?}");
             }
             assert!(
                 result.is_ok(),

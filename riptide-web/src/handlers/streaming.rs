@@ -28,6 +28,7 @@ pub struct StreamingQuery {
 }
 
 /// Main streaming handler - simplified version using HttpStreamingService
+#[axum::debug_handler]
 pub async fn stream_torrent(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
@@ -47,7 +48,7 @@ pub async fn stream_torrent(
     };
 
     // Get streaming service from app state
-    let _streaming_service = state.streaming_service();
+    let streaming_service = state.streaming_service();
 
     // Extract range from headers
     let range_request = extract_range_header(&headers)
@@ -85,17 +86,32 @@ pub async fn stream_torrent(
         info_hash, request.range, time_offset, preferred_quality
     );
 
-    // TODO: Fix async handler trait bounds issue
-    // The streaming service call causes Handler trait bound issues in axum
-    // Temporary implementation until the type issue is resolved
-    Response::builder()
-        .status(StatusCode::SERVICE_UNAVAILABLE)
-        .header("content-type", "application/json")
-        .header("retry-after", "30")
-        .body(Body::from(format!(
-            r#"{{"error": "Streaming service temporarily unavailable", "info_hash": "{info_hash}", "message": "Handler trait bounds issue under investigation"}}"#
-        )))
-        .unwrap()
+    // Handle streaming request
+    match streaming_service.handle_streaming_request(request).await {
+        Ok(response) => {
+            // Convert StreamingResponse to axum Response
+            let mut builder = Response::builder().status(response.status);
+
+            builder = builder.header("content-type", &response.content_type);
+
+            // Add any additional headers from the response
+            for (key, value) in response.headers.iter() {
+                builder = builder.header(key, value);
+            }
+
+            builder.body(Body::from(response.body)).unwrap()
+        }
+        Err(err) => {
+            error!("Streaming error: {}", err);
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"error": "Streaming failed", "info_hash": "{info_hash}", "message": "{err}"}}"#
+                )))
+                .unwrap()
+        }
+    }
 }
 
 /// Parse client capabilities from HTTP headers
@@ -155,6 +171,7 @@ pub async fn cleanup_sessions(State(state): State<AppState>) -> impl IntoRespons
 }
 
 /// Debug endpoint to inspect stream status and diagnose issues
+#[axum::debug_handler]
 pub async fn debug_stream_status(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
@@ -174,22 +191,59 @@ pub async fn debug_stream_status(
     // Get basic streaming service statistics
     let stats = streaming_service.statistics().await;
 
-    // TODO: Fix Handler trait bounds issue with streaming_service.handle_streaming_request()
-    // Simplified debug info until async handler trait bounds are resolved
-    Json(serde_json::json!({
-        "info_hash": info_hash_str,
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "service_stats": {
-            "active_sessions": stats.active_sessions,
-            "total_requests": stats.total_requests,
-            "total_bytes_served": stats.total_bytes_served,
-            "average_session_duration": stats.average_session_duration.as_secs(),
+    // Create a simple debug request to test streaming service
+    let debug_request = StreamingRequest {
+        info_hash: _info_hash,
+        range: None,
+        client_capabilities: ClientCapabilities {
+            supports_mp4: true,
+            supports_webm: true,
+            supports_hls: false,
+            user_agent: "debug".to_string(),
         },
-        "status": "Debug functionality temporarily limited due to Handler trait bounds issue"
-    }))
+        preferred_quality: None,
+        time_offset: None,
+    };
+
+    // Test streaming service call
+    match streaming_service
+        .handle_streaming_request(debug_request)
+        .await
+    {
+        Ok(response) => Json(serde_json::json!({
+            "info_hash": info_hash_str,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "service_stats": {
+                "active_sessions": stats.active_sessions,
+                "total_requests": stats.total_requests,
+                "total_bytes_served": stats.total_bytes_served,
+                "average_session_duration": stats.average_session_duration.as_secs(),
+            },
+            "streaming_response": {
+                "status": response.status.as_u16(),
+                "content_type": response.content_type,
+                "headers": response.headers.len(),
+                "body_available": true,
+            },
+            "status": "Debug call successful"
+        })),
+        Err(err) => Json(serde_json::json!({
+            "info_hash": info_hash_str,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "service_stats": {
+                "active_sessions": stats.active_sessions,
+                "total_requests": stats.total_requests,
+                "total_bytes_served": stats.total_bytes_served,
+                "average_session_duration": stats.average_session_duration.as_secs(),
+            },
+            "streaming_error": err.to_string(),
+            "status": "Debug call failed"
+        })),
+    }
 }
 
 /// Debug endpoint to test actual video data and validate MP4 structure
+#[axum::debug_handler]
 pub async fn debug_stream_data(
     State(_state): State<AppState>,
     Path(info_hash_str): Path<String>,
@@ -204,14 +258,45 @@ pub async fn debug_stream_data(
         }
     };
 
-    // TODO: Fix Handler trait bounds issue with streaming_service.handle_streaming_request()
-    // Simplified debug info until async handler trait bounds are resolved
-    Json(serde_json::json!({
-        "info_hash": info_hash_str,
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "status": "Data analysis functionality temporarily limited due to Handler trait bounds issue",
-        "message": "This endpoint would normally fetch and analyze stream data, but is disabled due to axum Handler trait compatibility issues"
-    }))
+    // Create a small range request to test actual data
+    let data_request = StreamingRequest {
+        info_hash: _info_hash,
+        range: Some(SimpleRangeRequest {
+            start: 0,
+            end: Some(1024), // Just first 1KB for testing
+        }),
+        client_capabilities: ClientCapabilities {
+            supports_mp4: true,
+            supports_webm: true,
+            supports_hls: false,
+            user_agent: "debug-data".to_string(),
+        },
+        preferred_quality: None,
+        time_offset: None,
+    };
+
+    // Test streaming service call with actual data
+    match _state
+        .streaming_service()
+        .handle_streaming_request(data_request)
+        .await
+    {
+        Ok(response) => Json(serde_json::json!({
+            "info_hash": info_hash_str,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "response_status": response.status.as_u16(),
+            "content_type": response.content_type,
+            "headers": response.headers.len(),
+            "body_available": true,
+            "status": "Data analysis successful"
+        })),
+        Err(err) => Json(serde_json::json!({
+            "info_hash": info_hash_str,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "error": err.to_string(),
+            "status": "Data analysis failed"
+        })),
+    }
 }
 
 #[cfg(test)]

@@ -274,7 +274,7 @@ mod tests {
 
         // Further operations should fail
         let result = handle.download_statistics().await;
-        println!("Result after shutdown: {:?}", result);
+        println!("Result after shutdown: {result:?}");
         // The channel should be closed, so we should get an error
         assert!(result.is_err());
     }
