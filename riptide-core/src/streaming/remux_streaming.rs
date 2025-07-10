@@ -293,12 +293,7 @@ impl RemuxStreamingStrategy {
                 reason: "Failed to get FFmpeg stdin".to_string(),
             })?;
 
-        let mut stdout = process
-            .stdout
-            .take()
-            .ok_or_else(|| StreamingError::FfmpegError {
-                reason: "Failed to get FFmpeg stdout".to_string(),
-            })?;
+        // No stdout needed since we're writing to a file
 
         let mut stderr = process
             .stderr
@@ -311,7 +306,7 @@ impl RemuxStreamingStrategy {
 
         // Create channels for coordination
         let (input_tx, mut input_rx) = mpsc::channel::<Vec<u8>>(16);
-        let (output_tx, output_rx) = mpsc::channel::<Vec<u8>>(16);
+        let (_output_tx, output_rx) = mpsc::channel::<Vec<u8>>(16);
 
         // Spawn input feeder task
         let input_session = Arc::clone(&session);
@@ -323,8 +318,10 @@ impl RemuxStreamingStrategy {
 
         // Spawn output collector task
         let output_session = Arc::clone(&session);
-        let output_handle =
-            tokio::spawn(async move { Self::collect_output_data(output_session, output_rx).await });
+        let output_config = config.clone();
+        let output_handle = tokio::spawn(async move {
+            Self::collect_output_data(output_session, output_rx, output_config).await
+        });
 
         // Spawn FFmpeg I/O handlers
         let stdin_handle = tokio::spawn(async move {
@@ -337,23 +334,7 @@ impl RemuxStreamingStrategy {
             let _ = stdin.shutdown().await;
         });
 
-        let stdout_handle = tokio::spawn(async move {
-            let mut buffer = vec![0u8; 64 * 1024]; // 64KB buffer
-            loop {
-                match stdout.read(&mut buffer).await {
-                    Ok(0) => break, // EOF
-                    Ok(n) => {
-                        if output_tx.send(buffer[..n].to_vec()).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to read from FFmpeg stdout: {}", e);
-                        break;
-                    }
-                }
-            }
-        });
+        // No stdout handling needed since we're writing to a file
 
         let stderr_handle = tokio::spawn(async move {
             let mut buffer = vec![0u8; 4096];
@@ -412,17 +393,12 @@ impl RemuxStreamingStrategy {
         *session.status.write().await = RemuxingStatus::Processing { _input_consumed: 0 };
 
         // Wait for completion with timeout
-        let join_result = tokio::try_join!(
-            input_handle,
-            output_handle,
-            stdin_handle,
-            stdout_handle,
-            stderr_handle
-        );
+        let join_result =
+            tokio::try_join!(input_handle, output_handle, stdin_handle, stderr_handle,);
         let result = timeout(config.ffmpeg_timeout, async move { join_result }).await;
 
         match result {
-            Ok(Ok((_, _, _, _, _))) => {
+            Ok(Ok((_, _, _, _))) => {
                 let output_size = session
                     .output_size
                     .load(std::sync::atomic::Ordering::Relaxed);
@@ -578,12 +554,12 @@ impl RemuxStreamingStrategy {
         }
 
         // Generate proper MP4 structure for browser compatibility
-        // Use fragmented MP4 for pipe streaming (faststart requires seekable output)
-        cmd.arg("-movflags")
-            .arg("frag_keyframe+empty_moov+default_base_moof");
+        // Use faststart for HTTP range request compatibility (requires seekable output)
+        cmd.arg("-movflags").arg("+faststart");
 
-        // Output format - use MP4
-        cmd.arg("-f").arg("mp4").arg("pipe:1"); // Output to stdout
+        // Output format - use MP4 with temporary file
+        let temp_file = format!("/tmp/riptide_remux_{}.mp4", session.info_hash);
+        cmd.arg("-f").arg("mp4").arg(&temp_file);
 
         tracing::debug!(
             "Starting FFmpeg process for {}: {:?}",
@@ -591,9 +567,14 @@ impl RemuxStreamingStrategy {
             cmd
         );
 
-        let process = cmd.spawn().map_err(|e| StreamingError::FfmpegError {
-            reason: format!("Failed to spawn FFmpeg process: {e}"),
-        })?;
+        let process = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| StreamingError::FfmpegError {
+                reason: format!("Failed to spawn FFmpeg process: {e}"),
+            })?;
 
         Ok(process)
     }
@@ -695,48 +676,161 @@ impl RemuxStreamingStrategy {
         Ok(())
     }
 
-    /// Collect output data from FFmpeg
+    /// Collect output data from FFmpeg temporary file
     async fn collect_output_data(
         session: Arc<RemuxSession>,
-        mut output_rx: mpsc::Receiver<Vec<u8>>,
+        _output_rx: mpsc::Receiver<Vec<u8>>,
+        config: RemuxStreamingConfig,
     ) -> StreamingResult<()> {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+        let temp_file = format!("/tmp/riptide_remux_{}.mp4", session.info_hash);
         let mut current_position = 0u64;
+        let mut last_file_size = 0u64;
 
-        while let Some(chunk) = output_rx.recv().await {
-            let chunk_size = chunk.len() as u64;
-            let range = current_position..current_position + chunk_size;
-
-            let output_chunk = OutputChunk {
-                range: range.clone(),
-                data: chunk,
-                _timestamp: Instant::now(),
+        loop {
+            // Check if FFmpeg process is still running
+            let process_running = {
+                let ffmpeg_guard = session.ffmpeg_process.read().await;
+                ffmpeg_guard.is_some()
             };
 
-            // Store chunk
-            {
-                let mut chunks = session.output_chunks.write().await;
-                chunks.insert(current_position, output_chunk);
+            // Try to read from the temporary file
+            if let Ok(mut file) = tokio::fs::File::open(&temp_file).await {
+                let file_size = file.metadata().await.map(|m| m.len()).unwrap_or(0);
 
-                // Enforce buffer size limit
-                let total_size: usize = chunks.values().map(|c| c.data.len()).sum();
-                if total_size > session.file_size as usize {
-                    // Remove some chunks to free memory
-                    let keys_to_remove: Vec<_> =
-                        chunks.keys().take(chunks.len() / 2).copied().collect();
-                    for key in keys_to_remove {
-                        chunks.remove(&key);
+                if file_size > last_file_size {
+                    // New data available, read it
+                    let mut buffer = vec![0u8; (file_size - last_file_size) as usize];
+                    file.seek(std::io::SeekFrom::Start(last_file_size))
+                        .await
+                        .map_err(|e| StreamingError::RemuxingFailed {
+                            reason: format!("Failed to seek in temp file: {e}"),
+                        })?;
+
+                    file.read_exact(&mut buffer).await.map_err(|e| {
+                        StreamingError::RemuxingFailed {
+                            reason: format!("Failed to read from temp file: {e}"),
+                        }
+                    })?;
+
+                    // Store the new data as chunks
+                    let chunk_size = buffer.len() as u64;
+                    let range = current_position..current_position + chunk_size;
+
+                    let output_chunk = OutputChunk {
+                        range: range.clone(),
+                        data: buffer,
+                        _timestamp: Instant::now(),
+                    };
+
+                    // Store chunk
+                    {
+                        let mut chunks = session.output_chunks.write().await;
+                        chunks.insert(current_position, output_chunk);
+
+                        // Enforce buffer size limit
+                        let total_size: usize = chunks.values().map(|c| c.data.len()).sum();
+                        if total_size > config.max_output_buffer_size {
+                            // Remove chunks from the end, but preserve header data (first 10MB)
+                            const HEADER_PRESERVE_SIZE: u64 = 10 * 1024 * 1024; // 10MB
+
+                            let mut keys_to_remove = Vec::new();
+                            let mut _preserved_size = 0;
+
+                            // Collect keys to remove, starting from the end, but preserve header
+                            for &key in chunks.keys() {
+                                if key < HEADER_PRESERVE_SIZE {
+                                    _preserved_size +=
+                                        chunks.get(&key).map(|c| c.data.len()).unwrap_or(0);
+                                } else {
+                                    keys_to_remove.push(key);
+                                }
+                            }
+
+                            // Sort keys to remove in descending order (remove from end first)
+                            keys_to_remove.sort_by(|a, b| b.cmp(a));
+
+                            // Remove chunks until we're under the limit
+                            let mut current_size = total_size;
+                            for key in keys_to_remove {
+                                if current_size <= config.max_output_buffer_size {
+                                    break;
+                                }
+                                if let Some(chunk) = chunks.remove(&key) {
+                                    current_size -= chunk.data.len();
+                                }
+                            }
+                        }
                     }
+
+                    session.output_size.store(
+                        current_position + chunk_size,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                    current_position += chunk_size;
+                    last_file_size = file_size;
                 }
             }
 
-            session.output_size.store(
-                current_position + chunk_size,
-                std::sync::atomic::Ordering::Relaxed,
-            );
-            current_position += chunk_size;
+            // If process is not running and we've read all data, we're done
+            if !process_running {
+                // Give it a moment to ensure all data is written
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+                // Try one more read
+                if let Ok(mut file) = tokio::fs::File::open(&temp_file).await {
+                    let file_size = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+
+                    if file_size > last_file_size {
+                        let mut buffer = vec![0u8; (file_size - last_file_size) as usize];
+                        file.seek(std::io::SeekFrom::Start(last_file_size))
+                            .await
+                            .map_err(|e| StreamingError::RemuxingFailed {
+                                reason: format!("Failed to seek in temp file: {e}"),
+                            })?;
+
+                        file.read_exact(&mut buffer).await.map_err(|e| {
+                            StreamingError::RemuxingFailed {
+                                reason: format!("Failed to read from temp file: {e}"),
+                            }
+                        })?;
+
+                        let chunk_size = buffer.len() as u64;
+                        let range = current_position..current_position + chunk_size;
+
+                        let output_chunk = OutputChunk {
+                            range: range.clone(),
+                            data: buffer,
+                            _timestamp: Instant::now(),
+                        };
+
+                        {
+                            let mut chunks = session.output_chunks.write().await;
+                            chunks.insert(current_position, output_chunk);
+                        }
+
+                        session.output_size.store(
+                            current_position + chunk_size,
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                        current_position += chunk_size;
+                    }
+                }
+
+                break;
+            }
+
+            // Wait before checking again
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
 
-        // FFmpeg has closed stdout, mark remuxing as complete
+        // Clean up temporary file
+        if let Err(e) = tokio::fs::remove_file(&temp_file).await {
+            tracing::warn!("Failed to remove temporary file {}: {}", temp_file, e);
+        }
+
+        // Mark remuxing as complete
         {
             let mut status = session.status.write().await;
             *status = RemuxingStatus::Completed {
@@ -818,33 +912,33 @@ impl RemuxStreamingStrategy {
 
     /// Check if the session has a complete MP4 header suitable for browser streaming
     async fn has_complete_mp4_header(session: &RemuxSession) -> bool {
-        let output_chunks = session.output_chunks.read().await;
+        use tokio::io::AsyncReadExt;
 
-        if output_chunks.is_empty() {
-            return false;
-        }
+        let temp_file = format!("/tmp/riptide_remux_{}.mp4", session.info_hash);
 
-        // Combine initial chunks to get enough data for MP4 validation
-        let mut combined_data = Vec::new();
-        let mut current_pos = 0u64;
+        // Try to read from the temporary file
+        let mut file = match tokio::fs::File::open(&temp_file).await {
+            Ok(file) => file,
+            Err(_) => return false,
+        };
 
-        // Get up to the first 4KB of data from sequential chunks for proper validation
-        while combined_data.len() < 4096 {
-            if let Some(chunk) = output_chunks.get(&current_pos) {
-                combined_data.extend_from_slice(&chunk.data);
-                current_pos += chunk.data.len() as u64;
-            } else {
-                break;
-            }
-        }
+        // Read the first 4KB to validate MP4 header
+        let mut buffer = vec![0u8; 4096];
+        let bytes_read = match file.read(&mut buffer).await {
+            Ok(n) => n,
+            Err(_) => return false,
+        };
 
         // Need at least 32 bytes to check for ftyp box
-        if combined_data.len() < 32 {
+        if bytes_read < 32 {
             return false;
         }
 
+        // Truncate buffer to actual data read
+        buffer.truncate(bytes_read);
+
         // Use proper MP4 validation to check streaming compatibility
-        let analysis = analyze_mp4_for_streaming(&combined_data);
+        let analysis = analyze_mp4_for_streaming(&buffer);
 
         if analysis.is_streaming_ready {
             tracing::info!("MP4 header validation passed - streaming ready");
@@ -853,11 +947,11 @@ impl RemuxStreamingStrategy {
             // Log specific issues for debugging
             if !analysis.issues.is_empty() {
                 tracing::warn!("MP4 validation issues: {}", analysis.issues.join(", "));
-                debug_mp4_structure(&combined_data, 5);
+                debug_mp4_structure(&buffer, 5);
             }
 
             // For streaming, we need at least the ftyp box
-            if combined_data.len() >= 8 && &combined_data[4..8] == b"ftyp" {
+            if buffer.len() >= 8 && &buffer[4..8] == b"ftyp" {
                 tracing::info!("MP4 ftyp box detected, allowing streaming start");
                 return true;
             }
