@@ -13,6 +13,7 @@ pub mod peer_manager;
 pub mod peer_state;
 pub mod piece_picker;
 pub mod piece_store;
+// pub mod production_peer_manager;
 pub mod protocol;
 pub mod streaming_upload_manager;
 #[cfg(test)]
@@ -35,6 +36,7 @@ pub use piece_picker::{
     StreamingPiecePicker,
 };
 pub use piece_store::PieceStore;
+// pub use production_peer_manager::ProductionPeerManager;
 pub use protocol::{
     BitTorrentPeerProtocol, PeerHandshake, PeerId, PeerMessage, PeerProtocol, PeerState,
 };

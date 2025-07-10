@@ -93,10 +93,7 @@ enum RemuxingStatus {
     /// Waiting for sufficient head and tail data
     WaitingForHead { _bytes_needed: u64 },
     /// FFmpeg process active and processing
-    Processing {
-        _input_consumed: u64,
-        output_produced: u64,
-    },
+    Processing { _input_consumed: u64 },
     /// Successfully completed
     Completed { total_output: u64 },
     /// Failed with error
@@ -382,12 +379,7 @@ impl RemuxStreamingStrategy {
         );
 
         // Update status to processing
-        *session.status.write().await = RemuxingStatus::Processing {
-            _input_consumed: 0,
-            output_produced: session
-                .output_size
-                .load(std::sync::atomic::Ordering::Relaxed),
-        };
+        *session.status.write().await = RemuxingStatus::Processing { _input_consumed: 0 };
 
         // Wait for completion with timeout
         let join_result = tokio::try_join!(
@@ -533,28 +525,33 @@ impl RemuxStreamingStrategy {
         // Smart codec selection for MP4 compatibility
         cmd.arg("-c:v");
         if config.remuxing_options.video_codec == "copy" {
-            // For AVI files with raw video, use H.264 encoding since copy doesn't work
+            // For AVI files, we need to re-encode to H.264 for browser compatibility
             cmd.arg("libx264")
                 .arg("-preset")
-                .arg("ultrafast") // Fast encoding for real-time streaming
-                .arg("-crf")
-                .arg("23"); // Good quality/speed balance
+                .arg("ultrafast")
+                .arg("-profile:v")
+                .arg("baseline") // Most compatible profile
+                .arg("-level")
+                .arg("3.0")
+                .arg("-pix_fmt")
+                .arg("yuv420p"); // Ensure compatible pixel format
         } else {
             cmd.arg(&config.remuxing_options.video_codec);
         }
 
         cmd.arg("-c:a");
         if config.remuxing_options.audio_codec == "copy" {
-            // Use AAC for MP4 compatibility
-            cmd.arg("aac").arg("-b:a").arg("128k"); // Standard bitrate
+            // Convert to AAC for MP4 compatibility
+            cmd.arg("aac").arg("-b:a").arg("128k");
         } else {
             cmd.arg(&config.remuxing_options.audio_codec);
         }
 
-        // MP4 output with streaming optimization - use faststart for browser compatibility
-        cmd.arg("-movflags").arg("+faststart");
+        // Use standard MP4 format for browser compatibility
+        // Remove fragmentation flags that cause moov-first output
+        cmd.arg("-movflags").arg("empty_moov+omit_tfhd_offset");
 
-        // Output format
+        // Output format - use MP4
         cmd.arg("-f").arg("mp4").arg("pipe:1"); // Output to stdout
 
         tracing::debug!(
@@ -578,54 +575,92 @@ impl RemuxStreamingStrategy {
         input_tx: mpsc::Sender<Vec<u8>>,
     ) -> StreamingResult<()> {
         let mut position = 0u64;
-        let mut last_successful_position = 0u64;
+        let mut retry_count = 0u32;
+        const MAX_CONSECUTIVE_RETRIES: u32 = 600; // 10 minutes with 1s retry interval
 
-        // First, feed all available head data sequentially
+        // Feed all data sequentially, waiting for unavailable pieces
         while position < session.file_size {
             let chunk_size = config
                 .input_chunk_size
                 .min((session.file_size - position) as usize);
             let range = position..position + chunk_size as u64;
 
-            // Check if this chunk is available (don't wait)
-            if file_assembler.is_range_available(session.info_hash, range.clone()) {
-                match file_assembler
-                    .read_range(session.info_hash, range.clone())
-                    .await
+            // Wait for this chunk to become available
+            while !file_assembler.is_range_available(session.info_hash, range.clone()) {
+                // Check if FFmpeg process is still alive
                 {
-                    Ok(data) => {
-                        if input_tx.send(data).await.is_err() {
-                            break; // Receiver closed
-                        }
-                        position += chunk_size as u64;
-                        last_successful_position = position;
-                        session
-                            .input_position
-                            .store(position, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to read input chunk for {}: {}",
-                            session.info_hash,
-                            e
-                        );
-                        break;
+                    let ffmpeg_guard = session.ffmpeg_process.read().await;
+                    if ffmpeg_guard.is_none() {
+                        tracing::info!("FFmpeg process terminated, stopping input feed");
+                        return Ok(());
                     }
                 }
-            } else {
-                // No more sequential data available, break out of sequential reading
-                break;
+
+                retry_count += 1;
+                if retry_count > MAX_CONSECUTIVE_RETRIES {
+                    tracing::error!(
+                        "Timeout waiting for range {:?} after {} retries for {}",
+                        range,
+                        retry_count,
+                        session.info_hash
+                    );
+                    return Err(StreamingError::RemuxingFailed {
+                        reason: "Timeout waiting for torrent data".to_string(),
+                    });
+                }
+
+                tracing::debug!(
+                    "Waiting for range {:?} to become available for {} (retry {})",
+                    range,
+                    session.info_hash,
+                    retry_count
+                );
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+
+            // Reset retry count on successful availability
+            retry_count = 0;
+
+            match file_assembler
+                .read_range(session.info_hash, range.clone())
+                .await
+            {
+                Ok(data) => {
+                    if input_tx.send(data).await.is_err() {
+                        tracing::info!("Input receiver closed, stopping feed");
+                        break; // Receiver closed
+                    }
+                    position += chunk_size as u64;
+                    session
+                        .input_position
+                        .store(position, std::sync::atomic::Ordering::Relaxed);
+
+                    if position % (10 * 1024 * 1024) == 0 {
+                        tracing::debug!(
+                            "Fed {} MB to FFmpeg for {}",
+                            position / (1024 * 1024),
+                            session.info_hash
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to read input chunk for {}: {}",
+                        session.info_hash,
+                        e
+                    );
+                    // Continue trying with exponential backoff
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
             }
         }
 
         tracing::info!(
-            "Fed {} bytes of sequential head data to FFmpeg for {}",
-            last_successful_position,
+            "Completed feeding {} bytes to FFmpeg for {}",
+            position,
             session.info_hash
         );
 
-        // For streaming, we've fed the head data which should be sufficient for FFmpeg
-        // to start processing. FFmpeg will work with partial data.
         Ok(())
     }
 
@@ -669,6 +704,20 @@ impl RemuxStreamingStrategy {
             );
             current_position += chunk_size;
         }
+
+        // FFmpeg has closed stdout, mark remuxing as complete
+        {
+            let mut status = session.status.write().await;
+            *status = RemuxingStatus::Completed {
+                total_output: current_position,
+            };
+        }
+
+        tracing::info!(
+            "Remuxing completed for {}, total output: {} bytes",
+            session.info_hash,
+            current_position
+        );
 
         Ok(())
     }

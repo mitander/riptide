@@ -799,7 +799,9 @@ impl HttpStreamingService {
                 Ok(data) => data,
                 Err(e)
                     if e.to_string().contains("Insufficient output data available")
-                        || e.to_string().contains("Waiting for sufficient head data") =>
+                        || e.to_string().contains("Waiting for sufficient head data")
+                        || e.to_string()
+                            .contains("FFmpeg is processing, output not ready yet") =>
                 {
                     // This should not happen after readiness check, but handle it
                     let mut headers = HeaderMap::new();
@@ -883,7 +885,9 @@ impl HttpStreamingService {
                 Ok(data) => data,
                 Err(e)
                     if e.to_string().contains("Insufficient output data available")
-                        || e.to_string().contains("Waiting for sufficient head data") =>
+                        || e.to_string().contains("Waiting for sufficient head data")
+                        || e.to_string()
+                            .contains("FFmpeg is processing, output not ready yet") =>
                 {
                     // This should not happen after readiness check, but handle it
                     let mut headers = HeaderMap::new();
