@@ -578,8 +578,9 @@ impl RemuxStreamingStrategy {
         }
 
         // Generate proper MP4 structure for browser compatibility
-        // Use faststart to move moov box before mdat for progressive streaming
-        cmd.arg("-movflags").arg("faststart");
+        // Use fragmented MP4 for pipe streaming (faststart requires seekable output)
+        cmd.arg("-movflags")
+            .arg("frag_keyframe+empty_moov+default_base_moof");
 
         // Output format - use MP4
         cmd.arg("-f").arg("mp4").arg("pipe:1"); // Output to stdout
