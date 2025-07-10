@@ -4,22 +4,27 @@
 </div>
 
 <div class="card">
-    <div id="video-container">
-        <video id="video-player" controls style="background: #000;">
-            <source src="{{ stream_url }}">
+    <div id="video-container" style="position: relative">
+        <video
+            id="video-player"
+            controls
+            style="background: #000; width: 100%"
+            data-info-hash="{{ info_hash }}"
+        >
             Your browser does not support the video tag or this video format.
         </video>
     </div>
-    
+
     <div class="video-info">
         <p><strong>Title:</strong> {{ title }}</p>
         <p><strong>Source:</strong> {{ source_type }}</p>
         <p><strong>Info Hash:</strong> {{ info_hash }}</p>
         <p class="video-help">
-            If video doesn't play, your browser may not support this format. 
-            MP4, WebM work best. MKV has limited support.
+            Stream will start automatically once ready. Files may need remuxing
+            for browser compatibility.
         </p>
     </div>
 </div>
 
+<script src="/static/js/streaming_readiness.js"></script>
 <script src="/static/js/video_player.js"></script>

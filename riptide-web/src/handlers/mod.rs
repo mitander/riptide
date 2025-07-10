@@ -6,6 +6,7 @@ pub mod pages;
 pub mod range;
 
 pub mod streaming;
+pub mod streaming_readiness;
 
 // Re-export handler functions
 pub use api::{
@@ -23,3 +24,4 @@ pub use range::{
     build_range_response, extract_range_header, parse_range_header, validate_range_bounds,
 };
 pub use streaming::{cleanup_sessions, stream_torrent, streaming_health, streaming_stats};
+pub use streaming_readiness::check_streaming_readiness;

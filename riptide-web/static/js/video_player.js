@@ -1,318 +1,488 @@
+//! Enhanced video player with streaming readiness integration
+//!
+//! Uses the new readiness API to provide better UX during stream preparation
+
 document.addEventListener("DOMContentLoaded", function () {
   const player = document.getElementById("video-player");
-
-  if (!player) return;
-
-  let lastBufferCheck = 0;
-  let streamReadyRetries = 0;
-  let streamReadinessCheckInProgress = false;
-  const maxRetries = 15; // Maximum retries for stream readiness
-  let retryInterval = null;
-  const baseRetryDelay = 1000; // Base delay in milliseconds (1 second)
-  const maxRetryDelay = 30000; // Maximum delay in milliseconds (30 seconds)
-  let originalVideoSrc = player.src || player.querySelector("source")?.src;
-
-  // Function to check if stream is ready
-  function checkStreamReadiness() {
-    if (streamReadinessCheckInProgress) {
-      console.log("Stream readiness check already in progress, skipping");
-      return;
-    }
-    
-    const streamUrl = originalVideoSrc || player.src || player.currentSrc;
-    if (!streamUrl) return;
-    
-    streamReadinessCheckInProgress = true;
-
-    fetch(streamUrl, { method: "HEAD" })
-      .then((response) => {
-        if (
-          response.status === 425 ||
-          response.status === 503 ||
-          response.status === 429
-        ) {
-          // Stream not ready yet - retry with exponential backoff
-          streamReadyRetries++;
-          if (streamReadyRetries < maxRetries) {
-            // Calculate exponential backoff delay
-            const delay = Math.min(
-              baseRetryDelay * Math.pow(2, streamReadyRetries - 1),
-              maxRetryDelay,
-            );
-
-            console.log(
-              `Stream not ready (${response.status}), retrying in ${delay}ms... (${streamReadyRetries}/${maxRetries})`,
-            );
-
-            const statusMessage =
-              response.status === 425
-                ? "Stream preparation in progress"
-                : response.status === 429
-                  ? "Service temporarily overloaded"
-                  : "Content being processed for streaming";
-
-            showStreamingIndicator(
-              `${statusMessage}... (${streamReadyRetries}/${maxRetries})`,
-              `Downloading torrent pieces and preparing stream. This may take 30-60 seconds.`,
-              delay,
-            );
-            setTimeout(() => {
-              streamReadinessCheckInProgress = false;
-              checkStreamReadiness();
-            }, delay);
-          } else {
-            streamReadinessCheckInProgress = false;
-            showError(
-              "Stream Preparation Failed",
-              "The stream could not be prepared after multiple attempts. The torrent may need more time to download sufficient pieces. Try refreshing the page in a few minutes.",
-            );
-          }
-        } else if (response.ok) {
-          // Stream is ready
-          console.log("Stream ready, starting playback");
-          streamReadinessCheckInProgress = false;
-          hideStreamingIndicator();
-        } else {
-          // Other error
-          streamReadinessCheckInProgress = false;
-          showError(
-            "Stream Error",
-            `Server returned status: ${response.status}`,
-          );
-        }
-      })
-      .catch((error) => {
-        console.error("Stream readiness check failed:", error);
-
-        // Handle network errors with retry logic
-        streamReadyRetries++;
-        if (streamReadyRetries < maxRetries) {
-          const delay = Math.min(
-            baseRetryDelay * Math.pow(2, streamReadyRetries - 1),
-            maxRetryDelay,
-          );
-
-          console.log(
-            `Network error, retrying in ${delay}ms... (${streamReadyRetries}/${maxRetries})`,
-          );
-          showStreamingIndicator(
-            `Connection error, retrying... (${streamReadyRetries}/${maxRetries})`,
-            `Network issue detected. Retrying connection.`,
-            delay,
-          );
-          setTimeout(() => {
-            streamReadinessCheckInProgress = false;
-            checkStreamReadiness();
-          }, delay);
-        } else {
-          streamReadinessCheckInProgress = false;
-          showError(
-            "Network Error",
-            "Failed to check stream readiness after multiple attempts. Please check your connection and try refreshing the page.",
-          );
-        }
-      });
+  if (!player) {
+    console.warn("Video player element not found");
+    return;
   }
 
-  // Function to show streaming indicator
-  function showStreamingIndicator(message, subtitle = "", nextRetryIn = 0) {
-    const container = document.getElementById("video-container");
-    const progressPercent = Math.round((streamReadyRetries / maxRetries) * 100);
-    const nextRetryText =
-      nextRetryIn > 0 ? `Next retry in ${Math.ceil(nextRetryIn / 1000)}s` : "";
+  // Get info hash from data attribute or URL
+  const infoHash = player.dataset.infoHash || extractInfoHashFromUrl();
+  if (!infoHash) {
+    console.error("Info hash not found");
+    showError("Configuration error: Video identifier not found");
+    return;
+  }
 
-    container.innerHTML = `
-            <div style="background: #333; padding: 40px; text-align: center; border-radius: 8px;">
-                <div class="spinner" style="
-                    border: 4px solid #f3f3f3;
-                    border-top: 4px solid #007bff;
-                    border-radius: 50%;
-                    width: 40px;
-                    height: 40px;
-                    animation: spin 1s linear infinite;
-                    margin: 0 auto 20px;
-                "></div>
-                <h3>Preparing Stream</h3>
-                <p>${message}</p>
-                ${subtitle ? `<p style="color: #007bff; margin-top: 10px;">${subtitle}</p>` : ""}
-                <div style="margin: 20px 0;">
-                    <div style="background: #555; height: 8px; border-radius: 4px; margin: 10px 0;">
-                        <div style="background: #007bff; height: 100%; width: ${progressPercent}%; border-radius: 4px; transition: width 0.3s ease;"></div>
-                    </div>
-                    <p style="color: #ccc; font-size: 0.9em; margin: 5px 0;">
-                        Progress: ${progressPercent}% • ${nextRetryText}
-                    </p>
+  console.log("Initializing video player for:", infoHash);
+
+  // Initialize enhanced video player
+  const enhancedPlayer = new EnhancedVideoPlayer(player, infoHash);
+
+  // Store globally for debugging
+  window.riptidePlayer = enhancedPlayer;
+
+  // Start loading process
+  enhancedPlayer.loadVideo();
+});
+
+/**
+ * Enhanced video player with readiness checking
+ */
+class EnhancedVideoPlayer {
+  constructor(videoElement, infoHash) {
+    this.video = videoElement;
+    this.infoHash = infoHash;
+    this.statusOverlay = null;
+    this.isLoading = false;
+    this.loadAttempts = 0;
+    this.maxLoadAttempts = 3;
+
+    this.setupStatusOverlay();
+    this.setupVideoEventListeners();
+  }
+
+  /**
+   * Setup status overlay for loading states
+   */
+  setupStatusOverlay() {
+    const container = this.video.parentElement;
+    if (!container) return;
+
+    // Ensure container is relatively positioned
+    if (getComputedStyle(container).position === "static") {
+      container.style.position = "relative";
+    }
+
+    // Create overlay
+    this.statusOverlay = document.createElement("div");
+    this.statusOverlay.className = "streaming-status-overlay";
+    this.statusOverlay.innerHTML = `
+            <div class="status-content">
+                <div class="status-icon">
+                    <svg class="spinner" width="48" height="48" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"
+                                fill="none" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="32">
+                            <animateTransform attributeName="transform" type="rotate" dur="1s"
+                                            values="0 12 12;360 12 12" repeatCount="indefinite"/>
+                            <animate attributeName="stroke-dashoffset" dur="1s"
+                                   values="32;0;32" repeatCount="indefinite"/>
+                        </circle>
+                    </svg>
                 </div>
-                <p style="color: #aaa; margin-top: 10px; font-size: 0.9em;">
-                    BitTorrent streaming preparation in progress:<br>
-                    • Downloading torrent pieces needed for streaming<br>
-                    • Processing video format for browser compatibility<br>
-                    • Stream will start automatically once ready</p>
-                </p>
-            </div>
-            <style>
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            </style>
-        `;
-  }
-
-  // Function to hide streaming indicator and restore video player
-  function hideStreamingIndicator() {
-    const container = document.getElementById("video-container");
-    // Check if video player already exists
-    let currentPlayer = document.getElementById("video-player");
-
-    if (!currentPlayer) {
-      // Recreate video element only if it doesn't exist
-      container.innerHTML = `
-            <video id="video-player" controls style="background: #000;">
-                <source src="${originalVideoSrc}">
-                Your browser does not support the video tag or this video format.
-            </video>
-        `;
-      currentPlayer = document.getElementById("video-player");
-      if (currentPlayer) {
-        setupVideoEventListeners(currentPlayer);
-      }
-    } else {
-      // Video player exists, just ensure it's visible and properly set up
-      currentPlayer.style.display = "block";
-      currentPlayer.src = originalVideoSrc;
-    }
-  }
-
-  // Function to show error messages
-  function showError(title, message) {
-    const container = document.getElementById("video-container");
-    container.innerHTML = `
-            <div style="background: #333; padding: 40px; text-align: center; border-radius: 8px; border-left: 4px solid #dc3545;">
-                <div style="color: #dc3545; font-size: 48px; margin-bottom: 20px;">⚠</div>
-                <h3 style="color: #dc3545; margin-bottom: 15px;">${title}</h3>
-                <p style="margin-bottom: 20px;">${message}</p>
-                <button onclick="location.reload()" style="
-                    background: #007bff;
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 5px;
-                    cursor: pointer;
-                    margin-right: 10px;
-                ">Retry</button>
-                <button onclick="history.back()" style="
-                    background: #6c757d;
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 5px;
-                    cursor: pointer;
-                ">Go Back</button>
-                <p style="color: #aaa; margin-top: 20px; font-size: 0.9em;">
-                    For best compatibility, use MP4 format with H.264 video and AAC audio.
-                </p>
+                <div class="status-message">Checking stream readiness...</div>
+                <div class="status-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <div class="progress-text">0%</div>
+                </div>
+                <div class="status-details"></div>
             </div>
         `;
+
+    // Add CSS styles
+    this.statusOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: white;
+        `;
+
+    // Add internal styles
+    const style = document.createElement("style");
+    style.textContent = `
+            .status-content {
+                text-align: center;
+                max-width: 400px;
+                padding: 20px;
+            }
+            .status-icon {
+                margin-bottom: 20px;
+            }
+            .spinner {
+                color: #007bff;
+            }
+            .status-message {
+                font-size: 18px;
+                font-weight: 500;
+                margin-bottom: 20px;
+                line-height: 1.4;
+            }
+            .progress-bar {
+                width: 300px;
+                height: 6px;
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 3px;
+                margin: 0 auto 10px;
+                overflow: hidden;
+            }
+            .progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #007bff, #0056b3);
+                width: 0%;
+                transition: width 0.3s ease;
+                border-radius: 3px;
+            }
+            .progress-text {
+                font-size: 14px;
+                color: rgba(255, 255, 255, 0.8);
+                margin-bottom: 10px;
+            }
+            .status-details {
+                font-size: 14px;
+                color: rgba(255, 255, 255, 0.7);
+                line-height: 1.3;
+            }
+            .status-error {
+                color: #dc3545;
+            }
+            .status-error .spinner {
+                color: #dc3545;
+            }
+        `;
+    document.head.appendChild(style);
+
+    container.appendChild(this.statusOverlay);
   }
 
-  // Function to setup video event listeners
-  function setupVideoEventListeners(videoElement) {
-    // Remove existing listeners to prevent duplicates
-    const newVideoElement = videoElement.cloneNode(true);
-    videoElement.parentNode.replaceChild(newVideoElement, videoElement);
-
-    // Enhanced error handling with format-specific messages
-    newVideoElement.addEventListener("error", function (e) {
-      console.error("Video error:", e);
-      const videoSrc = newVideoElement.currentSrc || newVideoElement.src;
-      const isAvi = videoSrc.includes(".avi");
-      const isMkv = videoSrc.includes(".mkv");
-
-      let message = "Video Playback Error";
-      let details = "The video format may not be supported by your browser.";
-
-      if (isAvi) {
-        message = "AVI Format Not Supported";
-        details =
-          "AVI files cannot be played directly in browsers. Please convert to MP4 format.";
-      } else if (isMkv) {
-        message = "MKV Format Limited Support";
-        details =
-          "MKV files have limited browser support. MP4 or WebM work best.";
-      }
-
-      // Check if this is a 425 error by trying to load the stream
-      checkStreamReadiness();
-    });
-
-    // Streaming buffer management
-    newVideoElement.addEventListener("waiting", function () {
-      console.log("Video buffering - waiting for more data");
-    });
-
-    newVideoElement.addEventListener("playing", function () {
-      console.log("Video playing");
-    });
-
-    newVideoElement.addEventListener("progress", function () {
-      const currentTime = Date.now();
-      if (currentTime - lastBufferCheck > 1000) {
-        // Check every second
-        const buffered = newVideoElement.buffered;
-        if (buffered.length > 0) {
-          const bufferedEnd = buffered.end(buffered.length - 1);
-          const currentTime = newVideoElement.currentTime;
-          const bufferHealth = bufferedEnd - currentTime;
-
-          console.log(`Buffer health: ${bufferHealth.toFixed(1)}s ahead`);
-
-          // If buffer is getting low, we could show a loading indicator
-          if (bufferHealth < 5 && !newVideoElement.paused) {
-            console.log(
-              "Low buffer - torrent may need to download more pieces",
-            );
-          }
-        }
-        lastBufferCheck = currentTime;
-      }
-    });
-
-    newVideoElement.addEventListener("loadstart", function () {
+  /**
+   * Setup video event listeners
+   */
+  setupVideoEventListeners() {
+    this.video.addEventListener("loadstart", () => {
       console.log("Video loading started");
     });
 
-    newVideoElement.addEventListener("canplay", function () {
+    this.video.addEventListener("canplay", () => {
       console.log("Video can start playing");
+      this.hideStatusOverlay();
     });
 
-    // Ensure controls are enabled and clickable
-    newVideoElement.addEventListener("loadedmetadata", function () {
-      console.log("Video metadata loaded, controls should be responsive");
-      newVideoElement.controls = true;
+    this.video.addEventListener("error", (event) => {
+      console.error("Video error:", event);
+      const error = this.video.error;
+      if (error) {
+        this.handleVideoError(error);
+      }
     });
 
-    return newVideoElement;
+    this.video.addEventListener("stalled", () => {
+      console.warn("Video stalled");
+      this.showStatus("Buffering...", null, "Video is buffering data");
+    });
+
+    this.video.addEventListener("waiting", () => {
+      console.log("Video waiting for data");
+    });
+
+    this.video.addEventListener("playing", () => {
+      console.log("Video started playing");
+      this.hideStatusOverlay();
+    });
   }
 
-  // Store original src and clear it to prevent immediate loading
-  if (!originalVideoSrc) {
-    originalVideoSrc = player.src || player.querySelector("source")?.src;
-  }
+  /**
+   * Start the video loading process
+   */
+  async loadVideo() {
+    if (this.isLoading) return;
 
-  // Clear the src to prevent browser from trying to load before stream is ready
-  if (originalVideoSrc) {
-    player.src = "";
-    if (player.querySelector("source")) {
-      player.querySelector("source").src = "";
+    this.isLoading = true;
+    this.loadAttempts++;
+
+    console.log(`Starting video load attempt ${this.loadAttempts}`);
+
+    this.showStatus(
+      "Checking stream readiness...",
+      0,
+      "Connecting to streaming service",
+    );
+
+    try {
+      // Check if stream is ready
+      const readiness = await this.checkStreamReadiness();
+
+      if (readiness.ready) {
+        this.startVideoPlayback();
+      } else {
+        await this.waitForStreamReady(readiness);
+      }
+    } catch (error) {
+      console.error("Failed to load video:", error);
+      this.handleLoadError(error);
     }
   }
 
-  // Initial setup
-  const initialPlayer = setupVideoEventListeners(player);
+  /**
+   * Check current stream readiness
+   */
+  async checkStreamReadiness() {
+    try {
+      const response = await fetch(`/stream/${this.infoHash}/ready`);
 
-  // Start checking stream readiness with a small delay to allow DOM to settle
-  setTimeout(() => {
-    checkStreamReadiness();
-  }, 100);
-});
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Readiness check failed:", error);
+      throw new Error(`Failed to check stream readiness: ${error.message}`);
+    }
+  }
+
+  /**
+   * Wait for stream to become ready
+   */
+  async waitForStreamReady(initialReadiness) {
+    return new Promise((resolve, reject) => {
+      const maxWaitTime = 5 * 60 * 1000; // 5 minutes
+      const checkInterval = 2000; // 2 seconds
+      const maxRetries = Math.floor(maxWaitTime / checkInterval);
+      let retryCount = 0;
+
+      // Show initial status
+      this.updateStatusFromReadiness(initialReadiness, retryCount, maxRetries);
+
+      const checkTimer = setInterval(async () => {
+        retryCount++;
+
+        if (retryCount > maxRetries) {
+          clearInterval(checkTimer);
+          reject(new Error("Stream readiness timeout"));
+          return;
+        }
+
+        try {
+          const readiness = await this.checkStreamReadiness();
+
+          if (readiness.ready) {
+            clearInterval(checkTimer);
+            resolve(readiness);
+            this.startVideoPlayback();
+          } else {
+            this.updateStatusFromReadiness(readiness, retryCount, maxRetries);
+          }
+        } catch (error) {
+          console.error(`Readiness check ${retryCount} failed:`, error);
+
+          if (retryCount > 5) {
+            clearInterval(checkTimer);
+            reject(error);
+          }
+          // Otherwise continue retrying
+        }
+      }, checkInterval);
+    });
+  }
+
+  /**
+   * Update status display based on readiness response
+   */
+  updateStatusFromReadiness(readiness, retry, maxRetries) {
+    let message = readiness.message || "Preparing stream...";
+    let details = "";
+    let progress = null;
+
+    if (readiness.requiresRemuxing) {
+      if (readiness.progress) {
+        progress = readiness.progress * 100;
+        message = `Remuxing for browser compatibility: ${Math.round(progress)}%`;
+        details = "Converting video format for web streaming";
+      } else {
+        message = "Remuxing video for browser compatibility...";
+        details = "This may take a few minutes for large files";
+      }
+    } else if (retry && maxRetries) {
+      // Show wait progress
+      progress = (retry / maxRetries) * 100;
+      details = `Attempt ${retry} of ${maxRetries}`;
+    }
+
+    this.showStatus(message, progress, details);
+  }
+
+  /**
+   * Start video playback
+   */
+  startVideoPlayback() {
+    console.log("Starting video playback");
+
+    this.showStatus("Loading video...", 95, "Stream is ready");
+
+    // Set video source
+    const streamUrl = `/stream/${this.infoHash}`;
+    this.video.src = streamUrl;
+
+    // Load and attempt to play
+    this.video.load();
+
+    // Hide overlay after a short delay
+    setTimeout(() => {
+      this.hideStatusOverlay();
+    }, 1000);
+  }
+
+  /**
+   * Handle video loading errors
+   */
+  handleLoadError(error) {
+    console.error("Video load error:", error);
+
+    if (this.loadAttempts < this.maxLoadAttempts) {
+      const retryDelay = this.loadAttempts * 2000; // Increasing delay
+      this.showStatus(
+        `Load failed, retrying in ${retryDelay / 1000}s...`,
+        null,
+        error.message,
+        true,
+      );
+
+      setTimeout(() => {
+        this.isLoading = false;
+        this.loadVideo();
+      }, retryDelay);
+    } else {
+      this.showStatus(
+        "Failed to load video",
+        null,
+        "Please try refreshing the page or check your connection",
+        true,
+      );
+    }
+  }
+
+  /**
+   * Handle video element errors
+   */
+  handleVideoError(error) {
+    console.error("Video playback error:", error);
+
+    let message = "Video playback error";
+    let details = "";
+
+    switch (error.code) {
+      case MediaError.MEDIA_ERR_ABORTED:
+        message = "Video loading aborted";
+        details = "Playback was aborted by user or network";
+        break;
+      case MediaError.MEDIA_ERR_NETWORK:
+        message = "Network error";
+        details = "Check your internet connection";
+        break;
+      case MediaError.MEDIA_ERR_DECODE:
+        message = "Video decode error";
+        details = "Browser cannot decode this video format";
+        break;
+      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        message = "Video format not supported";
+        details = "This video format is not supported by your browser";
+        break;
+      default:
+        details = error.message || "Unknown error occurred";
+    }
+
+    this.showStatus(message, null, details, true);
+  }
+
+  /**
+   * Show status overlay with message and progress
+   */
+  showStatus(message, progress = null, details = "", isError = false) {
+    if (!this.statusOverlay) return;
+
+    const messageEl = this.statusOverlay.querySelector(".status-message");
+    const progressBar = this.statusOverlay.querySelector(".progress-fill");
+    const progressText = this.statusOverlay.querySelector(".progress-text");
+    const detailsEl = this.statusOverlay.querySelector(".status-details");
+    const contentEl = this.statusOverlay.querySelector(".status-content");
+
+    if (messageEl) messageEl.textContent = message;
+    if (detailsEl) detailsEl.textContent = details;
+
+    // Update progress
+    if (progress !== null && progressBar && progressText) {
+      progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+      progressText.textContent = `${Math.round(progress)}%`;
+      progressText.parentElement.style.display = "block";
+    } else if (progressText) {
+      progressText.parentElement.style.display = "none";
+    }
+
+    // Apply error styling
+    if (contentEl) {
+      if (isError) {
+        contentEl.classList.add("status-error");
+      } else {
+        contentEl.classList.remove("status-error");
+      }
+    }
+
+    this.statusOverlay.style.display = "flex";
+  }
+
+  /**
+   * Hide status overlay
+   */
+  hideStatusOverlay() {
+    if (this.statusOverlay) {
+      this.statusOverlay.style.display = "none";
+    }
+  }
+
+  /**
+   * Cleanup resources
+   */
+  destroy() {
+    if (this.statusOverlay && this.statusOverlay.parentElement) {
+      this.statusOverlay.parentElement.removeChild(this.statusOverlay);
+    }
+  }
+}
+
+/**
+ * Extract info hash from current URL
+ */
+function extractInfoHashFromUrl() {
+  const pathParts = window.location.pathname.split("/");
+  return pathParts[pathParts.length - 1];
+}
+
+/**
+ * Show error message (fallback function)
+ */
+function showError(message) {
+  console.error("Video player error:", message);
+
+  const player = document.getElementById("video-player");
+  if (player && player.parentElement) {
+    const errorDiv = document.createElement("div");
+    errorDiv.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220, 53, 69, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            z-index: 1001;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        `;
+    errorDiv.textContent = message;
+    player.parentElement.appendChild(errorDiv);
+  }
+}
