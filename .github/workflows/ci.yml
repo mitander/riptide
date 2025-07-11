@@ -43,8 +43,26 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace -- -D warnings
 
-      - name: Test workspace
-        run: cargo test --workspace
+      - name: Run unit tests
+        run: |
+          echo "-> Running unit tests for all packages..."
+          cargo test --workspace --lib
+
+      - name: Run riptide-core tests with test-utils
+        run: |
+          echo "-> Running riptide-core tests with test-utils features..."
+          cargo test --package riptide-core --features test-utils
+
+      - name: Run integration tests
+        run: |
+          echo "-> Running integration tests..."
+          chmod +x scripts/test_runner.sh
+          ./scripts/test_runner.sh integration
+
+      - name: Run e2e tests
+        run: |
+          echo "-> Running e2e tests..."
+          ./scripts/test_runner.sh e2e
 
       - name: Build release
         run: cargo build --workspace --release
@@ -101,6 +119,12 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy --workspace -- -D warnings
+
+      - name: Validate test runner
+        run: |
+          echo "-> Validating test runner on ${{ matrix.os }}..."
+          chmod +x scripts/test_runner.sh
+          ./scripts/test_runner.sh check
 
       - name: Build
         env:
