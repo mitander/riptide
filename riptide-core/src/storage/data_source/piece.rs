@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use lru::LruCache;
@@ -30,9 +31,11 @@ struct TorrentMetadata {
 /// DataSource implementation for BitTorrent pieces with intelligent caching
 pub struct PieceDataSource {
     piece_store: Arc<dyn PieceStore>,
-    piece_size: Option<usize>,
     range_cache: Arc<RwLock<LruCache<RangeKey, Vec<u8>>>>,
     metadata_cache: Arc<RwLock<HashMap<InfoHash, TorrentMetadata>>>,
+    cache_hits: Arc<AtomicUsize>,
+    cache_misses: Arc<AtomicUsize>,
+    cache_evictions: Arc<AtomicUsize>,
 }
 
 impl PieceDataSource {
@@ -42,11 +45,13 @@ impl PieceDataSource {
 
         Self {
             piece_store,
-            piece_size: max_cache_entries,
             range_cache: Arc::new(RwLock::new(LruCache::new(
                 std::num::NonZeroUsize::new(cache_size).unwrap(),
             ))),
             metadata_cache: Arc::new(RwLock::new(HashMap::new())),
+            cache_hits: Arc::new(AtomicUsize::new(0)),
+            cache_misses: Arc::new(AtomicUsize::new(0)),
+            cache_evictions: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -61,10 +66,6 @@ impl PieceDataSource {
         }
 
         // Create new metadata
-        // Get piece size from torrent metadata - for now use a default
-        // TODO: This should come from torrent metadata when available
-        let piece_size = 1024 * 256; // 256KB default piece size
-
         let piece_count =
             self.piece_store
                 .piece_count(info_hash)
@@ -72,8 +73,34 @@ impl PieceDataSource {
                     reason: format!("Failed to get piece count: {e}"),
                 })?;
 
-        // Calculate total size from piece count and size
-        let total_size = piece_count as u64 * piece_size as u64;
+        // Infer piece size from the first piece
+        let piece_size = if piece_count > 0 {
+            let first_piece = self
+                .piece_store
+                .piece_data(info_hash, PieceIndex::new(0))
+                .await
+                .map_err(|e| DataError::Storage {
+                    reason: format!("Failed to get first piece for size calculation: {e}"),
+                })?;
+            first_piece.len() as u32
+        } else {
+            return Err(DataError::Storage {
+                reason: "Cannot determine piece size: no pieces available".to_string(),
+            });
+        };
+
+        // Calculate total size - handle last piece potentially being smaller
+        let mut total_size = 0u64;
+        for i in 0..piece_count {
+            let piece_data = self
+                .piece_store
+                .piece_data(info_hash, PieceIndex::new(i))
+                .await
+                .map_err(|e| DataError::Storage {
+                    reason: format!("Failed to get piece {i} for size calculation: {e}"),
+                })?;
+            total_size += piece_data.len() as u64;
+        }
 
         let layout = TorrentLayout::new(piece_size, piece_count, total_size);
         let calculator = RangeCalculator::new(layout.clone());
@@ -125,7 +152,7 @@ impl PieceDataSource {
 
             // Extract the required range from the piece
             let start = piece_range.start_offset as usize;
-            let end = (piece_range.end_offset + 1) as usize;
+            let end = (piece_range.end_offset + 1) as usize; // Convert inclusive to exclusive
 
             if end > piece_data.len() {
                 return Err(DataError::Storage {
@@ -182,6 +209,7 @@ impl DataSource for PieceDataSource {
         {
             let mut cache = self.range_cache.write().await;
             if let Some(cached_data) = cache.get(&range_key) {
+                self.cache_hits.fetch_add(1, Ordering::Relaxed);
                 debug!(
                     "Cache hit for range {}..{} ({})",
                     range.start, range.end, info_hash
@@ -190,6 +218,7 @@ impl DataSource for PieceDataSource {
             }
         }
 
+        self.cache_misses.fetch_add(1, Ordering::Relaxed);
         debug!(
             "Cache miss for range {}..{} ({})",
             range.start, range.end, info_hash
@@ -220,6 +249,7 @@ impl DataSource for PieceDataSource {
         {
             let mut cache = self.range_cache.write().await;
             if let Some(evicted_data) = cache.put(range_key, data.clone()) {
+                self.cache_evictions.fetch_add(1, Ordering::Relaxed);
                 debug!("Evicted cached data ({} bytes)", evicted_data.len());
             }
         }
@@ -294,9 +324,9 @@ impl CacheableDataSource for PieceDataSource {
         let cache = self.range_cache.read().await;
 
         CacheStats {
-            hits: 0,
-            misses: 0,
-            evictions: 0,
+            hits: self.cache_hits.load(Ordering::Relaxed) as u64,
+            misses: self.cache_misses.load(Ordering::Relaxed) as u64,
+            evictions: self.cache_evictions.load(Ordering::Relaxed) as u64,
             memory_usage: 0,
             entry_count: cache.len(),
         }

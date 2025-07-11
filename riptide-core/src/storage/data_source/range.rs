@@ -301,7 +301,7 @@ mod tests {
     use super::*;
 
     fn create_test_layout() -> TorrentLayout {
-        TorrentLayout::new(1024, 10, 9216) // 9 full pieces + 1 partial (128 bytes)
+        TorrentLayout::new(1024, 10, 9344) // 9 full pieces + 1 partial (128 bytes)
     }
 
     #[test]
@@ -309,7 +309,7 @@ mod tests {
         let layout = create_test_layout();
         assert_eq!(layout.piece_size, 1024);
         assert_eq!(layout.total_pieces, 10);
-        assert_eq!(layout.total_size, 9216);
+        assert_eq!(layout.total_size, 9344);
         assert_eq!(layout.last_piece_size, 128);
     }
 
@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(calculator.piece_for_byte_offset(1124), Some((1, 100)));
 
         // Last piece
-        assert_eq!(calculator.piece_for_byte_offset(9215), Some((9, 127)));
+        assert_eq!(calculator.piece_for_byte_offset(9343), Some((9, 127)));
 
         // Beyond file size
         assert_eq!(calculator.piece_for_byte_offset(10000), None);
@@ -435,7 +435,7 @@ mod tests {
     #[test]
     fn test_piece_priority_calculation() {
         let calculator = RangeCalculator::new(create_test_layout());
-        let range = 1000..2000;
+        let range = 1000..2100;
 
         // Piece 0 overlaps with range start
         let priority = calculator.calculate_piece_priority(0, &range);
