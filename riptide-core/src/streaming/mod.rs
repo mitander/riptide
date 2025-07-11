@@ -154,7 +154,11 @@ impl HttpStreamingService {
         // Prepare stream handle
         let handle = strategy.prepare_stream(info_hash, format).await?;
 
-        // Get status
+        // Trigger readiness check to allow state transitions (e.g., from WaitingForHeadAndTail to Remuxing)
+        // Use a small range to check if the beginning of the file is ready
+        let _readiness = strategy.is_ready(&handle, 0..1024).await?;
+
+        // Get updated status after potential state transitions
         strategy.status(&handle).await
     }
 
@@ -171,19 +175,29 @@ impl HttpStreamingService {
             .await
             .map_err(|_| StrategyError::FormatDetectionFailed)?;
 
+        tracing::debug!(
+            "Format detection for {}: header_data={:?}",
+            info_hash,
+            &header_data[..header_data.len().min(16)]
+        );
+
         // Simple format detection
-        if header_data.starts_with(b"ftyp") || header_data[4..8] == *b"ftyp" {
-            Ok(ContainerFormat::Mp4)
+        let format = if header_data.starts_with(b"ftyp") || header_data[4..8] == *b"ftyp" {
+            ContainerFormat::Mp4
         } else if header_data.starts_with(b"\x1A\x45\xDF\xA3")
             || header_data.starts_with(b"\x1a\x45\xdf\xa3")
         {
             // Both MKV and WebM use the same EBML header
-            Ok(ContainerFormat::Mkv)
+            ContainerFormat::Mkv
         } else if header_data.starts_with(b"RIFF") && header_data[8..12] == *b"AVI " {
-            Ok(ContainerFormat::Avi)
+            ContainerFormat::Avi
         } else {
-            Ok(ContainerFormat::Unknown)
-        }
+            ContainerFormat::Unknown
+        };
+
+        tracing::debug!("Format detected for {}: {:?}", info_hash, format);
+
+        Ok(format)
     }
 
     /// Parse HTTP Range header

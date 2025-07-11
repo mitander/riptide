@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use tokio::sync::{RwLock, Semaphore};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::state::{RemuxError, RemuxState};
 use super::types::{RemuxConfig, RemuxSession, StreamHandle, StreamReadiness, StreamingStatus};
@@ -84,15 +84,29 @@ impl RemuxSessionManager {
                 reason: "Session not found".to_string(),
             })?;
 
+        debug!(
+            "Checking readiness for {}, current state: {:?}",
+            info_hash, session.state
+        );
+
         match &session.state {
             RemuxState::WaitingForHeadAndTail => {
                 drop(sessions); // Release read lock before async operations
 
+                debug!("Checking if we have required data for {}", info_hash);
                 if self.has_required_data(info_hash).await? {
+                    debug!(
+                        "Required data available, starting remuxing for {}",
+                        info_hash
+                    );
                     // Transition to remuxing state
                     self.start_remuxing(info_hash).await?;
                     Ok(StreamReadiness::Processing)
                 } else {
+                    debug!(
+                        "Required data not available for {}, staying in waiting state",
+                        info_hash
+                    );
                     Ok(StreamReadiness::WaitingForData)
                 }
             }
@@ -110,12 +124,19 @@ impl RemuxSessionManager {
 
     /// Get the current status of a streaming session
     pub async fn get_status(&self, info_hash: InfoHash) -> StreamingResult<StreamingStatus> {
+        debug!("Getting status for remux session: {}", info_hash);
+
         let sessions = self.sessions.read().await;
         let session = sessions
             .get(&info_hash)
             .ok_or_else(|| StrategyError::RemuxingFailed {
                 reason: "Session not found".to_string(),
             })?;
+
+        debug!(
+            "Session found for {}, current state: {:?}",
+            info_hash, session.state
+        );
 
         let readiness = match &session.state {
             RemuxState::WaitingForHeadAndTail => StreamReadiness::WaitingForData,
@@ -129,6 +150,11 @@ impl RemuxSessionManager {
                 }
             }
         };
+
+        debug!(
+            "Returning status for {}: readiness={:?}, progress={}",
+            info_hash, readiness, session.progress.progress
+        );
 
         Ok(StreamingStatus {
             readiness,
@@ -161,6 +187,8 @@ impl RemuxSessionManager {
 
     /// Start the remuxing process for a session
     async fn start_remuxing(&self, info_hash: InfoHash) -> StreamingResult<()> {
+        debug!("Starting remuxing process for {}", info_hash);
+
         // Acquire semaphore permit for concurrency control
         let _permit =
             self.semaphore
@@ -169,6 +197,8 @@ impl RemuxSessionManager {
                 .map_err(|_| StrategyError::RemuxingFailed {
                     reason: "Failed to acquire remuxing permit".to_string(),
                 })?;
+
+        debug!("Acquired remuxing permit for {}", info_hash);
 
         let mut sessions = self.sessions.write().await;
         let session =
@@ -325,21 +355,47 @@ impl RemuxSessionManager {
         // Tail data is nice to have but not required for initial streaming
         let required_head_size = self.config.min_head_size.min(file_size);
 
+        debug!(
+            "Checking required data for {}: file_size={}, required_head_size={}, min_head_config={}",
+            info_hash, file_size, required_head_size, self.config.min_head_size
+        );
+
         // Check if we have head data
         let head_available = self
             .data_source
             .check_range_availability(info_hash, 0..required_head_size)
             .await
-            .map(|availability| availability.available)
+            .map(|availability| {
+                debug!(
+                    "Head data availability for {}: range=0..{}, available={}, missing_pieces={}",
+                    info_hash,
+                    required_head_size,
+                    availability.available,
+                    availability.missing_pieces.len()
+                );
+                availability.available
+            })
             .unwrap_or(false);
 
         // For small files (< 10MB), require the full file
         if file_size < 10 * 1024 * 1024 {
+            debug!(
+                "Small file detected ({}MB), requiring full file",
+                file_size / 1024 / 1024
+            );
             let full_file_available = self
                 .data_source
                 .check_range_availability(info_hash, 0..file_size)
                 .await
-                .map(|availability| availability.available)
+                .map(|availability| {
+                    debug!(
+                        "Full file availability for {}: available={}, missing_pieces={}",
+                        info_hash,
+                        availability.available,
+                        availability.missing_pieces.len()
+                    );
+                    availability.available
+                })
                 .unwrap_or(false);
             return Ok(full_file_available);
         }
@@ -347,6 +403,7 @@ impl RemuxSessionManager {
         // For streaming optimization, start remuxing with just head data
         // This allows us to extract metadata and prepare the stream quickly
         if head_available {
+            debug!("Head data available, starting remux for {}", info_hash);
             return Ok(true);
         }
 
@@ -356,10 +413,26 @@ impl RemuxSessionManager {
             .data_source
             .check_range_availability(info_hash, tail_start..file_size)
             .await
-            .map(|availability| availability.available)
+            .map(|availability| {
+                debug!(
+                    "Tail data availability for {}: range={}..{}, available={}, missing_pieces={}",
+                    info_hash,
+                    tail_start,
+                    file_size,
+                    availability.available,
+                    availability.missing_pieces.len()
+                );
+                availability.available
+            })
             .unwrap_or(false);
 
-        Ok(head_available && tail_available)
+        let result = head_available && tail_available;
+        debug!(
+            "Final readiness check for {}: head_available={}, tail_available={}, result={}",
+            info_hash, head_available, tail_available, result
+        );
+
+        Ok(result)
     }
 
     /// Clean up stale sessions
