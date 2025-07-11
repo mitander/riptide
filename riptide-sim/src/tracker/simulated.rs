@@ -337,17 +337,17 @@ impl TrackerClient for SimulatedTrackerClient {
 /// Provides deterministic tracker selection and failover behavior
 /// without requiring real network infrastructure. Returns peer addresses
 /// that ContentAwarePeerManager can handle.
-pub struct SimulatedTrackerManager {
+pub struct SimulatedTrackerCoordinator {
     default_client: SimulatedTrackerClient,
 }
 
-impl Default for SimulatedTrackerManager {
+impl Default for SimulatedTrackerCoordinator {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SimulatedTrackerManager {
+impl SimulatedTrackerCoordinator {
     /// Creates new simulated tracker manager with default client.
     pub fn new() -> Self {
         Self {
@@ -401,7 +401,7 @@ impl SimulatedTrackerManager {
 }
 
 #[async_trait]
-impl TrackerManagement for SimulatedTrackerManager {
+impl TrackerManagement for SimulatedTrackerCoordinator {
     /// Simulates announcing to best available tracker from list.
     ///
     /// Uses internal simulated tracker client regardless of provided URLs

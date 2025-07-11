@@ -1,4 +1,4 @@
-//! Streaming handlers using core HttpStreamingService
+//! Streaming handlers using core HttpStreaming
 //!
 //! Thin HTTP adapters over the core streaming service.
 
@@ -44,8 +44,8 @@ pub async fn stream_torrent(
         }
     };
 
-    // Get streaming service from app state
-    let streaming_service = state.streaming_service();
+    // Get HTTP streaming from app state
+    let http_streaming = state.http_streaming();
 
     // Extract range header string
     let range_header = extract_range_header(&headers);
@@ -55,8 +55,8 @@ pub async fn stream_torrent(
         info_hash, range_header, query.t
     );
 
-    // Call core streaming service
-    match streaming_service
+    // Call core HTTP streaming
+    match http_streaming
         .handle_http_request(info_hash, range_header.as_deref())
         .await
     {
@@ -92,10 +92,10 @@ pub struct ClientCapabilities {
     pub user_agent: String,
 }
 
-/// Health check endpoint for streaming service
+/// Health check endpoint for HTTP streaming
 pub async fn streaming_health(State(state): State<AppState>) -> impl IntoResponse {
-    let streaming_service = state.streaming_service();
-    let stats = streaming_service.statistics().await;
+    let http_streaming = state.http_streaming();
+    let stats = http_streaming.statistics().await;
 
     let health_info = serde_json::json!({
         "status": "healthy",
@@ -109,8 +109,8 @@ pub async fn streaming_health(State(state): State<AppState>) -> impl IntoRespons
 
 /// Get streaming statistics
 pub async fn streaming_stats(State(state): State<AppState>) -> impl IntoResponse {
-    let streaming_service = state.streaming_service();
-    let stats = streaming_service.statistics().await;
+    let http_streaming = state.http_streaming();
+    let stats = http_streaming.statistics().await;
 
     axum::Json(stats)
 }
@@ -138,13 +138,13 @@ pub async fn debug_stream_status(
         }
     };
 
-    let streaming_service = state.streaming_service();
+    let http_streaming = state.http_streaming();
 
-    // Get basic streaming service statistics
-    let stats = streaming_service.statistics().await;
+    // Get basic HTTP streaming statistics
+    let stats = http_streaming.statistics().await;
 
-    // Test streaming service call with small range
-    match streaming_service
+    // Test HTTP streaming call with small range
+    match http_streaming
         .handle_http_request(info_hash, Some("bytes=0-99"))
         .await
     {
@@ -194,10 +194,10 @@ pub async fn debug_stream_data(
         }
     };
 
-    let streaming_service = state.streaming_service();
+    let http_streaming = state.http_streaming();
 
-    // Test streaming service call with actual data (first 1KB)
-    match streaming_service
+    // Test HTTP streaming call with actual data (first 1KB)
+    match http_streaming
         .handle_http_request(info_hash, Some("bytes=0-1023"))
         .await
     {

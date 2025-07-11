@@ -1,6 +1,6 @@
-//! Riptide Style Consistency Enforcement - Fast Rust-based implementation
+//! Riptide Style Consistency Enforcement
 //!
-//! This module enforces TigerBeetle-inspired coding standards using efficient
+//! This module enforces coding standards using efficient
 //! Rust pattern matching that works cross-platform.
 
 #![allow(dead_code)]
@@ -44,13 +44,13 @@ impl StyleViolation {
 }
 
 /// Fast Rust-based style checker
-struct FastRustStyleChecker {
+struct StyleViolationDetector {
     violations: Vec<StyleViolation>,
     workspace_root: PathBuf,
     files_processed: usize,
 }
 
-impl FastRustStyleChecker {
+impl StyleViolationDetector {
     fn new() -> Self {
         Self {
             violations: Vec::new(),
@@ -190,6 +190,95 @@ impl FastRustStyleChecker {
                                 "Function uses forbidden prefix '{prefix}' - use descriptive names instead"
                             ),
                         ));
+                    }
+                }
+            }
+        }
+    }
+
+    fn check_redundant_type_suffixes(&mut self, file_path: &Path, content: &str) {
+        // Skip test files
+        if file_path.to_string_lossy().contains("/tests/")
+            || file_path.to_string_lossy().contains("test_")
+        {
+            return;
+        }
+
+        // Only ban Factory suffix - use Builder pattern instead
+        let forbidden_suffixes = ["Factory"];
+
+        // Check for potentially redundant suffixes that could be simplified
+        let redundant_patterns = [
+            (
+                "Service",
+                "Consider shorter name (e.g., HttpStreaming vs HttpStreamingService)",
+            ),
+            (
+                "Manager",
+                "Consider shorter name (e.g., FileLibrary vs FileLibraryManager)",
+            ),
+        ];
+
+        for (line_num, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+
+            // Look for struct/enum declarations
+            if (trimmed.starts_with("pub struct ")
+                || trimmed.starts_with("struct ")
+                || trimmed.starts_with("pub enum ")
+                || trimmed.starts_with("enum "))
+                && !trimmed.contains("//")
+            {
+                // Extract the type name
+                let type_name = if trimmed.starts_with("pub struct ") {
+                    trimmed
+                        .strip_prefix("pub struct ")
+                        .and_then(|s| s.split_whitespace().next())
+                } else if trimmed.starts_with("struct ") {
+                    trimmed
+                        .strip_prefix("struct ")
+                        .and_then(|s| s.split_whitespace().next())
+                } else if trimmed.starts_with("pub enum ") {
+                    trimmed
+                        .strip_prefix("pub enum ")
+                        .and_then(|s| s.split_whitespace().next())
+                } else if trimmed.starts_with("enum ") {
+                    trimmed
+                        .strip_prefix("enum ")
+                        .and_then(|s| s.split_whitespace().next())
+                } else {
+                    None
+                };
+
+                if let Some(name) = type_name {
+                    // Check forbidden suffixes (hard errors)
+                    for &suffix in &forbidden_suffixes {
+                        if name.ends_with(suffix) {
+                            self.add_violation(StyleViolation::new(
+                                Severity::Critical,
+                                &file_path.display().to_string(),
+                                line_num + 1,
+                                "FORBIDDEN_TYPE_SUFFIX",
+                                &format!(
+                                    "Type '{name}' uses forbidden suffix '{suffix}' - use Builder pattern instead"
+                                ),
+                            ));
+                        }
+                    }
+
+                    // Check redundant suffixes (warnings for consideration)
+                    for &(suffix, suggestion) in &redundant_patterns {
+                        if name.ends_with(suffix) {
+                            self.add_violation(StyleViolation::new(
+                                Severity::Warning,
+                                &file_path.display().to_string(),
+                                line_num + 1,
+                                "REDUNDANT_TYPE_SUFFIX",
+                                &format!(
+                                    "Type '{name}' may have redundant suffix '{suffix}' - {suggestion}"
+                                ),
+                            ));
+                        }
                     }
                 }
             }
@@ -461,10 +550,13 @@ impl FastRustStyleChecker {
         // Rule 2: No `get_` / `set_` prefixes on public functions
         self.check_forbidden_function_prefixes(file_path, &content);
 
-        // Rule 3: Module size limit
+        // Rule 3: Check for redundant type suffixes
+        self.check_redundant_type_suffixes(file_path, &content);
+
+        // Rule 4: Module size limit
         self.check_module_size(file_path, &content);
 
-        // Rule 4: Missing public documentation
+        // Rule 5: Missing public documentation
         self.check_missing_public_documentation(file_path, &content);
 
         Ok(())
@@ -544,7 +636,7 @@ mod tests {
 
     #[test]
     fn test_function_name_extraction() {
-        let checker = FastRustStyleChecker::new();
+        let checker = StyleViolationDetector::new();
 
         assert_eq!(
             checker.extract_function_name("pub fn test_function() -> Result<(), Error>"),
@@ -564,7 +656,7 @@ mod tests {
 
     #[test]
     fn test_returns_result() {
-        let checker = FastRustStyleChecker::new();
+        let checker = StyleViolationDetector::new();
         let lines = vec!["pub fn test() -> Result<(), Error> {", "    Ok(())", "}"];
 
         assert!(checker.returns_result(0, &lines));
@@ -576,7 +668,7 @@ mod tests {
 
     #[test]
     fn test_can_panic() {
-        let checker = FastRustStyleChecker::new();
+        let checker = StyleViolationDetector::new();
         let lines = vec![
             "pub fn test() {",
             "    let value = something.unwrap();",
@@ -596,7 +688,7 @@ mod tests {
 
     #[test]
     fn test_has_errors_section() {
-        let checker = FastRustStyleChecker::new();
+        let checker = StyleViolationDetector::new();
         let lines = vec![
             "/// Test function",
             "///",
@@ -642,7 +734,7 @@ mod tests {
 
     #[test]
     fn enforce_riptide_style_consistency() {
-        let mut checker = FastRustStyleChecker::new();
+        let mut checker = StyleViolationDetector::new();
 
         // Run all checks
         checker

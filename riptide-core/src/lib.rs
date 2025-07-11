@@ -20,7 +20,7 @@ pub use config::RiptideConfig;
 pub use mode::RuntimeMode;
 pub use server_components::{ConversionProgress, ConversionStatus, ServerComponents};
 pub use storage::{FileLibraryManager, FileStorage, LibraryFile, StorageError};
-pub use streaming::{HttpStreamingService, StreamingError};
+pub use streaming::{HttpStreaming, StreamingError};
 pub use torrent::{EngineStats, TorrentCreator, TorrentEngineHandle, TorrentError};
 pub use tracing_setup::{CliLogLevel, init_tracing};
 

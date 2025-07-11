@@ -4,21 +4,21 @@
 //! and future IMDb integration for metadata and artwork.
 
 use crate::errors::MediaSearchError;
-use crate::metadata::ImdbMetadataService;
+use crate::metadata::ImdbMetadata;
 #[cfg(test)]
 use crate::providers::MockProvider;
 use crate::providers::{DevelopmentProvider, MagnetoProvider, TorrentSearchProvider};
 use crate::types::{MediaSearchResult, TorrentResult};
 
-/// Media search service providing torrent discovery and metadata.
+/// Media search providing torrent discovery and metadata.
 #[derive(Debug)]
-pub struct MediaSearchService {
+pub struct MediaSearch {
     provider: Box<dyn TorrentSearchProvider>,
-    metadata_service: ImdbMetadataService,
+    metadata: ImdbMetadata,
     is_development: bool,
 }
 
-impl Clone for MediaSearchService {
+impl Clone for MediaSearch {
     fn clone(&self) -> Self {
         if self.is_development {
             Self::new_development()
@@ -28,14 +28,14 @@ impl Clone for MediaSearchService {
     }
 }
 
-impl MediaSearchService {
-    /// Creates new media search service with production providers.
+impl MediaSearch {
+    /// Creates new media search with production providers.
     ///
     /// Uses MagnetoProvider with PirateBay and YTS indexers.
     pub fn new() -> Self {
         Self {
             provider: Box::new(MagnetoProvider::new()),
-            metadata_service: ImdbMetadataService::new(),
+            metadata: ImdbMetadata::new(),
             is_development: false,
         }
     }
@@ -48,7 +48,7 @@ impl MediaSearchService {
     pub fn new_development() -> Self {
         Self {
             provider: Box::new(DevelopmentProvider::new()),
-            metadata_service: ImdbMetadataService::new(),
+            metadata: ImdbMetadata::new(),
             is_development: true,
         }
     }
@@ -64,11 +64,11 @@ impl MediaSearchService {
             let omdb_api_key = std::env::var("OMDB_API_KEY").ok();
 
             let provider = Box::new(MagnetoProvider::new());
-            let metadata_service = ImdbMetadataService::with_api_key(omdb_api_key);
+            let metadata = ImdbMetadata::with_api_key(omdb_api_key);
 
             Self {
                 provider,
-                metadata_service,
+                metadata,
                 is_development: false,
             }
         }
@@ -83,7 +83,7 @@ impl MediaSearchService {
     pub fn new_with_mock() -> Self {
         Self {
             provider: Box::new(MockProvider::new()),
-            metadata_service: ImdbMetadataService::new(),
+            metadata: ImdbMetadata::new(),
             is_development: true,
         }
     }
@@ -146,7 +146,7 @@ impl MediaSearchService {
             }
 
             if let Ok(metadata) = self
-                .metadata_service
+                .metadata
                 .search_by_title(&result.title, result.year)
                 .await
             {
@@ -222,7 +222,7 @@ impl MediaSearchService {
     }
 }
 
-impl Default for MediaSearchService {
+impl Default for MediaSearch {
     fn default() -> Self {
         Self::new()
     }
@@ -250,7 +250,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_development_provider_search() {
-        let service = MediaSearchService::new_development();
+        let service = MediaSearch::new_development();
         let results = service.search_movies("Test Movie").await.unwrap();
 
         assert!(!results.is_empty());
@@ -276,7 +276,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_provider() {
-        let service = MediaSearchService::new_with_mock();
+        let service = MediaSearch::new_with_mock();
         let results = service.search_movies("Test Movie").await.unwrap();
 
         assert_eq!(results.len(), 1);

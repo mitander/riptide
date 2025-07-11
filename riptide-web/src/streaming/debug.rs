@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use riptide_core::HttpStreamingService;
+use riptide_core::HttpStreaming;
 use riptide_core::torrent::InfoHash;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
@@ -44,14 +44,14 @@ impl Default for StreamingDebugInfo {
 }
 
 /// Debug wrapper for HTTP streaming service
-pub struct DebugStreamingService {
-    inner: Arc<HttpStreamingService>,
+pub struct DebugStreaming {
+    inner: Arc<HttpStreaming>,
     debug_info: Arc<Mutex<Vec<StreamingDebugInfo>>>,
 }
 
-impl DebugStreamingService {
+impl DebugStreaming {
     /// Create new debug streaming service
-    pub fn new(inner: Arc<HttpStreamingService>) -> Self {
+    pub fn new(inner: Arc<HttpStreaming>) -> Self {
         Self {
             inner,
             debug_info: Arc::new(Mutex::new(Vec::new())),
@@ -298,7 +298,7 @@ pub struct SystemDebugInfo {
     pub temp_space_available_gb: f64,
 }
 
-impl DebugStreamingService {
+impl DebugStreaming {
     /// Generate debug endpoint data
     pub async fn generate_debug_endpoint(&self) -> StreamingDebugEndpoint {
         let cache_dir = std::env::temp_dir().join("riptide-remux-cache");

@@ -100,7 +100,7 @@ pub use sim_peer_manager::{InMemoryPeerConfig, SimPeerManager};
 pub use simulation_mode::{
     NetworkConditions, SimulationConfigBuilder, SimulationMode, SimulationPeerManagerFactory,
 };
-pub use tracker::{ResponseConfig, SimulatedTrackerManager};
+pub use tracker::{ResponseConfig, SimulatedTrackerCoordinator};
 pub use tracker_manager::PeerSeeder;
 
 /// Simulation environment for BitTorrent development.
@@ -108,7 +108,7 @@ pub use tracker_manager::PeerSeeder;
 /// Combines mock tracker, network simulator, and peer pool for
 /// comprehensive testing of BitTorrent functionality.
 pub struct SimulationEnvironment {
-    pub tracker: SimulatedTrackerManager,
+    pub tracker: SimulatedTrackerCoordinator,
     pub network: NetworkSimulator,
     pub peers: Vec<MockPeer>,
 }
@@ -123,7 +123,7 @@ impl SimulationEnvironment {
     /// Creates a new simulation environment with sensible defaults.
     pub fn new() -> Self {
         Self {
-            tracker: SimulatedTrackerManager::new(),
+            tracker: SimulatedTrackerCoordinator::new(),
             network: NetworkSimulator::new(),
             peers: Vec::new(),
         }
@@ -468,7 +468,7 @@ pub async fn create_fast_development_components(
     );
     let peer_manager_sim = DevPeerManager::new(piece_store_sim.clone());
 
-    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
+    let tracker_manager_sim = tracker::SimulatedTrackerCoordinator::with_peer_registry(
         tracker::ResponseConfig::default(),
         peer_registry.clone(),
     );
@@ -506,7 +506,7 @@ pub async fn create_deterministic_development_components(
 
     let peer_manager_sim = SimPeerManager::new(realistic_peer_config, piece_store_sim.clone());
 
-    let tracker_manager_sim = tracker::SimulatedTrackerManager::with_peer_registry(
+    let tracker_manager_sim = tracker::SimulatedTrackerCoordinator::with_peer_registry(
         tracker::ResponseConfig::default(),
         peer_registry.clone(),
     );

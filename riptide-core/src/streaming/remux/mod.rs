@@ -6,7 +6,7 @@
 //! # Architecture
 //!
 //! The remux system follows a state machine pattern with these key components:
-//! - `RemuxSessionManager`: Coordinates remuxing sessions and prevents race conditions
+//! - `RemuxSessionCoordinator`: Coordinates remuxing sessions and prevents race conditions
 //! - `RemuxSession`: Tracks individual remuxing operations with explicit state
 //! - `StreamingStrategy`: Provides the interface for different streaming approaches
 //!

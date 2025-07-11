@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::errors::MediaSearchError;
 use crate::types::MediaType;
 
-/// IMDb metadata service for fetching movie and TV show information.
+/// IMDb metadata provider for fetching movie and TV show information.
 #[derive(Debug, Clone)]
-pub struct ImdbMetadataService {
+pub struct ImdbMetadata {
     client: reqwest::Client,
     api_key: Option<String>,
 }
@@ -53,8 +53,8 @@ pub struct MediaMetadata {
     pub runtime: Option<String>,
 }
 
-impl ImdbMetadataService {
-    /// Create new IMDb metadata service.
+impl ImdbMetadata {
+    /// Create new IMDb metadata provider.
     ///
     /// For production use, set OMDB_API_KEY environment variable.
     /// Free tier allows 1000 requests per day without key.
@@ -197,7 +197,7 @@ impl ImdbMetadataService {
     }
 }
 
-impl Default for ImdbMetadataService {
+impl Default for ImdbMetadata {
     fn default() -> Self {
         Self::new()
     }
@@ -208,14 +208,14 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_metadata_service_creation() {
-        let service = ImdbMetadataService::new();
-        assert!(service.client.get("http://example.com").build().is_ok());
+    async fn test_metadata_creation() {
+        let metadata = ImdbMetadata::new();
+        assert!(metadata.client.get("http://example.com").build().is_ok());
     }
 
     #[tokio::test]
     async fn test_search_by_title_matrix() {
-        let service = ImdbMetadataService::new();
+        let service = ImdbMetadata::new();
 
         // This test requires internet connection
         if let Ok(metadata) = service.search_by_title("The Matrix", Some(1999)).await {

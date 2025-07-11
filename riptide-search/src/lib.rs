@@ -7,14 +7,14 @@ pub mod enhanced_search;
 pub mod errors;
 pub mod metadata;
 pub mod providers;
-pub mod service;
+pub mod search;
 pub mod types;
 
 // Re-export main types
 pub use enhanced_search::{EnhancedMediaSearch, FuzzySearchConfig, MovieSearchResult};
 pub use errors::MediaSearchError;
-pub use metadata::{ImdbMetadataService, MediaMetadata};
-pub use service::MediaSearchService;
+pub use metadata::{ImdbMetadata, MediaMetadata};
+pub use search::MediaSearch;
 pub use types::{MediaSearchResult, MediaType, TorrentResult, VideoQuality};
 
 // Type alias for convenience

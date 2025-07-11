@@ -192,7 +192,7 @@ pub async fn api_search(
         return Json(json!({"results": []}));
     }
 
-    match state.search_service.search_with_metadata(query).await {
+    match state.media_search.search_with_metadata(query).await {
         Ok(results) => {
             // Flatten MediaSearchResult into individual torrents for the frontend
             let mut individual_torrents = Vec::new();
@@ -238,7 +238,7 @@ pub async fn api_search_movies(
 
     // Use the enhanced search functionality from the existing service
     let search_result = state
-        .search_service
+        .media_search
         .search_movies_enhanced(&params.q, Some(threshold))
         .await;
 

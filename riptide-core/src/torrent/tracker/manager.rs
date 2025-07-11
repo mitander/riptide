@@ -174,7 +174,7 @@ pub trait TrackerManagement: Send + Sync {
 
     /// Scrapes statistics from trackers.
     ///
-    /// # Errors  
+    /// # Errors
     /// - `TorrentError::TrackerConnectionFailed` - All trackers failed
     async fn scrape_from_trackers(
         &mut self,

@@ -13,8 +13,8 @@ use riptide_core::server_components::{ConversionProgress, ServerComponents};
 use riptide_core::storage::PieceDataSource;
 use riptide_core::streaming::FfmpegProcessor;
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
-use riptide_core::{FileLibraryManager, HttpStreamingService, RuntimeMode};
-use riptide_search::MediaSearchService;
+use riptide_core::{FileLibraryManager, HttpStreaming, RuntimeMode};
+use riptide_search::MediaSearch;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
@@ -50,9 +50,9 @@ pub struct ConvertedFile {
 #[derive(Clone)]
 pub struct AppState {
     pub services: Arc<ServerComponents>,
-    pub search_service: MediaSearchService,
+    pub media_search: MediaSearch,
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
-    pub streaming_service: Arc<HttpStreamingService>,
+    pub http_streaming: Arc<HttpStreaming>,
     pub server_started_at: std::time::Instant,
 }
 
@@ -102,8 +102,8 @@ impl AppState {
     }
 
     /// Get the streaming service.
-    pub fn streaming_service(&self) -> &Arc<HttpStreamingService> {
-        &self.streaming_service
+    pub fn http_streaming(&self) -> &Arc<HttpStreaming> {
+        &self.http_streaming
     }
 }
 
@@ -114,7 +114,7 @@ impl AppState {
 pub async fn run_server(
     _config: RiptideConfig,
     components: ServerComponents,
-    search_service: MediaSearchService,
+    media_search: MediaSearch,
     _runtime_mode: RuntimeMode,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conversion_cache = Arc::new(RwLock::new(HashMap::new()));
@@ -123,7 +123,7 @@ pub async fn run_server(
     let piece_store = components.piece_store().unwrap();
     let data_source = Arc::new(PieceDataSource::new(piece_store.clone(), Some(100)));
 
-    let streaming_service = Arc::new(HttpStreamingService::new(
+    let http_streaming = Arc::new(HttpStreaming::new(
         components.engine().clone(),
         data_source,
         Default::default(),
@@ -132,9 +132,9 @@ pub async fn run_server(
 
     let state = AppState {
         services: Arc::new(components),
-        search_service,
+        media_search,
         conversion_cache,
-        streaming_service,
+        http_streaming,
         server_started_at: std::time::Instant::now(),
     };
 

@@ -2,4 +2,4 @@
 
 pub mod simulated;
 
-pub use simulated::{ResponseConfig, SimulatedTrackerManager};
+pub use simulated::{ResponseConfig, SimulatedTrackerCoordinator};

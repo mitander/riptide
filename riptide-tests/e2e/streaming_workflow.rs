@@ -11,9 +11,7 @@ use async_trait::async_trait;
 use futures::future;
 use riptide_core::config::RiptideConfig;
 use riptide_core::storage::{DataError, DataResult, DataSource, RangeAvailability};
-use riptide_core::streaming::{
-    FfmpegProcessor, HttpStreamingService, RemuxingOptions, RemuxingResult,
-};
+use riptide_core::streaming::{FfmpegProcessor, HttpStreaming, RemuxingOptions, RemuxingResult};
 use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore, TorrentError};
 use tempfile::TempDir;
 use tokio::fs;
@@ -253,14 +251,14 @@ fn create_test_mkv_data() -> Vec<u8> {
     data
 }
 
-async fn setup_streaming_service(data_source: Arc<dyn DataSource>) -> HttpStreamingService {
+async fn setup_http_streaming(data_source: Arc<dyn DataSource>) -> HttpStreaming {
     let config = RiptideConfig::default();
     // Create a mock torrent engine handle for testing
     let (sender, _receiver) = tokio::sync::mpsc::channel(100);
     let torrent_engine = riptide_core::torrent::TorrentEngineHandle::new(sender);
     let ffmpeg_processor = create_ffmpeg_processor();
 
-    HttpStreamingService::new(torrent_engine, data_source, config, ffmpeg_processor)
+    HttpStreaming::new(torrent_engine, data_source, config, ffmpeg_processor)
 }
 
 #[tokio::test]
@@ -270,10 +268,10 @@ async fn test_direct_mp4_streaming() {
     let data_source = Arc::new(TestDataSource::new());
     data_source.add_file(info_hash, mp4_data.clone()).await;
 
-    let streaming_service = setup_streaming_service(data_source).await;
+    let http_streaming = setup_http_streaming(data_source).await;
 
     // Test full file request
-    let response = streaming_service
+    let response = http_streaming
         .handle_http_request(info_hash, None)
         .await
         .expect("Failed to handle streaming request");
@@ -283,7 +281,7 @@ async fn test_direct_mp4_streaming() {
     assert!(response.content_type.contains("video/mp4"));
 
     // Test range request
-    let range_response = streaming_service
+    let range_response = http_streaming
         .handle_http_request(info_hash, Some("bytes=0-1023"))
         .await
         .expect("Failed to handle range request");
@@ -300,10 +298,10 @@ async fn test_remux_avi_streaming() {
     let data_source = Arc::new(TestDataSource::new());
     data_source.add_file(info_hash, avi_data.clone()).await;
 
-    let streaming_service = setup_streaming_service(data_source).await;
+    let http_streaming = setup_http_streaming(data_source).await;
 
     // Check streaming readiness - should trigger remuxing
-    let status = streaming_service
+    let status = http_streaming
         .check_stream_readiness(info_hash)
         .await
         .expect("Failed to check stream readiness");
@@ -324,11 +322,11 @@ async fn test_container_format_detection() {
     let (info_hash, mp4_data, avi_data, mkv_data) = create_test_files().await;
 
     let data_source = Arc::new(TestDataSource::new());
-    let streaming_service = setup_streaming_service(data_source.clone()).await;
+    let http_streaming = setup_http_streaming(data_source.clone()).await;
 
     // Test MP4 detection
     data_source.add_file(info_hash, mp4_data).await;
-    let response = streaming_service
+    let response = http_streaming
         .handle_http_request(info_hash, Some("bytes=0-31"))
         .await
         .expect("Failed to detect MP4");
@@ -337,7 +335,7 @@ async fn test_container_format_detection() {
     // Test AVI detection
     let avi_hash = InfoHash::from_hex("1123456789abcdef0123456789abcdef01234567").unwrap();
     data_source.add_file(avi_hash, avi_data).await;
-    let status = streaming_service
+    let status = http_streaming
         .check_stream_readiness(avi_hash)
         .await
         .expect("Failed to check AVI readiness");
@@ -353,7 +351,7 @@ async fn test_container_format_detection() {
     // Test MKV detection
     let mkv_hash = InfoHash::from_hex("2123456789abcdef0123456789abcdef01234567").unwrap();
     data_source.add_file(mkv_hash, mkv_data).await;
-    let status = streaming_service
+    let status = http_streaming
         .check_stream_readiness(mkv_hash)
         .await
         .expect("Failed to check MKV readiness");
@@ -374,11 +372,11 @@ async fn test_range_request_parsing() {
     let data_source = Arc::new(TestDataSource::new());
     data_source.add_file(info_hash, mp4_data.clone()).await;
 
-    let streaming_service = setup_streaming_service(data_source).await;
+    let http_streaming = setup_http_streaming(data_source).await;
     let file_size = mp4_data.len() as u64;
 
     // Test standard range request
-    let response = streaming_service
+    let response = http_streaming
         .handle_http_request(info_hash, Some("bytes=100-199"))
         .await
         .expect("Failed to handle range request");
@@ -387,7 +385,7 @@ async fn test_range_request_parsing() {
     assert_eq!(response.body.len(), 100);
 
     // Test open-ended range request
-    let response = streaming_service
+    let response = http_streaming
         .handle_http_request(info_hash, Some("bytes=100-"))
         .await
         .expect("Failed to handle open-ended range");
@@ -396,7 +394,7 @@ async fn test_range_request_parsing() {
     assert_eq!(response.body.len(), (file_size - 100) as usize);
 
     // Test suffix range request (last 100 bytes)
-    let result = streaming_service
+    let result = http_streaming
         .handle_http_request(info_hash, Some("bytes=-100"))
         .await;
 
@@ -420,13 +418,13 @@ async fn test_concurrent_streaming_requests() {
     let data_source = Arc::new(TestDataSource::new());
     data_source.add_file(info_hash, mp4_data.clone()).await;
 
-    let streaming_service = Arc::new(setup_streaming_service(data_source).await);
+    let http_streaming = Arc::new(setup_http_streaming(data_source).await);
 
     // Launch multiple concurrent requests
     let mut handles = Vec::new();
 
     for i in 0..10 {
-        let service = streaming_service.clone();
+        let service = http_streaming.clone();
         let range_start = i * 1024;
         let range_end = (i + 1) * 1024 - 1;
         let range_header = format!("bytes={range_start}-{range_end}");
@@ -453,11 +451,11 @@ async fn test_concurrent_streaming_requests() {
 
 #[tokio::test]
 async fn test_streaming_error_handling() {
-    let streaming_service = setup_streaming_service(Arc::new(TestDataSource::new())).await;
+    let http_streaming = setup_http_streaming(Arc::new(TestDataSource::new())).await;
 
     // Test with non-existent file
     let non_existent_hash = InfoHash::from_hex("9999999999999999999999999999999999999999").unwrap();
-    let result = streaming_service
+    let result = http_streaming
         .handle_http_request(non_existent_hash, None)
         .await;
 
@@ -468,10 +466,10 @@ async fn test_streaming_error_handling() {
     let data_source = Arc::new(TestDataSource::new());
     data_source.add_file(info_hash, mp4_data).await;
 
-    let streaming_service = setup_streaming_service(data_source).await;
+    let http_streaming = setup_http_streaming(data_source).await;
 
     // Test invalid range header
-    let result = streaming_service
+    let result = http_streaming
         .handle_http_request(info_hash, Some("bytes=invalid-range"))
         .await;
 
@@ -484,9 +482,9 @@ async fn test_streaming_error_handling() {
 #[tokio::test]
 async fn test_streaming_statistics() {
     let data_source = Arc::new(TestDataSource::new());
-    let streaming_service = setup_streaming_service(data_source).await;
+    let http_streaming = setup_http_streaming(data_source).await;
 
-    let stats = streaming_service.statistics().await;
+    let stats = http_streaming.statistics().await;
 
     // Initial statistics should be zero
     assert_eq!(stats.active_sessions, 0);
@@ -510,10 +508,10 @@ async fn test_streaming_lifecycle_with_partial_data() {
 
     partial_data_source.add_file(info_hash, partial_data).await;
 
-    let streaming_service = setup_streaming_service(partial_data_source).await;
+    let http_streaming = setup_http_streaming(partial_data_source).await;
 
     // Check readiness - should indicate waiting for more data
-    let status = streaming_service
+    let status = http_streaming
         .check_stream_readiness(info_hash)
         .await
         .expect("Failed to check stream readiness");
@@ -541,10 +539,10 @@ async fn test_multiple_format_streaming() {
     data_source.add_file(avi_hash, avi_data).await;
     data_source.add_file(mkv_hash, mkv_data).await;
 
-    let streaming_service = Arc::new(setup_streaming_service(data_source).await);
+    let http_streaming = Arc::new(setup_http_streaming(data_source).await);
 
     // Test MP4 direct streaming
-    let mp4_response = streaming_service
+    let mp4_response = http_streaming
         .handle_http_request(mp4_hash, Some("bytes=0-1023"))
         .await
         .expect("Failed to stream MP4");
@@ -553,7 +551,7 @@ async fn test_multiple_format_streaming() {
     assert!(mp4_response.content_type.contains("video/mp4"));
 
     // Test AVI remux workflow initiation
-    let avi_status = streaming_service
+    let avi_status = http_streaming
         .check_stream_readiness(avi_hash)
         .await
         .expect("Failed to check AVI readiness");
@@ -566,7 +564,7 @@ async fn test_multiple_format_streaming() {
     ));
 
     // Test MKV remux workflow initiation
-    let mkv_status = streaming_service
+    let mkv_status = http_streaming
         .check_stream_readiness(mkv_hash)
         .await
         .expect("Failed to check MKV readiness");

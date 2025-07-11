@@ -57,14 +57,14 @@ pub struct HttpRangeRequest {
 ///
 /// Acts as a lightweight coordinator that delegates to appropriate streaming
 /// strategies based on container format detection and handles HTTP protocol concerns.
-pub struct HttpStreamingService {
+pub struct HttpStreaming {
     strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>>,
     session_manager: Arc<RemuxSessionManager>,
     torrent_engine: TorrentEngineHandle,
     data_source: Arc<dyn DataSource>,
 }
 
-impl Clone for HttpStreamingService {
+impl Clone for HttpStreaming {
     fn clone(&self) -> Self {
         Self {
             strategies: self.strategies.clone(),
@@ -75,7 +75,7 @@ impl Clone for HttpStreamingService {
     }
 }
 
-impl HttpStreamingService {
+impl HttpStreaming {
     /// Create new streaming service with default strategies
     pub fn new(
         torrent_engine: TorrentEngineHandle,

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use strsim::normalized_levenshtein;
 
 use crate::errors::MediaSearchError;
-use crate::metadata::ImdbMetadataService;
+use crate::metadata::ImdbMetadata;
 use crate::providers::TorrentSearchProvider;
 use crate::types::{MediaSearchResult, TorrentResult};
 
@@ -16,7 +16,7 @@ use crate::types::{MediaSearchResult, TorrentResult};
 #[derive(Debug)]
 pub struct EnhancedMediaSearch {
     provider: Box<dyn TorrentSearchProvider>,
-    metadata_service: ImdbMetadataService,
+    metadata: ImdbMetadata,
     #[allow(dead_code)]
     fuzzy_threshold: f64,
     #[allow(dead_code)]
@@ -78,7 +78,7 @@ impl EnhancedMediaSearch {
     pub fn new(provider: Box<dyn TorrentSearchProvider>) -> Self {
         Self {
             provider,
-            metadata_service: ImdbMetadataService::new(),
+            metadata: ImdbMetadata::new(),
             fuzzy_threshold: 0.6, // 60% similarity threshold
             is_development: false,
         }
@@ -91,7 +91,7 @@ impl EnhancedMediaSearch {
     pub fn with_fuzzy_threshold(provider: Box<dyn TorrentSearchProvider>, threshold: f64) -> Self {
         Self {
             provider,
-            metadata_service: ImdbMetadataService::new(),
+            metadata: ImdbMetadata::new(),
             fuzzy_threshold: threshold.clamp(0.0, 1.0),
             is_development: false,
         }
@@ -106,7 +106,7 @@ impl EnhancedMediaSearch {
 
         Self {
             provider: Box::new(DevelopmentProvider::new()),
-            metadata_service: ImdbMetadataService::new(),
+            metadata: ImdbMetadata::new(),
             fuzzy_threshold: 0.5, // Lower threshold for development to show fuzzy matching
             is_development: true,
         }
@@ -252,7 +252,7 @@ impl EnhancedMediaSearch {
         for result in results {
             // Try to get IMDb metadata
             if let Ok(metadata) = self
-                .metadata_service
+                .metadata
                 .search_by_title(&result.title, result.year)
                 .await
             {

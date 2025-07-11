@@ -141,7 +141,7 @@ async fn check_streaming_readiness(
 
     // Check remux streaming readiness - make this less strict initially
     let remux_ready = state
-        .streaming_service
+        .http_streaming
         .check_stream_readiness(info_hash)
         .await
         .map(|status| status.readiness == riptide_core::streaming::StreamReadiness::Ready)

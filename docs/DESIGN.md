@@ -31,8 +31,8 @@ riptide-core (foundational)
 ```
 riptide-core:
   - TorrentEngine         → BitTorrent protocol with trait-based peer/tracker abstractions
-  - TcpPeerManager        → Production TCP peer connections and message handling
-  - TrackerManager        → Real HTTP/UDP tracker communication
+  - TcpPeerCoordinator    → Production TCP peer connections and message handling
+  - TrackerCoordinator    → Real HTTP/UDP tracker communication
   - Storage Layer         → File organization, reflink/CoW support, piece verification
   - Streaming Service     → Direct streaming, range requests, bandwidth control
   - TorrentCreator        → File-to-torrent conversion with piece splitting and hashing
@@ -63,7 +63,7 @@ riptide-sim:
   - ContentAwarePeerManager → Piece-serving simulation with real file data
   - InMemoryPieceStore      → In-memory storage of actual torrent pieces
   - PieceReconstructionService → Reassembly of downloaded pieces for streaming
-  - SimulatedTrackerManager → Mock tracker responses for offline development
+  - SimulatedTrackerCoordinator → Mock tracker responses for offline development
   - DeterministicSimulation → Controlled time and event scheduling for tests
 ```
 
@@ -119,12 +119,12 @@ pub trait PeerManager: Send + Sync {
 }
 
 // Production implementations (riptide-core)
-pub struct TcpPeerManager { /* TCP peer connections */ }
-pub struct TrackerManager { /* HTTP/UDP tracker communication */ }
+pub struct TcpPeerCoordinator { /* TCP peer connections */ }
+pub struct TrackerCoordinator { /* HTTP/UDP tracker communication */ }
 
 // Simulation implementations (riptide-sim)
 pub struct InMemoryPeerManager { /* Deterministic peer simulation */ }
-pub struct SimulatedTrackerManager { /* Offline tracker responses */ }
+pub struct SimulatedTrackerCoordinator { /* Offline tracker responses */ }
 pub struct ContentAwarePeerManager<P: PieceStore> { /* Real piece data serving */ }
 // Engine uses dependency injection for swappable implementations
 pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
@@ -136,8 +136,8 @@ pub struct TorrentEngine<P: PeerManager, T: TrackerManagement> {
 
 **Implementations**:
 
-- **Production**: `TcpPeerManager` + `TrackerManager` for real BitTorrent operations
-- **Simulation**: `InMemoryPeerManager` + `SimulatedTrackerManager` for deterministic testing
+- **Production**: `TcpPeerCoordinator` + `TrackerCoordinator` for real BitTorrent operations
+- **Simulation**: `InMemoryPeerManager` + `SimulatedTrackerCoordinator` for deterministic testing
 - **Content-Aware**: `ContentAwarePeerManager<InMemoryPieceStore>` for end-to-end file simulation
 
 **Benefits**:
