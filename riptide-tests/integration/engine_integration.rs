@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use riptide_core::config::RiptideConfig;
-    use riptide_core::engine::spawn_torrent_engine;
+    use riptide_core::engine::{MockPeerManager, MockTrackerManager, spawn_torrent_engine};
     use riptide_core::torrent::{InfoHash, TorrentError};
     use sha1::{Digest, Sha1};
 
@@ -24,9 +24,9 @@ mod tests {
     #[tokio::test]
     async fn test_end_to_end_seeking_functionality() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
 
         // Set up mock peers for the tracker manager
         let mock_peers = vec![
@@ -116,9 +116,9 @@ mod tests {
     #[tokio::test]
     async fn test_adaptive_buffering_under_different_conditions() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
         tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
@@ -182,9 +182,9 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_concurrent_streams() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
         tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);

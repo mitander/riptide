@@ -3,6 +3,8 @@
 //! This module enforces TigerBeetle-inspired coding standards using efficient
 //! Rust pattern matching that works cross-platform.
 
+#![allow(dead_code)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -465,6 +467,9 @@ impl FastRustStyleChecker {
 
         // Rule 3: Module size limit
         self.check_module_size(file_path, &content);
+
+        // Rule 4: Missing public documentation
+        self.check_missing_public_documentation(file_path, &content);
 
         Ok(())
     }

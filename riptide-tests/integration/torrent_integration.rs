@@ -3,24 +3,62 @@
 //! Tests the complete BitTorrent stack including wire protocol, peer connections,
 //! bitfield exchange, choke/unchoke handling, and error recovery.
 
+#![allow(dead_code)]
+#![allow(clippy::uninlined_format_args)]
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use riptide_core::storage::FileStorage;
+use riptide_core::torrent::enhanced_peer_connection::EnhancedPeerConnection;
+use riptide_core::torrent::error_recovery::ErrorRecoveryManager;
+use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
+use riptide_core::torrent::protocol::types::PeerId;
+use riptide_core::torrent::{
+    PieceDownloader, PieceIndex, PieceStatus, TcpPeerManager, TorrentError,
+};
+use sha1::{Digest, Sha1};
 use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 
-use super::enhanced_peer_connection::EnhancedPeerConnection;
-use super::error_recovery::ErrorRecoveryManager;
-use super::protocol::types::PeerId;
-use super::{
-    PieceDownloader, PieceIndex, PieceStatus, TcpPeerManager, TorrentError, TorrentMetadata,
-};
-use crate::storage::FileStorage;
-use crate::torrent::test_data::create_test_torrent_metadata;
+/// Generates proper SHA1 hashes for test torrent metadata.
+fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {
+    (0..piece_count)
+        .map(|i| {
+            let mut hasher = Sha1::new();
+            hasher.update(vec![i as u8; piece_size as usize]);
+            let result = hasher.finalize();
+            let mut hash = [0u8; 20];
+            hash.copy_from_slice(&result);
+            hash
+        })
+        .collect()
+}
+
+/// Create test torrent metadata for integration tests
+fn create_test_torrent_metadata() -> TorrentMetadata {
+    let piece_count = 20;
+    let piece_size = 32_768u32;
+    let total_size = piece_count as u64 * piece_size as u64;
+    let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
+
+    TorrentMetadata {
+        info_hash: riptide_core::torrent::InfoHash::new([42u8; 20]),
+        name: "test_torrent.mp4".to_string(),
+        total_length: total_size,
+        piece_length: piece_size,
+        piece_hashes,
+        files: vec![TorrentFile {
+            path: vec!["test_torrent.mp4".to_string()],
+            length: total_size,
+        }],
+        announce_urls: vec!["http://tracker.example.com:8080/announce".to_string()],
+    }
+}
 
 /// Test fixture for integration tests with real BitTorrent components
 pub struct BitTorrentTestHarness {
@@ -443,7 +481,7 @@ mod tests {
         assert!(harness.is_ok());
 
         let harness = harness.unwrap();
-        assert_eq!(harness.metadata.piece_hashes.len(), 3);
+        assert_eq!(harness.metadata.piece_hashes.len(), 20);
         assert!(harness.test_servers.is_empty());
     }
 
