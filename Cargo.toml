@@ -5,9 +5,8 @@ members = [
     "riptide-web",
     "riptide-search",
     "riptide-cli",
-    "riptide-sim"
-    # TODO: Re-enable riptide-tests after fixing API imports
-    # "riptide-tests"
+    "riptide-sim",
+    "riptide-tests"
 ]
 
 [workspace.package]
