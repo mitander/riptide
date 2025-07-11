@@ -1,104 +1,89 @@
-### **Riptide Style Guide**
----
+# Riptide Style Guide
 
-## **1. Guiding Principles**
+## Core Principles
 
-1.  **Clarity Over Brevity:** Code is read more often than it is written. Names must be explicit and unambiguous.
-2.  **Idiomatic Rust First:** We adhere to the official [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/introduction.html). These conventions supplement, not replace, them.
-3.  **Explain the "Why," Not the "What":** Assume the reader understands Rust. Comments must explain the rationale behind a design decision or the invariants a piece of code upholds.
-4.  **Style is Not a Suggestion:** All conventions are enforced by automated checks. A violation is a build failure.
+1.  **Working > Clever:** Ship code that works.
+2.  **Measured > Assumed:** Benchmark before refactor.
+3.  **Simple > Flexible:** YAGNI. Solve today's problem, not tomorrow's.
+4.  **Explicit > Magic:** The code path must be obvious. Focus on simplicity and consistency.
 
-## **2. Naming Conventions**
+## Naming (ZERO TOLERANCE)
 
-#### **2.1. Types (Structs, Enums, Traits)**
+### Functions & Methods
 
-*   Use `UpperCamelCase`.
-*   **Use descriptive suffixes:**
-    *   Error enums: Must end in `Error` (e.g., `TorrentError`, `StorageError`).
-    *   Configuration structs: Must end in `Config` (e.g., `RiptideConfig`, `RemuxStreamingConfig`).
-    *   Builder structs: Must end in `Builder` (e.g., `MockMagnetoProviderBuilder`).
-    *   Handles to actors/services: Must end in `Handle` (e.g., `TorrentEngineHandle`).
+Naming must describe the action and intent.
 
-#### **2.2. Functions & Methods**
+| Pattern | Usage | Example |
+| :--- | :--- | :--- |
+| `verb_noun()` | Standard action | `download_piece()`, `parse_range_header()` |
+| `is_...` or `has_...` | State query | `is_complete()` (returns `bool`) |
+| `as_...` | Cheap borrow | `as_bytes()` (`&self -> &T`) |
+| `into_...` | Consuming conversion | `into_stream()` (`self -> T`) |
+| `try_...` | Fallible operation | `try_connect()` (returns `Result`) |
 
-*   Use `snake_case`.
-*   **Functions are verbs.** The name must describe what the function *does*.
-*   **`get_` and `set_` prefixes are forbidden.** This is an un-idiomatic OOP pattern.
-    *   **BAD:** `get_peer_id()`, `set_download_speed()`, `get_mut()`
-    *   **GOOD:** `peer_id()`, `update_download_speed()`, `as_mut()`
-    *   **NO EXCEPTIONS:** Use idiomatic Rust conversions (`as_*`, `to_*`, `into_*`) instead.
-*   **Predicates** (methods returning `bool`) should start with `is_`, `has_`, or `can_`.
-    *   `is_complete()`, `has_piece()`, `can_request_pieces()`
-*   **Conversions** follow Rust's standard: `as_*` (cheap), `to_*` (expensive), `into_*` (consuming).
+**Banned Patterns (Will be rejected):**
 
-#### **2.3. Modules & Crates**
+| Forbidden | Reason / Correction |
+| :--- | :--- |
+| `get_...()` | No. Use the noun directly: `peer.id()` not `peer.get_id()`. |
+| `set_...()` | No. Use verbs describing the state change: `peer.update_speed()` not `peer.set_speed()`. |
+| `handle_...()` | No. Too vague. Describe what you're doing: `process_incoming_message()`. |
 
-*   Use `snake_case` for module file names (e.g., `piece_picker.rs`).
-*   **No "Garbage Can" Modules:** Module names like `util`, `utils`, `helper`, `common`, or `core` are **strictly forbidden**. Every module must have a clear, descriptive domain noun as its name.
-    *   **GOOD:** `riptide-core/src/torrent/protocol`, `riptide-web/src/streaming`
-    *   **BAD:** `riptide-core/src/common`
+### Types (Structs, Enums)
 
-## **3. Code Style & Implementation**
+Suffixes are mandatory.
 
-*   **Error Handling:** All fallible functions must return a `Result`. `unwrap()` and `expect()` are **forbidden** in application logic and will be caught by `clippy`. They are only permitted in tests with explicit justification.
-*   **Documentation (`rustdoc`):**
-    *   Every public item (`pub fn`, `pub struct`, etc.) **must** be documented.
-    *   Documentation explains the **purpose and rationale ("why")**, not the implementation details ("what").
-    *   Functions returning `Result` **must** have an `# Errors` section detailing failure modes.
-    *   Functions that can `panic` (e.g., broken invariants) **must** have a `# Panics` section.
+| Category | Suffix | Example |
+| :--- | :--- | :--- |
+| Errors | `...Error` | `DownloadError`, `StorageError` |
+| Configuration | `...Config` | `RiptideConfig`, `NetworkConfig` |
+| Handles | `...Handle` | `TorrentEngineHandle` |
 
-## **4. Commit Message Style (Enforced)**
+**Banned Suffixes:**
 
-We follow the [**Conventional Commits**](https://www.conventionalcommits.org/en/v1.0.0/) specification. This is not optional and is enforced by the `commit-msg` git hook.
+| Forbidden | Reason / Correction |
+| :--- | :--- |
+| `...Manager` | Meaningless. `PieceManager` should be `PieceDownloader` or similar. |
+| `...Service` | Lazy naming. `HttpService` should be `HttpServer` or `ApiRouter`. |
+| `...Factory` | No. Use idiomatic Rust `Builder` pattern or a simple `new()` function. |
 
-#### **Format:**
-```
-<type>(optional scope): <description>
+## Code Structure
 
-[optional body]
+-   **Functions:** 70 lines max. If it's longer, your design is wrong. Break it down.
+-   **Modules:** 500 lines max. A larger module is a failure of abstraction. Split it.
 
-[optional footer(s)]
-```
+## Error Handling
 
-#### **Types:**
+-   **No Panics in Production Code:** Enforced by CI.
+-   Use `debug_assert!` for invariants, not for validating fallible operations.
+-   **Specific Errors:** Use `thiserror` to create error types with context. No generic "failed" errors.
 
-*   `feat`: A new feature for the user.
-*   `fix`: A bug fix for the user.
-*   `chore`: Routine tasks, dependency updates, and other non-user-facing changes.
-*   `docs`: Documentation changes only.
-*   `style`: Formatting, missing semicolons, etc.; no production code change.
-*   `refactor`: Refactoring production code, e.g., renaming a variable.
-*   `test`: Adding missing tests, refactoring tests; no production code change.
-*   `build`: Changes to the build system (`ci.yml`, `Cargo.toml`).
+    ```rust
+    // GOOD
+    #[derive(Debug, thiserror::Error)]
+    pub enum DownloadError {
+        #[error("piece {index} hash mismatch")]
+        HashMismatch { index: u32 },
+    }
 
-#### **Scope:**
+    // BAD
+    #[error("download failed")]
+    Generic,
+    ```
 
-The scope should be the crate or module affected.
-*   **GOOD:** `fix(streaming)`, `feat(web)`, `refactor(core::piece_picker)`
+-   **No `.unwrap()` or `.expect()`:** Except in tests or with a `// SAFETY:` comment explaining why it can't fail.
 
-#### **Description:**
+## Async Patterns
 
-*   Written in the **imperative mood** ("add feature" not "adds feature").
-*   Begins with a lowercase letter.
-*   No period at the end.
-*   **Must be between 1 and 100 characters.**
+-   **Timeout All Network Operations:** A `select!` against `tokio::time::sleep` is the standard pattern. Untimed network calls are a bug.
+-   **Graceful Shutdown:** All long-running tasks must listen for a shutdown signal. Orphaned tasks are a bug.
+-   **No `std::thread::sleep` in `async` code.** Use `tokio::time::sleep`.
+-   **No Unbounded Channels.** `mpsc::unbounded_channel` is a memory leak waiting to happen. Use bounded channels and handle backpressure.
 
-#### **Examples:**
+## Documentation
 
-```
-feat(streaming): implement readiness API with UI integration
-
-- Add /stream/{hash}/ready endpoint to check stream availability
-- Frontend polls readiness before attempting playbook
-- Show loading spinner until stream is ready for playback
-- Prevents premature video element initialization
-```
-
-```
-fix(streaming): replace fragmented MP4 with faststart for browser compatibility
-
-- Replace fragmented MP4 flags with +faststart for seekable MP4 generation
-- Switch from pipe output to temporary file output
-- Clean up temporary files after processing
-- Resolves Firefox metadata parsing errors and black screen issues
-```
+-   **Why, Not What:** `/// Validates piece hash against torrent metadata.` is bad. `/// BitTorrent uses SHA-1 for piece integrity. This function confirms a downloaded piece is not corrupt.` is good.
+-   **Mandatory Sections:**
+    -   `# Errors` for functions returning `Result`.
+    -   `# Panics` for functions that can panic.
+-   **Compile-checked Examples:** `#[test]`s are better, but doc examples must compile.
