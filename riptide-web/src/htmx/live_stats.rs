@@ -290,17 +290,17 @@ fn memory_usage() -> String {
                     if let Some(value) = line.split_whitespace().nth(1) {
                         mem_total = value.parse::<u64>().unwrap_or(0) * 1024; // Convert KB to bytes
                     }
-                } else if line.starts_with("MemAvailable:") {
-                    if let Some(value) = line.split_whitespace().nth(1) {
-                        mem_available = value.parse::<u64>().unwrap_or(0) * 1024; // Convert KB to bytes
-                    }
+                } else if line.starts_with("MemAvailable:")
+                    && let Some(value) = line.split_whitespace().nth(1)
+                {
+                    mem_available = value.parse::<u64>().unwrap_or(0) * 1024; // Convert KB to bytes
                 }
             }
 
             if mem_total > 0 && mem_available > 0 {
                 let used = mem_total - mem_available;
                 let used_gb = used as f64 / (1024.0 * 1024.0 * 1024.0);
-                return format!("{:.1}GB", used_gb);
+                return format!("{used_gb:.1}GB");
             }
         }
     }

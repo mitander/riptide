@@ -95,20 +95,20 @@ jobs:
         with:
           path: |
             C:\ffmpeg-shared
-          key: ${{ runner.os }}-ffmpeg-shared-6.1.1
+          key: ${{ runner.os }}-ffmpeg-shared-5.1.3
 
       - name: Install FFmpeg (Windows)
         if: matrix.os == 'windows-latest' && steps.cache-ffmpeg-windows.outputs.cache-hit != 'true'
         run: |
-          # Download pre-built FFmpeg shared libraries (much faster than vcpkg)
+          # Download pre-built FFmpeg shared libraries (use FFmpeg 5.1 which has avfft.h)
           Write-Host "Downloading pre-built FFmpeg..."
-          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2023-06-15-12-55/ffmpeg-n5.1.3-win64-gpl-shared.zip"
           $output = "ffmpeg.zip"
           Invoke-WebRequest -Uri $url -OutFile $output
           
           # Extract to standard location
           Expand-Archive -Path $output -DestinationPath C:\
-          Move-Item "C:\ffmpeg-master-latest-win64-gpl-shared" "C:\ffmpeg-shared"
+          Move-Item "C:\ffmpeg-n5.1.3-win64-gpl-shared" "C:\ffmpeg-shared"
           Remove-Item $output
 
       - name: Setup FFmpeg Environment (Windows)
@@ -117,9 +117,19 @@ jobs:
           # Set environment variables for ffmpeg-sys-next to use shared libraries
           echo "FFMPEG_DIR=C:\ffmpeg-shared" >> $env:GITHUB_ENV
           echo "FFMPEG_PKG_CONFIG=0" >> $env:GITHUB_ENV
+          # Disable building FFmpeg from source (use pre-built)
+          echo "FFMPEG_LINK_STATIC=0" >> $env:GITHUB_ENV
           # Add FFmpeg to PATH so DLLs can be found at runtime
           echo "C:\ffmpeg-shared\bin" >> $env:GITHUB_PATH
+          # Add include and lib paths for bindgen
+          echo "FFMPEG_INCLUDE_DIR=C:\ffmpeg-shared\include" >> $env:GITHUB_ENV
+          echo "FFMPEG_LIB_DIR=C:\ffmpeg-shared\lib" >> $env:GITHUB_ENV
+          # Tell ffmpeg-sys-next to ignore deprecated headers
+          echo "FFMPEG_IGNORE_DEPRECATED=1" >> $env:GITHUB_ENV
 
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
+        
       - name: Build
         env:
           # Speed up Windows builds
