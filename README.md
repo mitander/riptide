@@ -105,6 +105,20 @@ cargo test --workspace
 cargo clippy --workspace -- -D warnings
 ```
 
+### Development Setup
+
+The project uses strict quality gates enforced by `cargo-husky` pre-commit hooks:
+
+```bash
+# Hooks are automatically installed when you build the project
+cargo build
+
+# The pre-commit hook runs automatically on commit and checks:
+# - Code formatting (cargo fmt)
+# - Linting with strict clippy (warnings treated as errors)
+# - Core tests
+```
+
 ### Style
 
 See [STYLE.md](docs/STYLE.md) and [NAMING_CONVENTIONS.md](docs/NAMING_CONVENTIONS.md).
