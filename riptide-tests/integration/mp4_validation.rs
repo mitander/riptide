@@ -179,7 +179,7 @@ mod tests {
             "Should identify as streaming compatible"
         );
 
-        let issues = structure.get_issues();
+        let issues = structure.issues();
         assert!(
             issues.is_empty(),
             "Valid structure should have no issues: {issues:?}"
@@ -206,7 +206,7 @@ mod tests {
             "Should identify as not streaming compatible"
         );
 
-        let issues = structure.get_issues();
+        let issues = structure.issues();
         assert!(
             !issues.is_empty(),
             "Problematic structure should have issues"
