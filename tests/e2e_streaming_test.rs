@@ -488,10 +488,7 @@ async fn test_remuxing_and_direct_streaming() {
             }
             ContainerFormat::Avi | ContainerFormat::Mkv => {
                 // Remuxed files MUST be valid MP4 with complete metadata
-                assert!(
-                    served_size > 0,
-                    "Remuxed file must not be empty"
-                );
+                assert!(served_size > 0, "Remuxed file must not be empty");
                 assert!(
                     is_valid_mp4_header(&body_bytes),
                     "Remuxed file must be valid MP4 - got {} bytes with header: {:?}",
@@ -1132,7 +1129,10 @@ async fn test_realistic_remux_streaming_pipeline() {
                 HttpStreamingError::StreamingNotReady { .. } => {
                     tracing::info!("✓ Graceful failure: Stream not ready");
                 }
-                _ => panic!("Unexpected error type - system should fail gracefully: {:?}", e),
+                _ => panic!(
+                    "Unexpected error type - system should fail gracefully: {:?}",
+                    e
+                ),
             }
         }
         Err(_) => {
@@ -1219,8 +1219,10 @@ async fn test_remuxing_fails_with_only_head_data() {
                     is_valid_mp4_header(&body_bytes),
                     "SYSTEM ERROR: Returned 206 Partial Content but with invalid MP4 data. Expected valid MP4 or non-200 status."
                 );
-                
-                tracing::info!("✓ CORRECT: System returned valid MP4 with head-only data (unexpected but valid)");
+
+                tracing::info!(
+                    "✓ CORRECT: System returned valid MP4 with head-only data (unexpected but valid)"
+                );
             } else if resp.status == StatusCode::SERVICE_UNAVAILABLE
                 || resp.status == StatusCode::TOO_EARLY
             {
@@ -1697,7 +1699,7 @@ async fn test_concurrent_remux_initialization_race_condition() {
             too_early_responses
         );
     }
-    
+
     // At least one request should succeed if the system is working correctly
     assert!(
         successful_streams > 0,

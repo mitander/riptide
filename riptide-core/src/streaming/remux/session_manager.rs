@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, error, info, warn};
@@ -13,7 +13,7 @@ use tracing::{debug, error, info, warn};
 use super::state::{RemuxError, RemuxState};
 use super::types::{RemuxConfig, RemuxSession, StreamHandle, StreamReadiness, StreamingStatus};
 use crate::storage::DataSource;
-use crate::streaming::{StrategyError, StreamingResult};
+use crate::streaming::{FfmpegProcessor, RemuxingOptions, StrategyError, StreamingResult};
 use crate::torrent::InfoHash;
 
 /// Manages remuxing sessions with state machine and concurrency control
@@ -23,11 +23,16 @@ pub struct RemuxSessionManager {
     config: RemuxConfig,
     session_counter: AtomicU64,
     data_source: Arc<dyn DataSource>,
+    ffmpeg_processor: Arc<dyn FfmpegProcessor>,
 }
 
 impl RemuxSessionManager {
     /// Create a new remux session manager
-    pub fn new(config: RemuxConfig, data_source: Arc<dyn DataSource>) -> Self {
+    pub fn new(
+        config: RemuxConfig,
+        data_source: Arc<dyn DataSource>,
+        ffmpeg_processor: Arc<dyn FfmpegProcessor>,
+    ) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_sessions));
 
         // Ensure cache directory exists
@@ -41,6 +46,7 @@ impl RemuxSessionManager {
             config,
             session_counter: AtomicU64::new(1),
             data_source,
+            ffmpeg_processor,
         }
     }
 
@@ -110,7 +116,14 @@ impl RemuxSessionManager {
                     Ok(StreamReadiness::WaitingForData)
                 }
             }
-            RemuxState::Remuxing { .. } => Ok(StreamReadiness::Processing),
+            RemuxState::Remuxing { .. } => {
+                // Check if we have enough partial data to start streaming
+                if self.is_partial_file_ready(info_hash).await {
+                    Ok(StreamReadiness::Ready)
+                } else {
+                    Ok(StreamReadiness::Processing)
+                }
+            }
             RemuxState::Completed { .. } => Ok(StreamReadiness::Ready),
             RemuxState::Failed { can_retry, .. } => {
                 if *can_retry {
@@ -179,6 +192,16 @@ impl RemuxSessionManager {
 
         match &session.state {
             RemuxState::Completed { output_path } => Ok(output_path.clone()),
+            RemuxState::Remuxing { .. } => {
+                // For progressive streaming, allow access to partial files
+                if let Some(output_path) = &session.output_path {
+                    Ok(output_path.clone())
+                } else {
+                    Err(StrategyError::StreamingNotReady {
+                        reason: "Remuxing output path not available".to_string(),
+                    })
+                }
+            }
             _ => Err(StrategyError::StreamingNotReady {
                 reason: "Remuxing not completed".to_string(),
             }),
@@ -275,18 +298,8 @@ impl RemuxSessionManager {
 
     /// Feed data to FFmpeg process and monitor completion
     async fn feed_ffmpeg_data(&self, info_hash: InfoHash) -> StreamingResult<()> {
-        // Implementation would:
-        // 1. Get file size from file assembler
-        // 2. Feed data sequentially to FFmpeg stdin
-        // 3. Monitor FFmpeg stderr for progress updates
-        // 4. Update session progress
-        // 5. Mark as completed or failed when FFmpeg exits
-
-        // For now, simulate the process
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
-        // Mark as completed
-        let output_path = {
+        // Get file size and output path
+        let (file_size, output_path) = {
             let sessions = self.sessions.read().await;
             let session =
                 sessions
@@ -294,16 +307,83 @@ impl RemuxSessionManager {
                     .ok_or_else(|| StrategyError::RemuxingFailed {
                         reason: "Session not found".to_string(),
                     })?;
-            session
-                .output_path
-                .clone()
-                .ok_or_else(|| StrategyError::RemuxingFailed {
-                    reason: "No output path".to_string(),
-                })?
+            let file_size = self.data_source.file_size(info_hash).await.map_err(|e| {
+                StrategyError::RemuxingFailed {
+                    reason: format!("Failed to get file size: {e}"),
+                }
+            })?;
+            let output_path =
+                session
+                    .output_path
+                    .clone()
+                    .ok_or_else(|| StrategyError::RemuxingFailed {
+                        reason: "No output path".to_string(),
+                    })?;
+            (file_size, output_path)
         };
 
-        self.mark_completed(info_hash, output_path).await;
-        Ok(())
+        // Create temporary input file by assembling all data
+        let temp_input = output_path.with_extension("tmp_input");
+
+        // Read all file data from data source
+        let file_data = self
+            .data_source
+            .read_range(info_hash, 0..file_size)
+            .await
+            .map_err(|e| StrategyError::RemuxingFailed {
+                reason: format!("Failed to read file data: {e}"),
+            })?;
+
+        // Check if this is an AVI file by reading the header before writing
+        let is_avi_file =
+            file_data.len() >= 12 && file_data.starts_with(b"RIFF") && &file_data[8..12] == b"AVI ";
+
+        // Write to temporary input file
+        std::fs::write(&temp_input, file_data).map_err(|e| StrategyError::RemuxingFailed {
+            reason: format!("Failed to write temporary input file: {e}"),
+        })?;
+
+        // Configure FFmpeg options for streaming
+
+        let video_codec = if is_avi_file {
+            // For AVI files, transcode video to H.264 for better browser compatibility
+            // AVI files often have DivX/Xvid codecs that don't work well in MP4
+            "libx264".to_string()
+        } else {
+            "copy".to_string()
+        };
+
+        let remux_options = RemuxingOptions {
+            video_codec,
+            audio_codec: "aac".to_string(), // Convert audio for better compatibility
+            faststart: true,
+            timeout_seconds: Some(300),
+            ignore_index: false,
+            allow_partial: false,
+        };
+
+        // Run FFmpeg remuxing
+        let result = self
+            .ffmpeg_processor
+            .remux_to_mp4(&temp_input, &output_path, &remux_options)
+            .await;
+
+        // Clean up temporary input file
+        let _ = std::fs::remove_file(&temp_input);
+
+        match result {
+            Ok(_remux_result) => {
+                info!("FFmpeg remuxing completed successfully for {}", info_hash);
+                self.mark_completed(info_hash, output_path).await;
+                Ok(())
+            }
+            Err(e) => {
+                error!("FFmpeg remuxing failed for {}: {}", info_hash, e);
+                Err(StrategyError::RemuxingFailed {
+                    reason: format!("FFmpeg remuxing failed: {e}"),
+                })
+            }
+        }
     }
 
     /// Mark a session as completed
@@ -351,13 +431,21 @@ impl RemuxSessionManager {
             }
         })?;
 
-        // For streaming, we prioritize getting started quickly with head data
-        // Tail data is nice to have but not required for initial streaming
-        let required_head_size = self.config.min_head_size.min(file_size);
+        // Check if this is an AVI file to determine data requirements
+        let is_avi_file = self.is_avi_file(info_hash).await;
+
+        // For AVI files that need transcoding, we can start with much less data
+        let required_head_size = if is_avi_file {
+            // For AVI transcoding, only need 1MB to start - we're re-encoding anyway
+            (1024 * 1024).min(file_size)
+        } else {
+            // For other formats (copy operations), use full min_head_size
+            self.config.min_head_size.min(file_size)
+        };
 
         debug!(
-            "Checking required data for {}: file_size={}, required_head_size={}, min_head_config={}",
-            info_hash, file_size, required_head_size, self.config.min_head_size
+            "Checking required data for {}: file_size={}, required_head_size={}, min_head_config={}, is_avi={}",
+            info_hash, file_size, required_head_size, self.config.min_head_size, is_avi_file
         );
 
         // Check if we have head data
@@ -435,6 +523,91 @@ impl RemuxSessionManager {
         Ok(result)
     }
 
+    /// Check if a file is an AVI file by reading its header
+    async fn is_avi_file(&self, info_hash: InfoHash) -> bool {
+        const HEADER_CHECK_SIZE: u64 = 32;
+        if let Ok(header_data) = self
+            .data_source
+            .read_range(info_hash, 0..HEADER_CHECK_SIZE)
+            .await
+        {
+            header_data.len() >= 12
+                && header_data.starts_with(b"RIFF")
+                && &header_data[8..12] == b"AVI "
+        } else {
+            false
+        }
+    }
+
+    /// Check if a partially transcoded file is ready for streaming
+    async fn is_partial_file_ready(&self, info_hash: InfoHash) -> bool {
+        let sessions = self.sessions.read().await;
+        let session = match sessions.get(&info_hash) {
+            Some(session) => session,
+            None => return false,
+        };
+
+        let output_path = match &session.output_path {
+            Some(path) => path,
+            None => return false,
+        };
+
+        // Check if the output file exists and has valid MP4 headers
+        if !output_path.exists() {
+            return false;
+        }
+
+        // Check file size - we need at least 256KB for basic streaming
+        if let Ok(metadata) = std::fs::metadata(output_path) {
+            let file_size = metadata.len();
+            if file_size < 256 * 1024 {
+                return false;
+            }
+
+            // For fragmented MP4 progressive streaming, we need at least 512KB to start
+            // This is much less than traditional faststart MP4
+            if file_size < 512 * 1024 {
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        // Validate MP4 structure - check for ftyp and moov atoms
+        // Only read the first 64KB to check headers (don't read entire file)
+        const HEADER_CHECK_SIZE: usize = 64 * 1024;
+        if let Ok(mut file) = std::fs::File::open(output_path) {
+            use std::io::Read;
+            let mut buffer = vec![0u8; HEADER_CHECK_SIZE];
+            if let Ok(bytes_read) = file.read(&mut buffer) {
+                if bytes_read < 32 {
+                    return false;
+                }
+
+                buffer.truncate(bytes_read);
+
+                let has_ftyp =
+                    buffer.len() >= 8 && (buffer[4..8] == *b"ftyp" || buffer.starts_with(b"ftyp"));
+
+                // For fragmented MP4, look for moov atom OR moof atom (fragment)
+                let has_moov = buffer.windows(4).any(|window| window == b"moov");
+                let has_moof = buffer.windows(4).any(|window| window == b"moof");
+
+                if has_ftyp && (has_moov || has_moof) {
+                    let file_size = std::fs::metadata(output_path).map(|m| m.len()).unwrap_or(0);
+                    tracing::info!(
+                        "Partial fragmented MP4 file ready for streaming: {} ({} bytes total)",
+                        info_hash,
+                        file_size
+                    );
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     /// Clean up stale sessions
     pub async fn cleanup_stale_sessions(&self) {
         let mut sessions = self.sessions.write().await;
@@ -473,6 +646,7 @@ impl Clone for RemuxSessionManager {
             config: self.config.clone(),
             session_counter: AtomicU64::new(self.session_counter.load(Ordering::SeqCst)),
             data_source: Arc::clone(&self.data_source),
+            ffmpeg_processor: Arc::clone(&self.ffmpeg_processor),
         }
     }
 }
@@ -564,7 +738,11 @@ mod tests {
         let info_hash = InfoHash::new([1u8; 20]);
         data_source.add_file(info_hash, 10 * 1024 * 1024);
 
-        let manager = RemuxSessionManager::new(config, Arc::new(data_source));
+        let manager = RemuxSessionManager::new(
+            config,
+            Arc::new(data_source),
+            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+        );
 
         let handle = manager.get_or_create_session(info_hash).await.unwrap();
         assert_eq!(handle.info_hash, info_hash);
@@ -578,7 +756,11 @@ mod tests {
         let info_hash = InfoHash::new([1u8; 20]);
         data_source.add_file(info_hash, 10 * 1024 * 1024);
 
-        let manager = RemuxSessionManager::new(config, Arc::new(data_source));
+        let manager = RemuxSessionManager::new(
+            config,
+            Arc::new(data_source),
+            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+        );
         let _handle = manager.get_or_create_session(info_hash).await.unwrap();
 
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -597,7 +779,11 @@ mod tests {
         data_source.make_range_available(info_hash, 0..config.min_head_size);
         data_source.make_range_available(info_hash, (file_size - config.min_tail_size)..file_size);
 
-        let manager = RemuxSessionManager::new(config, Arc::new(data_source));
+        let manager = RemuxSessionManager::new(
+            config,
+            Arc::new(data_source),
+            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+        );
         let _handle = manager.get_or_create_session(info_hash).await.unwrap();
 
         let readiness = manager.check_readiness(info_hash).await.unwrap();

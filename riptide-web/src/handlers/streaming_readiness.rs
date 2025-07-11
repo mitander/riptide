@@ -138,10 +138,15 @@ async fn check_streaming_readiness(
     let has_good_health = buffer_status.buffer_health >= MIN_BUFFER_HEALTH;
     let has_sufficient_duration = buffer_status.buffer_duration >= MIN_BUFFER_DURATION;
 
-    // Both buffer and remux readiness are required for proper streaming
-    // Without remux readiness, MP4 metadata won't be available causing decode errors
-    let stream_ready =
-        remux_ready && has_sufficient_buffer && (has_good_health || has_sufficient_duration);
+    // For remux streaming, remux readiness is the primary requirement
+    // Buffer requirements are less critical since we're serving from transcoded file
+    let stream_ready = if remux_ready {
+        // If remux is ready, we can stream regardless of original buffer status
+        true
+    } else {
+        // If remux isn't ready, fall back to buffer requirements
+        has_sufficient_buffer && (has_good_health || has_sufficient_duration)
+    };
 
     if stream_ready {
         ReadinessResult::Ready

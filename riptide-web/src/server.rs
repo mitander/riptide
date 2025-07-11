@@ -127,6 +127,7 @@ pub async fn run_server(
         components.engine().clone(),
         data_source,
         Default::default(),
+        components.ffmpeg_processor().clone(),
     ));
 
     let state = AppState {

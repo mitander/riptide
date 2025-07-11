@@ -165,6 +165,27 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
         // Handle codec settings - special handling for AVI audio compatibility
         cmd.arg("-c:v").arg(&config.video_codec);
 
+        // If we're transcoding video to H.264, add optimized settings for streaming
+        if config.video_codec == "libx264" {
+            cmd.arg("-preset")
+                .arg("ultrafast") // Prioritize speed over compression
+                .arg("-crf")
+                .arg("28") // Lower quality but much faster
+                .arg("-profile:v")
+                .arg("baseline") // Baseline profile for max compatibility
+                .arg("-level")
+                .arg("3.0") // Lower level for faster encoding
+                .arg("-pix_fmt")
+                .arg("yuv420p") // Ensure compatible pixel format
+                .arg("-tune")
+                .arg("zerolatency") // Optimize for low latency
+                .arg("-x264opts")
+                .arg("keyint=30:min-keyint=30"); // Frequent keyframes for seeking
+            tracing::info!(
+                "Using H.264 transcoding with speed-optimized settings for fast streaming"
+            );
+        }
+
         // For AVI files, check if we need to convert audio for MP4 compatibility
         if input_extension.to_lowercase() == "avi" && config.audio_codec == "copy" {
             // AVI often has MP3/PCM audio which may not work well in MP4
@@ -175,12 +196,16 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
             cmd.arg("-c:a").arg(&config.audio_codec);
         }
 
-        // Add streaming optimization - faststart is critical for web playback
+        // Add streaming optimization - use fragmented MP4 for progressive streaming
         if config.faststart {
-            cmd.arg("-movflags").arg("+faststart");
+            // For progressive streaming, use fragmented MP4 instead of faststart
+            // This allows headers to be written early without waiting for completion
+            cmd.arg("-movflags")
+                .arg("frag_keyframe+empty_moov+default_base_moof");
         } else {
-            // Even without faststart config, we should use it for browser compatibility
-            cmd.arg("-movflags").arg("+faststart");
+            // Even without faststart config, we should use fragmented MP4 for streaming
+            cmd.arg("-movflags")
+                .arg("frag_keyframe+empty_moov+default_base_moof");
         }
 
         // Force MP4 output format

@@ -81,9 +81,13 @@ impl HttpStreamingService {
         torrent_engine: TorrentEngineHandle,
         data_source: Arc<dyn DataSource>,
         _config: RiptideConfig,
+        ffmpeg_processor: Arc<dyn FfmpegProcessor>,
     ) -> Self {
-        let session_manager =
-            RemuxSessionManager::new(Default::default(), Arc::clone(&data_source));
+        let session_manager = RemuxSessionManager::new(
+            Default::default(),
+            Arc::clone(&data_source),
+            ffmpeg_processor,
+        );
 
         let mut strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>> = HashMap::new();
 
@@ -117,16 +121,33 @@ impl HttpStreamingService {
         info_hash: crate::torrent::InfoHash,
         range: std::ops::Range<u64>,
     ) -> StreamingResult<StreamData> {
+        // Check if there's a completed remux session first
+        let is_remuxed = self
+            .session_manager
+            .check_readiness(info_hash)
+            .await
+            .map(|readiness| readiness == StreamReadiness::Ready)
+            .unwrap_or(false);
+
         // Detect container format
         let format = self.detect_container_format(info_hash).await?;
 
-        // Get appropriate strategy
-        let strategy =
+        // Get appropriate strategy based on format and remux status
+        let strategy = if is_remuxed {
+            // If remuxed, always use remux strategy (even if format is MP4)
+            self.strategies
+                .get(&ContainerFormat::Avi) // Use any remux strategy entry
+                .ok_or_else(|| StrategyError::UnsupportedFormat {
+                    format: "remux".to_string(),
+                })?
+        } else {
+            // Use normal strategy selection
             self.strategies
                 .get(&format)
                 .ok_or_else(|| StrategyError::UnsupportedFormat {
                     format: format!("{format:?}"),
-                })?;
+                })?
+        };
 
         // Prepare stream handle
         let handle = strategy.prepare_stream(info_hash, format).await?;
@@ -140,16 +161,33 @@ impl HttpStreamingService {
         &self,
         info_hash: crate::torrent::InfoHash,
     ) -> StreamingResult<StreamingStatus> {
+        // Check if there's a completed remux session first
+        let is_remuxed = self
+            .session_manager
+            .check_readiness(info_hash)
+            .await
+            .map(|readiness| readiness == StreamReadiness::Ready)
+            .unwrap_or(false);
+
         // Detect container format
         let format = self.detect_container_format(info_hash).await?;
 
-        // Get appropriate strategy
-        let strategy =
+        // Get appropriate strategy based on format and remux status
+        let strategy = if is_remuxed {
+            // If remuxed, always use remux strategy (even if format is MP4)
+            self.strategies
+                .get(&ContainerFormat::Avi) // Use any remux strategy entry
+                .ok_or_else(|| StrategyError::UnsupportedFormat {
+                    format: "remux".to_string(),
+                })?
+        } else {
+            // Use normal strategy selection
             self.strategies
                 .get(&format)
                 .ok_or_else(|| StrategyError::UnsupportedFormat {
                     format: format!("{format:?}"),
-                })?;
+                })?
+        };
 
         // Prepare stream handle
         let handle = strategy.prepare_stream(info_hash, format).await?;
@@ -167,7 +205,16 @@ impl HttpStreamingService {
         &self,
         info_hash: crate::torrent::InfoHash,
     ) -> StreamingResult<ContainerFormat> {
-        // Read first few bytes to detect format
+        // Check if there's a completed remux session first
+        // If remuxing is complete, the output is always MP4
+        if let Ok(readiness) = self.session_manager.check_readiness(info_hash).await
+            && readiness == StreamReadiness::Ready
+        {
+            tracing::debug!("Remux session completed for {}, serving as MP4", info_hash);
+            return Ok(ContainerFormat::Mp4);
+        }
+
+        // Read first few bytes to detect original format
         const HEADER_SIZE: u64 = 32;
         let header_data = self
             .data_source
@@ -243,16 +290,33 @@ impl HttpStreamingService {
         info_hash: crate::torrent::InfoHash,
         range_header: Option<&str>,
     ) -> StreamingResult<HttpStreamingResponse> {
+        // Check if there's a completed remux session first
+        let is_remuxed = self
+            .session_manager
+            .check_readiness(info_hash)
+            .await
+            .map(|readiness| readiness == StreamReadiness::Ready)
+            .unwrap_or(false);
+
         // Detect container format
         let format = self.detect_container_format(info_hash).await?;
 
-        // Get appropriate strategy
-        let strategy =
+        // Get appropriate strategy based on format and remux status
+        let strategy = if is_remuxed {
+            // If remuxed, always use remux strategy (even if format is MP4)
+            self.strategies
+                .get(&ContainerFormat::Avi) // Use any remux strategy entry
+                .ok_or_else(|| StrategyError::UnsupportedFormat {
+                    format: "remux".to_string(),
+                })?
+        } else {
+            // Use normal strategy selection
             self.strategies
                 .get(&format)
                 .ok_or_else(|| StrategyError::UnsupportedFormat {
                     format: format!("{format:?}"),
-                })?;
+                })?
+        };
 
         // Prepare stream handle
         let handle = strategy.prepare_stream(info_hash, format).await?;
@@ -278,11 +342,19 @@ impl HttpStreamingService {
             (0, total_size.saturating_sub(1), StatusCode::OK)
         };
 
-        // Ensure end doesn't exceed file size
+        // Ensure end doesn't exceed file size and start is valid
         let actual_end = end.min(total_size.saturating_sub(1));
+        let actual_start = start.min(total_size.saturating_sub(1));
+
+        // Validate range before serving
+        if actual_start >= actual_end {
+            return Err(StrategyError::InvalidRange { range: start..end });
+        }
 
         // Serve the requested range
-        let stream_data = strategy.serve_range(&handle, start..actual_end + 1).await?;
+        let stream_data = strategy
+            .serve_range(&handle, actual_start..actual_end + 1)
+            .await?;
 
         // Build HTTP headers
         let mut headers = HeaderMap::new();

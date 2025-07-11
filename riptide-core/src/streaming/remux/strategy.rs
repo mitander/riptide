@@ -5,9 +5,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use super::session_manager::RemuxSessionManager;
-use super::types::{StreamData, StreamHandle, StreamReadiness, StreamingStatus};
+use super::types::{StreamHandle, StreamReadiness, StreamingStatus};
 use crate::storage::DataSource;
-use crate::streaming::{ContainerFormat, StrategyError, StreamingResult};
+use crate::streaming::{
+    ContainerFormat, SimulationFfmpegProcessor, StrategyError, StreamData, StreamingResult,
+};
 use crate::torrent::InfoHash;
 
 /// Streaming strategy for formats that require remuxing to MP4
@@ -24,7 +26,8 @@ impl RemuxStreamStrategy {
     /// Create a new remux streaming strategy with data source
     pub fn with_data_source(data_source: Arc<dyn DataSource>) -> Self {
         let config = super::types::RemuxConfig::default();
-        let session_manager = RemuxSessionManager::new(config, data_source);
+        let ffmpeg_processor = Arc::new(SimulationFfmpegProcessor::new());
+        let session_manager = RemuxSessionManager::new(config, data_source, ffmpeg_processor);
         Self::new(session_manager)
     }
 
@@ -94,6 +97,13 @@ impl StreamingStrategy for RemuxStreamStrategy {
         handle: &StreamHandle,
         range: std::ops::Range<u64>,
     ) -> StreamingResult<StreamData> {
+        // Validate range request first
+        if range.start >= range.end {
+            return Err(StrategyError::InvalidRange {
+                range: range.clone(),
+            });
+        }
+
         // Check if remuxing is complete
         let readiness = self
             .session_manager
@@ -108,30 +118,50 @@ impl StreamingStrategy for RemuxStreamStrategy {
                     .get_output_path(handle.info_hash)
                     .await?;
 
-                // Read the requested range from the remuxed file
-                let file_data = tokio::fs::read(&output_path).await.map_err(|e| {
-                    StrategyError::RemuxingFailed {
-                        reason: format!("Failed to read remuxed file: {e}"),
-                    }
-                })?;
+                // For progressive streaming, check if we're requesting beyond available data
+                let file_size = tokio::fs::metadata(&output_path)
+                    .await
+                    .map_err(|e| StrategyError::RemuxingFailed {
+                        reason: format!("Failed to get file metadata: {e}"),
+                    })?
+                    .len();
 
-                let start = range.start as usize;
-                let end = range.end.min(file_data.len() as u64) as usize;
-
-                if start >= file_data.len() {
+                // If request is beyond available data, return what we have
+                let actual_end = range.end.min(file_size);
+                if range.start >= file_size {
                     return Err(StrategyError::InvalidRange {
                         range: range.clone(),
                     });
                 }
 
-                let data = file_data[start..end].to_vec();
+                // Read only the requested range, not the entire file
+                let mut file = tokio::fs::File::open(&output_path).await.map_err(|e| {
+                    StrategyError::RemuxingFailed {
+                        reason: format!("Failed to open remuxed file: {e}"),
+                    }
+                })?;
+
+                use tokio::io::{AsyncReadExt, AsyncSeekExt};
+                file.seek(std::io::SeekFrom::Start(range.start))
+                    .await
+                    .map_err(|e| StrategyError::RemuxingFailed {
+                        reason: format!("Failed to seek in remuxed file: {e}"),
+                    })?;
+
+                let read_size = (actual_end - range.start) as usize;
+                let mut file_data = vec![0u8; read_size];
+                file.read_exact(&mut file_data).await.map_err(|e| {
+                    StrategyError::RemuxingFailed {
+                        reason: format!("Failed to read remuxed file range: {e}"),
+                    }
+                })?;
 
                 Ok(StreamData {
-                    data,
+                    data: file_data,
                     content_type: "video/mp4".to_string(),
-                    total_size: Some(file_data.len() as u64),
+                    total_size: Some(file_size),
                     range_start: range.start,
-                    range_end: end as u64,
+                    range_end: actual_end,
                 })
             }
             StreamReadiness::Processing => Err(StrategyError::StreamingNotReady {
