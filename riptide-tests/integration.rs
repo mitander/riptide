@@ -15,8 +15,8 @@ mod engine_integration;
 mod mp4_validation;
 #[path = "integration/peer_communication.rs"]
 mod peer_communication;
-// #[path = "integration/remux_pipeline.rs"]
-// mod remux_pipeline;  // TODO: Requires complete API refactoring after streaming architecture changes
+#[path = "integration/remux_pipeline.rs"]
+mod remux_pipeline;
 #[path = "integration/sim_streaming_integration.rs"]
 mod sim_streaming_integration;
 #[path = "integration/streaming_integration.rs"]
