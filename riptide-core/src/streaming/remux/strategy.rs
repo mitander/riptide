@@ -6,7 +6,8 @@ use async_trait::async_trait;
 
 use super::session_manager::RemuxSessionManager;
 use super::types::{StreamData, StreamHandle, StreamReadiness, StreamingStatus};
-use crate::streaming::{ContainerFormat, FileAssembler, StrategyError, StreamingResult};
+use crate::storage::DataSource;
+use crate::streaming::{ContainerFormat, StrategyError, StreamingResult};
 use crate::torrent::InfoHash;
 
 /// Streaming strategy for formats that require remuxing to MP4
@@ -20,10 +21,10 @@ impl RemuxStreamStrategy {
         Self { session_manager }
     }
 
-    /// Create a new remux streaming strategy with file assembler
-    pub fn with_file_assembler(file_assembler: Arc<dyn FileAssembler>) -> Self {
+    /// Create a new remux streaming strategy with data source
+    pub fn with_data_source(data_source: Arc<dyn DataSource>) -> Self {
         let config = super::types::RemuxConfig::default();
-        let session_manager = RemuxSessionManager::new(config, file_assembler);
+        let session_manager = RemuxSessionManager::new(config, data_source);
         Self::new(session_manager)
     }
 
@@ -163,13 +164,13 @@ impl StreamingStrategy for RemuxStreamStrategy {
 
 /// Direct streaming strategy for formats that don't need remuxing
 pub struct DirectStreamStrategy {
-    file_assembler: Arc<dyn FileAssembler>,
+    data_source: Arc<dyn DataSource>,
 }
 
 impl DirectStreamStrategy {
     /// Create a new direct streaming strategy
-    pub fn new(file_assembler: Arc<dyn FileAssembler>) -> Self {
-        Self { file_assembler }
+    pub fn new(data_source: Arc<dyn DataSource>) -> Self {
+        Self { data_source }
     }
 }
 
@@ -198,18 +199,23 @@ impl StreamingStrategy for DirectStreamStrategy {
         range: std::ops::Range<u64>,
     ) -> StreamingResult<StreamData> {
         // Check if the range is available
-        if !self
-            .file_assembler
-            .is_range_available(handle.info_hash, range.clone())
-        {
+        let availability = self
+            .data_source
+            .check_range_availability(handle.info_hash, range.clone())
+            .await
+            .map_err(|e| StrategyError::StreamingNotReady {
+                reason: format!("Failed to check range availability: {e}"),
+            })?;
+
+        if !availability.available {
             return Err(StrategyError::StreamingNotReady {
                 reason: "Requested range not available".to_string(),
             });
         }
 
-        // Read the data directly from file assembler
+        // Read the data directly from data source
         let data = self
-            .file_assembler
+            .data_source
             .read_range(handle.info_hash, range.clone())
             .await
             .map_err(|e| StrategyError::StreamingNotReady {
@@ -217,7 +223,7 @@ impl StreamingStrategy for DirectStreamStrategy {
             })?;
 
         let file_size = self
-            .file_assembler
+            .data_source
             .file_size(handle.info_hash)
             .await
             .map_err(|e| StrategyError::StreamingNotReady {
@@ -244,10 +250,15 @@ impl StreamingStrategy for DirectStreamStrategy {
         handle: &StreamHandle,
         range: std::ops::Range<u64>,
     ) -> StreamingResult<StreamReadiness> {
-        if self
-            .file_assembler
-            .is_range_available(handle.info_hash, range)
-        {
+        let availability = self
+            .data_source
+            .check_range_availability(handle.info_hash, range)
+            .await
+            .map_err(|e| StrategyError::StreamingNotReady {
+                reason: format!("Failed to check range availability: {e}"),
+            })?;
+
+        if availability.available {
             Ok(StreamReadiness::Ready)
         } else {
             Ok(StreamReadiness::WaitingForData)
@@ -271,14 +282,14 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::streaming::FileAssemblerError;
+    use crate::storage::{DataError, DataResult, RangeAvailability};
 
-    struct MockFileAssembler {
+    struct MockDataSource {
         files: HashMap<InfoHash, Vec<u8>>,
         available_ranges: HashMap<InfoHash, Vec<std::ops::Range<u64>>>,
     }
 
-    impl MockFileAssembler {
+    impl MockDataSource {
         fn new() -> Self {
             Self {
                 files: HashMap::new(),
@@ -299,24 +310,22 @@ mod tests {
     }
 
     #[async_trait]
-    impl FileAssembler for MockFileAssembler {
+    impl DataSource for MockDataSource {
         async fn read_range(
             &self,
             info_hash: InfoHash,
             range: std::ops::Range<u64>,
-        ) -> Result<Vec<u8>, FileAssemblerError> {
-            let data =
-                self.files
-                    .get(&info_hash)
-                    .ok_or_else(|| FileAssemblerError::CacheError {
-                        reason: "File not found".to_string(),
-                    })?;
+        ) -> DataResult<Vec<u8>> {
+            let data = self
+                .files
+                .get(&info_hash)
+                .ok_or_else(|| DataError::FileNotFound { info_hash })?;
 
             let start = range.start as usize;
             let end = range.end.min(data.len() as u64) as usize;
 
             if start >= data.len() {
-                return Err(FileAssemblerError::InsufficientData {
+                return Err(DataError::InsufficientData {
                     start: range.start,
                     end: range.end,
                     missing_count: 1,
@@ -326,30 +335,46 @@ mod tests {
             Ok(data[start..end].to_vec())
         }
 
-        async fn file_size(&self, info_hash: InfoHash) -> Result<u64, FileAssemblerError> {
+        async fn file_size(&self, info_hash: InfoHash) -> DataResult<u64> {
             self.files
                 .get(&info_hash)
                 .map(|data| data.len() as u64)
-                .ok_or_else(|| FileAssemblerError::CacheError {
-                    reason: "File not found".to_string(),
-                })
+                .ok_or_else(|| DataError::FileNotFound { info_hash })
         }
 
-        fn is_range_available(&self, info_hash: InfoHash, range: std::ops::Range<u64>) -> bool {
-            if let Some(available) = self.available_ranges.get(&info_hash) {
-                available
+        async fn check_range_availability(
+            &self,
+            info_hash: InfoHash,
+            range: std::ops::Range<u64>,
+        ) -> DataResult<RangeAvailability> {
+            let available = if let Some(available_ranges) = self.available_ranges.get(&info_hash) {
+                available_ranges
                     .iter()
                     .any(|r| r.start <= range.start && r.end >= range.end)
             } else {
                 false
-            }
+            };
+
+            Ok(RangeAvailability {
+                available,
+                missing_pieces: vec![],
+                cache_hit: false,
+            })
+        }
+
+        fn source_type(&self) -> &'static str {
+            "mock"
+        }
+
+        async fn can_handle(&self, info_hash: InfoHash) -> bool {
+            self.files.contains_key(&info_hash)
         }
     }
 
     #[tokio::test]
     async fn test_direct_strategy_can_handle() {
-        let file_assembler = Arc::new(MockFileAssembler::new());
-        let strategy = DirectStreamStrategy::new(file_assembler);
+        let data_source = Arc::new(MockDataSource::new());
+        let strategy = DirectStreamStrategy::new(data_source);
 
         assert!(strategy.can_handle(ContainerFormat::Mp4));
         assert!(strategy.can_handle(ContainerFormat::WebM));
@@ -359,8 +384,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_remux_strategy_can_handle() {
-        let file_assembler = Arc::new(MockFileAssembler::new());
-        let strategy = RemuxStreamStrategy::with_file_assembler(file_assembler);
+        let data_source = Arc::new(MockDataSource::new());
+        let strategy = RemuxStreamStrategy::with_data_source(data_source);
 
         assert!(!strategy.can_handle(ContainerFormat::Mp4));
         assert!(!strategy.can_handle(ContainerFormat::WebM));
@@ -370,14 +395,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_direct_streaming() {
-        let mut file_assembler = MockFileAssembler::new();
+        let mut data_source = MockDataSource::new();
         let info_hash = InfoHash::new([1u8; 20]);
         let test_data = b"test mp4 data".to_vec();
 
-        file_assembler.add_file(info_hash, test_data.clone());
-        file_assembler.make_range_available(info_hash, 0..test_data.len() as u64);
+        data_source.add_file(info_hash, test_data.clone());
+        data_source.make_range_available(info_hash, 0..test_data.len() as u64);
 
-        let strategy = DirectStreamStrategy::new(Arc::new(file_assembler));
+        let strategy = DirectStreamStrategy::new(Arc::new(data_source));
 
         let handle = strategy
             .prepare_stream(info_hash, ContainerFormat::Mp4)

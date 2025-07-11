@@ -4,16 +4,13 @@
 //! peer management system for streaming performance.
 
 pub mod ffmpeg;
-pub mod file_assembler;
-pub mod file_reconstruction;
+
 pub mod mp4_validation;
 pub mod performance_tests;
-pub mod piece_reader;
 
+pub mod piece_reader;
 pub mod range_handler;
 pub mod remux;
-
-pub mod storage_cache;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,8 +20,6 @@ pub use ffmpeg::{
     FfmpegProcessor, ProductionFfmpegProcessor, RemuxingOptions, RemuxingResult,
     SimulationFfmpegProcessor,
 };
-pub use file_assembler::{CacheStats, FileAssembler, FileAssemblerError, PieceFileAssembler};
-pub use file_reconstruction::{FileReconstructor, create_file_reconstructor_from_trait_object};
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
@@ -37,11 +32,9 @@ pub use remux::{
     RemuxState, RemuxStreamStrategy, StrategyError, StreamData, StreamHandle, StreamReadiness,
     StreamingError, StreamingResult, StreamingStatus, StreamingStrategy,
 };
-pub use storage_cache::{
-    CacheEntry, CacheKey, CacheStatistics, StorageCache, StorageCacheConfig, StorageCacheError,
-};
 
 use crate::config::RiptideConfig;
+use crate::storage::DataSource;
 use crate::torrent::TorrentEngineHandle;
 
 /// HTTP streaming response with headers and status
@@ -68,7 +61,7 @@ pub struct HttpStreamingService {
     strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>>,
     session_manager: Arc<RemuxSessionManager>,
     torrent_engine: TorrentEngineHandle,
-    file_assembler: Arc<dyn FileAssembler>,
+    data_source: Arc<dyn DataSource>,
 }
 
 impl Clone for HttpStreamingService {
@@ -77,7 +70,7 @@ impl Clone for HttpStreamingService {
             strategies: self.strategies.clone(),
             session_manager: self.session_manager.clone(),
             torrent_engine: self.torrent_engine.clone(),
-            file_assembler: self.file_assembler.clone(),
+            data_source: self.data_source.clone(),
         }
     }
 }
@@ -86,22 +79,22 @@ impl HttpStreamingService {
     /// Create new streaming service with default strategies
     pub fn new(
         torrent_engine: TorrentEngineHandle,
-        file_assembler: Arc<dyn FileAssembler>,
+        data_source: Arc<dyn DataSource>,
         _config: RiptideConfig,
     ) -> Self {
         let session_manager =
-            RemuxSessionManager::new(Default::default(), Arc::clone(&file_assembler));
+            RemuxSessionManager::new(Default::default(), Arc::clone(&data_source));
 
         let mut strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>> = HashMap::new();
 
         // Direct streaming strategies
         strategies.insert(
             ContainerFormat::Mp4,
-            Arc::new(DirectStreamStrategy::new(Arc::clone(&file_assembler))),
+            Arc::new(DirectStreamStrategy::new(Arc::clone(&data_source))),
         );
         strategies.insert(
             ContainerFormat::WebM,
-            Arc::new(DirectStreamStrategy::new(Arc::clone(&file_assembler))),
+            Arc::new(DirectStreamStrategy::new(Arc::clone(&data_source))),
         );
 
         // Remux streaming strategies
@@ -114,7 +107,7 @@ impl HttpStreamingService {
             strategies,
             session_manager: Arc::new(session_manager),
             torrent_engine,
-            file_assembler,
+            data_source,
         }
     }
 
@@ -173,7 +166,7 @@ impl HttpStreamingService {
         // Read first few bytes to detect format
         const HEADER_SIZE: u64 = 32;
         let header_data = self
-            .file_assembler
+            .data_source
             .read_range(info_hash, 0..HEADER_SIZE)
             .await
             .map_err(|_| StrategyError::FormatDetectionFailed)?;
@@ -254,8 +247,8 @@ impl HttpStreamingService {
         let total_size = match strategy.serve_range(&handle, 0..1).await {
             Ok(sample) => sample.total_size.unwrap_or(0),
             Err(_) => {
-                // If we can't get a sample, try to get size from file assembler
-                self.file_assembler.file_size(info_hash).await.unwrap_or(0)
+                // If we can't get a sample, try to get size from data source
+                self.data_source.file_size(info_hash).await.unwrap_or(0)
             }
         };
 

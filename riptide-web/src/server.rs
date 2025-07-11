@@ -10,7 +10,8 @@ use axum::Router;
 use axum::extract::State;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
-use riptide_core::streaming::{FfmpegProcessor, PieceFileAssembler};
+use riptide_core::storage::PieceDataSource;
+use riptide_core::streaming::FfmpegProcessor;
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
 use riptide_core::{FileLibraryManager, HttpStreamingService, RuntimeMode};
 use riptide_search::MediaSearchService;
@@ -120,11 +121,11 @@ pub async fn run_server(
 
     // Create streaming service components
     let piece_store = components.piece_store().unwrap();
-    let file_assembler = Arc::new(PieceFileAssembler::new(piece_store.clone(), Some(100)));
+    let data_source = Arc::new(PieceDataSource::new(piece_store.clone(), Some(100)));
 
     let streaming_service = Arc::new(HttpStreamingService::new(
         components.engine().clone(),
-        file_assembler,
+        data_source,
         Default::default(),
     ));
 

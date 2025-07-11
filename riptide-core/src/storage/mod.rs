@@ -3,6 +3,7 @@
 //! Defines storage interface for piece data with file-based implementation.
 //! Handles piece persistence, verification, and torrent completion tracking.
 
+pub mod data_source;
 pub mod file_library;
 pub mod file_storage;
 #[cfg(test)]
@@ -11,9 +12,18 @@ pub mod test_fixtures;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+pub use data_source::{
+    CacheEntry, CacheKey, CacheStatistics, CacheStats as DataSourceCacheStats, CacheableDataSource,
+    DataError, DataResult, DataSource, LocalDataSource, PieceDataSource, RangeAvailability,
+    RangeKey, StorageCache, StorageCacheConfig, StorageCacheError,
+    create_data_source_from_trait_object, create_local_data_source, validate_range,
+    validate_range_bounds,
+};
 pub use file_library::{FileLibraryManager, LibraryFile};
 pub use file_storage::FileStorage;
 
+// Range calculator is now part of data_source module
+// Import is handled through data_source re-exports
 use crate::torrent::{InfoHash, PieceIndex};
 
 /// Storage operations for torrent piece data.

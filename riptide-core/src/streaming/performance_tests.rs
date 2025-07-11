@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::streaming::{FileAssembler, FileAssemblerError};
+use crate::storage::{DataError, DataSource};
 use crate::torrent::{InfoHash, TorrentPiece};
 
 /// Performance test results for streaming components
@@ -48,16 +48,16 @@ impl Default for LoadTestConfig {
 }
 
 /// Performance testing suite for streaming components
-pub struct StreamingPerformanceTester<F: FileAssembler> {
-    file_assembler: Arc<F>,
+pub struct StreamingPerformanceTester<F: DataSource> {
+    data_source: Arc<F>,
     config: LoadTestConfig,
 }
 
-impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
+impl<F: DataSource + 'static> StreamingPerformanceTester<F> {
     /// Create new performance tester
-    pub fn new(file_assembler: Arc<F>) -> Self {
+    pub fn new(data_source: Arc<F>) -> Self {
         Self {
-            file_assembler,
+            data_source,
             config: LoadTestConfig::default(),
         }
     }
@@ -72,13 +72,13 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
     pub async fn test_4k_streaming_throughput(
         &self,
         info_hash: InfoHash,
-    ) -> Result<StreamingPerformanceResults, FileAssemblerError> {
+    ) -> Result<StreamingPerformanceResults, DataError> {
         let test_start = Instant::now();
         let mut total_bytes = 0u64;
         let mut seek_latencies = Vec::new();
 
         // Get file size to avoid reading past end
-        let file_size = self.file_assembler.file_size(info_hash).await?;
+        let file_size = self.data_source.file_size(info_hash).await?;
 
         tracing::info!(
             "Starting 4K streaming throughput test: target 25+ Mbps for {} seconds",
@@ -99,7 +99,7 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
             }
 
             let data = self
-                .file_assembler
+                .data_source
                 .read_range(info_hash, position..position + chunk_size)
                 .await?;
 
@@ -150,7 +150,7 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
         &self,
         info_hash: InfoHash,
         file_size: u64,
-    ) -> Result<StreamingPerformanceResults, FileAssemblerError> {
+    ) -> Result<StreamingPerformanceResults, DataError> {
         let mut seek_latencies = Vec::new();
 
         tracing::info!(
@@ -166,7 +166,7 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
 
             // Simulate seeking by reading from the position
             let _data = self
-                .file_assembler
+                .data_source
                 .read_range(info_hash, seek_position..seek_position + 1024) // Read 1KB
                 .await?;
 
@@ -198,7 +198,7 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
     pub async fn test_concurrent_streams(
         &self,
         info_hash: InfoHash,
-    ) -> Result<StreamingPerformanceResults, FileAssemblerError> {
+    ) -> Result<StreamingPerformanceResults, DataError> {
         tracing::info!(
             "Testing concurrent streams: {} simultaneous streams",
             self.config.concurrent_streams
@@ -209,7 +209,7 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
 
         // Spawn concurrent streaming tasks
         for stream_id in 0..self.config.concurrent_streams {
-            let assembler = Arc::clone(&self.file_assembler);
+            let data_source = Arc::clone(&self.data_source);
             let chunk_size = self.config.chunk_size_bytes;
             let duration = self.config.duration_seconds;
 
@@ -220,7 +220,7 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
 
                 while start_time.elapsed().as_secs() < duration / 4 {
                     // Shorter test per stream
-                    if let Ok(data) = assembler
+                    if let Ok(data) = data_source
                         .read_range(info_hash, position..position + chunk_size as u64)
                         .await
                     {
@@ -268,15 +268,15 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
     pub async fn test_startup_time(
         &self,
         info_hash: InfoHash,
-    ) -> Result<StreamingPerformanceResults, FileAssemblerError> {
+    ) -> Result<StreamingPerformanceResults, DataError> {
         tracing::info!("Testing startup time: target <2s to first bytes");
 
         let startup_start = Instant::now();
 
         // Simulate cold start - request first chunk
         let _first_chunk = self
-            .file_assembler
-            .read_range(info_hash, 0..1024) // First 1KB
+            .data_source
+            .read_range(info_hash, 0..self.config.chunk_size_bytes as u64)
             .await?;
 
         let startup_time = startup_start.elapsed().as_millis() as u64;
@@ -300,7 +300,7 @@ impl<F: FileAssembler + 'static> StreamingPerformanceTester<F> {
         &self,
         info_hash: InfoHash,
         file_size: u64,
-    ) -> Result<StreamingPerformanceResults, FileAssemblerError> {
+    ) -> Result<StreamingPerformanceResults, DataError> {
         tracing::info!("Running complete streaming performance test suite");
 
         // Run all tests
@@ -415,7 +415,7 @@ mod tests {
     use async_trait::async_trait;
 
     use super::*;
-    use crate::streaming::PieceFileAssembler;
+    use crate::storage::PieceDataSource;
     use crate::torrent::{PieceIndex, PieceStore, TorrentError};
 
     // Mock piece store for testing
@@ -449,7 +449,7 @@ mod tests {
     #[tokio::test]
     async fn test_4k_streaming_performance_requirement() {
         let storage = Arc::new(MockPieceStore::new());
-        let assembler = Arc::new(PieceFileAssembler::new(storage, None));
+        let assembler = Arc::new(PieceDataSource::new(storage, Some(1024)));
 
         let (info_hash, _pieces, _file_size) = create_4k_test_torrent();
 
@@ -471,7 +471,7 @@ mod tests {
     #[tokio::test]
     async fn test_seeking_latency_requirement() {
         let storage = Arc::new(MockPieceStore::new());
-        let assembler = Arc::new(PieceFileAssembler::new(storage, None));
+        let assembler = Arc::new(PieceDataSource::new(storage, Some(1024)));
 
         let (info_hash, _pieces, file_size) = create_4k_test_torrent();
 
@@ -492,7 +492,7 @@ mod tests {
     #[tokio::test]
     async fn test_startup_time_requirement() {
         let storage = Arc::new(MockPieceStore::new());
-        let assembler = Arc::new(PieceFileAssembler::new(storage, None));
+        let assembler = Arc::new(PieceDataSource::new(storage, Some(1024)));
 
         let (info_hash, _pieces, _file_size) = create_4k_test_torrent();
 

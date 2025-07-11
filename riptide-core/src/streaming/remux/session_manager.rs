@@ -12,7 +12,8 @@ use tracing::{error, info, warn};
 
 use super::state::{RemuxError, RemuxState};
 use super::types::{RemuxConfig, RemuxSession, StreamHandle, StreamReadiness, StreamingStatus};
-use crate::streaming::{FileAssembler, StrategyError, StreamingResult};
+use crate::storage::DataSource;
+use crate::streaming::{StrategyError, StreamingResult};
 use crate::torrent::InfoHash;
 
 /// Manages remuxing sessions with state machine and concurrency control
@@ -21,12 +22,12 @@ pub struct RemuxSessionManager {
     semaphore: Arc<Semaphore>,
     config: RemuxConfig,
     session_counter: AtomicU64,
-    file_assembler: Arc<dyn FileAssembler>,
+    data_source: Arc<dyn DataSource>,
 }
 
 impl RemuxSessionManager {
     /// Create a new remux session manager
-    pub fn new(config: RemuxConfig, file_assembler: Arc<dyn FileAssembler>) -> Self {
+    pub fn new(config: RemuxConfig, data_source: Arc<dyn DataSource>) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_sessions));
 
         // Ensure cache directory exists
@@ -39,7 +40,7 @@ impl RemuxSessionManager {
             semaphore,
             config,
             session_counter: AtomicU64::new(1),
-            file_assembler,
+            data_source,
         }
     }
 
@@ -314,24 +315,28 @@ impl RemuxSessionManager {
 
     /// Check if we have sufficient data to start remuxing
     async fn has_required_data(&self, info_hash: InfoHash) -> StreamingResult<bool> {
-        let file_size = self
-            .file_assembler
-            .file_size(info_hash)
-            .await
-            .map_err(|e| StrategyError::RemuxingFailed {
+        let file_size = self.data_source.file_size(info_hash).await.map_err(|e| {
+            StrategyError::RemuxingFailed {
                 reason: format!("Failed to get file size: {e}"),
-            })?;
+            }
+        })?;
 
         // Check if we have head data
         let head_available = self
-            .file_assembler
-            .is_range_available(info_hash, 0..self.config.min_head_size.min(file_size));
+            .data_source
+            .check_range_availability(info_hash, 0..self.config.min_head_size.min(file_size))
+            .await
+            .map(|availability| availability.available)
+            .unwrap_or(false);
 
         // Check if we have tail data
         let tail_start = file_size.saturating_sub(self.config.min_tail_size);
         let tail_available = self
-            .file_assembler
-            .is_range_available(info_hash, tail_start..file_size);
+            .data_source
+            .check_range_availability(info_hash, tail_start..file_size)
+            .await
+            .map(|availability| availability.available)
+            .unwrap_or(false);
 
         Ok(head_available && tail_available)
     }
@@ -373,7 +378,7 @@ impl Clone for RemuxSessionManager {
             semaphore: Arc::clone(&self.semaphore),
             config: self.config.clone(),
             session_counter: AtomicU64::new(self.session_counter.load(Ordering::SeqCst)),
-            file_assembler: Arc::clone(&self.file_assembler),
+            data_source: Arc::clone(&self.data_source),
         }
     }
 }
@@ -385,14 +390,14 @@ mod tests {
     use async_trait::async_trait;
 
     use super::*;
-    use crate::streaming::FileAssemblerError;
+    use crate::storage::{DataError, DataResult, RangeAvailability};
 
-    struct MockFileAssembler {
+    struct MockDataSource {
         files: StdHashMap<InfoHash, u64>,
         available_ranges: StdHashMap<InfoHash, Vec<std::ops::Range<u64>>>,
     }
 
-    impl MockFileAssembler {
+    impl MockDataSource {
         fn new() -> Self {
             Self {
                 files: StdHashMap::new(),
@@ -413,43 +418,59 @@ mod tests {
     }
 
     #[async_trait]
-    impl FileAssembler for MockFileAssembler {
+    impl DataSource for MockDataSource {
         async fn read_range(
             &self,
             _info_hash: InfoHash,
             _range: std::ops::Range<u64>,
-        ) -> Result<Vec<u8>, FileAssemblerError> {
+        ) -> DataResult<Vec<u8>> {
             Ok(vec![0u8; 1024])
         }
 
-        async fn file_size(&self, info_hash: InfoHash) -> Result<u64, FileAssemblerError> {
+        async fn file_size(&self, info_hash: InfoHash) -> DataResult<u64> {
             self.files
                 .get(&info_hash)
                 .copied()
-                .ok_or_else(|| FileAssemblerError::CacheError {
-                    reason: "File not found".to_string(),
-                })
+                .ok_or_else(|| DataError::FileNotFound { info_hash })
         }
 
-        fn is_range_available(&self, info_hash: InfoHash, range: std::ops::Range<u64>) -> bool {
-            if let Some(available) = self.available_ranges.get(&info_hash) {
-                available
+        async fn check_range_availability(
+            &self,
+            info_hash: InfoHash,
+            range: std::ops::Range<u64>,
+        ) -> DataResult<RangeAvailability> {
+            let available = if let Some(available_ranges) = self.available_ranges.get(&info_hash) {
+                available_ranges
                     .iter()
                     .any(|r| r.start <= range.start && r.end >= range.end)
             } else {
                 false
-            }
+            };
+
+            Ok(RangeAvailability {
+                available,
+                missing_pieces: vec![],
+                cache_hit: false,
+            })
+        }
+
+        fn source_type(&self) -> &'static str {
+            "mock"
+        }
+
+        async fn can_handle(&self, info_hash: InfoHash) -> bool {
+            self.files.contains_key(&info_hash)
         }
     }
 
     #[tokio::test]
     async fn test_session_creation() {
         let config = RemuxConfig::default();
-        let mut file_assembler = MockFileAssembler::new();
+        let mut data_source = MockDataSource::new();
         let info_hash = InfoHash::new([1u8; 20]);
-        file_assembler.add_file(info_hash, 10 * 1024 * 1024);
+        data_source.add_file(info_hash, 10 * 1024 * 1024);
 
-        let manager = RemuxSessionManager::new(config, Arc::new(file_assembler));
+        let manager = RemuxSessionManager::new(config, Arc::new(data_source));
 
         let handle = manager.get_or_create_session(info_hash).await.unwrap();
         assert_eq!(handle.info_hash, info_hash);
@@ -459,11 +480,11 @@ mod tests {
     #[tokio::test]
     async fn test_readiness_without_data() {
         let config = RemuxConfig::default();
-        let mut file_assembler = MockFileAssembler::new();
+        let mut data_source = MockDataSource::new();
         let info_hash = InfoHash::new([1u8; 20]);
-        file_assembler.add_file(info_hash, 10 * 1024 * 1024);
+        data_source.add_file(info_hash, 10 * 1024 * 1024);
 
-        let manager = RemuxSessionManager::new(config, Arc::new(file_assembler));
+        let manager = RemuxSessionManager::new(config, Arc::new(data_source));
         let _handle = manager.get_or_create_session(info_hash).await.unwrap();
 
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -473,17 +494,16 @@ mod tests {
     #[tokio::test]
     async fn test_readiness_with_data() {
         let config = RemuxConfig::default();
-        let mut file_assembler = MockFileAssembler::new();
+        let mut data_source = MockDataSource::new();
         let info_hash = InfoHash::new([1u8; 20]);
         let file_size = 10 * 1024 * 1024u64;
-        file_assembler.add_file(info_hash, file_size);
+        data_source.add_file(info_hash, file_size);
 
         // Make head and tail available
-        file_assembler.make_range_available(info_hash, 0..config.min_head_size);
-        file_assembler
-            .make_range_available(info_hash, (file_size - config.min_tail_size)..file_size);
+        data_source.make_range_available(info_hash, 0..config.min_head_size);
+        data_source.make_range_available(info_hash, (file_size - config.min_tail_size)..file_size);
 
-        let manager = RemuxSessionManager::new(config, Arc::new(file_assembler));
+        let manager = RemuxSessionManager::new(config, Arc::new(data_source));
         let _handle = manager.get_or_create_session(info_hash).await.unwrap();
 
         let readiness = manager.check_readiness(info_hash).await.unwrap();
