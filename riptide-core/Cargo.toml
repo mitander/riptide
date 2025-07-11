@@ -10,6 +10,7 @@ repository = "https://github.com/riptide-org/riptide"
 [features]
 default = []
 simulation = ["rand_chacha"]
+test-utils = []
 
 [dependencies]
 # Workspace dependencies

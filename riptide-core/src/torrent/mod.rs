@@ -47,7 +47,7 @@ pub use tracker::{
 };
 
 pub use crate::engine::{EngineStats, TorrentEngineHandle, TorrentSession, spawn_torrent_engine};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub use crate::engine::{MockPeerManager, MockTrackerManager};
 use crate::storage::StorageError;
 

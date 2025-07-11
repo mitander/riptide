@@ -1,13 +1,15 @@
 //! Integration tests proving riptide-core streaming works with simulation data
 
+use std::sync::Arc;
+
+use riptide_core::streaming::PieceBasedStreamReader;
+use riptide_core::torrent::InfoHash;
+use riptide_core::torrent::creation::TorrentPiece;
+use riptide_sim::piece_store::InMemoryPieceStore;
+
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use riptide_core::streaming::PieceBasedStreamReader;
-    use riptide_core::torrent::{InfoHash, TorrentPiece};
-
-    use crate::InMemoryPieceStore;
+    use super::*;
 
     /// Prove PieceBasedStreamReader works identically with simulation and production
     #[tokio::test]

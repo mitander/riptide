@@ -10,8 +10,7 @@ use bytes::Bytes;
 use tokio::sync::RwLock;
 
 use crate::torrent::tracker::{
-    AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse,
-    TrackerManagement,
+    AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, TrackerManagement,
 };
 use crate::torrent::{
     InfoHash, PeerId, PeerInfo, PeerManager, PeerMessage, PeerMessageEvent, TorrentError,
@@ -306,6 +305,7 @@ impl TrackerManagement for MockTrackerManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::torrent::tracker::AnnounceEvent;
 
     #[tokio::test]
     async fn test_mock_peer_manager_basic_operations() {

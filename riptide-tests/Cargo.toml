@@ -9,7 +9,7 @@ description = "Integration and end-to-end tests for Riptide"
 
 [dependencies]
 # Workspace crates
-riptide-core = { path = "../riptide-core" }
+riptide-core = { path = "../riptide-core", features = ["test-utils"] }
 riptide-web = { path = "../riptide-web" }
 riptide-search = { path = "../riptide-search" }
 riptide-sim = { path = "../riptide-sim" }

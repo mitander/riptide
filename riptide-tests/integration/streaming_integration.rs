@@ -1,32 +1,35 @@
 //! Integration tests for HTTP range handler integration with adaptive piece picker.
 
+use riptide_core::config::RiptideConfig;
+use riptide_core::engine::{MockPeerManager, MockTrackerManager, spawn_torrent_engine};
+use riptide_core::torrent::InfoHash;
+use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
+use sha1::{Digest, Sha1};
+
+/// Generates proper SHA1 hashes for test torrent metadata.
+fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {
+    (0..piece_count)
+        .map(|i| {
+            let mut hasher = Sha1::new();
+            hasher.update(vec![i as u8; piece_size as usize]);
+            let result = hasher.finalize();
+            let mut hash = [0u8; 20];
+            hash.copy_from_slice(&result);
+            hash
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use riptide_core::config::RiptideConfig;
-    use riptide_core::engine::spawn_torrent_engine;
-    use riptide_core::torrent::InfoHash;
-    use sha1::{Digest, Sha1};
-
-    /// Generates proper SHA1 hashes for test torrent metadata.
-    fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {
-        (0..piece_count)
-            .map(|i| {
-                let mut hasher = Sha1::new();
-                hasher.update(vec![i as u8; piece_size as usize]);
-                let result = hasher.finalize();
-                let mut hash = [0u8; 20];
-                hash.copy_from_slice(&result);
-                hash
-            })
-            .collect()
-    }
+    use super::*;
 
     #[tokio::test]
     async fn test_range_request_updates_piece_picker_position() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
         tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
@@ -37,13 +40,13 @@ mod tests {
         let total_size = piece_count as u64 * piece_size as u64;
         let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-        let metadata = riptide_core::torrent::parsing::types::TorrentMetadata {
+        let metadata = TorrentMetadata {
             info_hash: InfoHash::new([99u8; 20]),
             name: "adaptive_movie.mp4".to_string(),
             total_length: total_size,
             piece_length: piece_size,
             piece_hashes,
-            files: vec![riptide_core::torrent::parsing::types::TorrentFile {
+            files: vec![TorrentFile {
                 path: vec!["adaptive_movie.mp4".to_string()],
                 length: total_size,
             }],
@@ -110,9 +113,9 @@ mod tests {
     #[tokio::test]
     async fn test_adaptive_buffer_responds_to_playback_patterns() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
         tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
@@ -123,13 +126,13 @@ mod tests {
         let total_size = piece_count as u64 * piece_size as u64;
         let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-        let metadata = crate::torrent::parsing::types::TorrentMetadata {
+        let metadata = TorrentMetadata {
             info_hash: InfoHash::new([123u8; 20]),
             name: "adaptive_streaming_test.mkv".to_string(),
             total_length: total_size,
             piece_length: piece_size,
             piece_hashes,
-            files: vec![crate::torrent::parsing::types::TorrentFile {
+            files: vec![TorrentFile {
                 path: vec!["adaptive_streaming_test.mkv".to_string()],
                 length: total_size,
             }],
@@ -207,9 +210,9 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_range_requests_different_torrents() {
         let config = RiptideConfig::default();
-        let mut peer_manager = crate::torrent::MockPeerManager::new();
+        let mut peer_manager = MockPeerManager::new();
         peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = crate::torrent::MockTrackerManager::new();
+        let mut tracker_manager = MockTrackerManager::new();
         tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
         let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
@@ -229,13 +232,13 @@ mod tests {
             let total_size = piece_count as u64 * piece_size as u64;
             let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-            let metadata = riptide_core::torrent::parsing::types::TorrentMetadata {
+            let metadata = TorrentMetadata {
                 info_hash: InfoHash::new(hash_bytes),
                 name: name.to_string(),
                 total_length: total_size,
                 piece_length: piece_size,
                 piece_hashes: piece_hashes.clone(),
-                files: vec![riptide_core::torrent::parsing::types::TorrentFile {
+                files: vec![TorrentFile {
                     path: vec![name.to_string()],
                     length: total_size,
                 }],

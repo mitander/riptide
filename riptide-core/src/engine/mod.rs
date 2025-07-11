@@ -41,12 +41,12 @@ mod commands;
 mod core;
 mod handle;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 mod test_mocks;
 
 // Re-export public API
 pub use actor::spawn_torrent_engine;
 pub use commands::{EngineStats, TorrentSession, TorrentSessionParams};
 pub use handle::TorrentEngineHandle;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub use test_mocks::{MockPeerManager, MockTrackerManager};

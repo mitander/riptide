@@ -17,10 +17,10 @@ mod mp4_validation;
 // mod peer_communication;
 // #[path = "integration/remux_pipeline.rs"]
 // mod remux_pipeline;
-// #[path = "integration/sim_streaming_integration.rs"]
-// mod sim_streaming_integration;
-// #[path = "integration/streaming_integration.rs"]
-// mod streaming_integration;
+#[path = "integration/sim_streaming_integration.rs"]
+mod sim_streaming_integration;
+#[path = "integration/streaming_integration.rs"]
+mod streaming_integration;
 // #[path = "integration/style_enforcement.rs"]
 // mod style_enforcement;
 // #[path = "integration/torrent_integration.rs"]
