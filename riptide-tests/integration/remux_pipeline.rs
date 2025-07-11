@@ -12,21 +12,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use riptide_core::streaming::{
-    ContainerFormat, FileAssembler, FileAssemblerError, RemuxStreamingConfig, StrategyError,
-    StreamingStrategy, create_remux_streaming_strategy_with_config,
+    ContainerFormat, StrategyError, RemuxStreamStrategy, DirectStreamStrategy,
 };
+use riptide_core::storage::data_source::{DataSource, DataError, DataResult, RangeAvailability};
 use riptide_core::torrent::InfoHash;
 use tokio::sync::RwLock;
 
-/// Mock file assembler for testing unified streaming
+/// Mock data source for testing unified streaming
 #[derive(Debug)]
-struct MockFileAssembler {
+struct MockDataSource {
     available_ranges: RwLock<HashMap<InfoHash, Vec<Range<u64>>>>,
     file_sizes: HashMap<InfoHash, u64>,
     file_data: HashMap<InfoHash, Vec<u8>>,
 }
 
-impl MockFileAssembler {
+impl MockDataSource {
     fn new() -> Self {
         Self {
             available_ranges: RwLock::new(HashMap::new()),
@@ -57,23 +57,23 @@ impl MockFileAssembler {
 }
 
 #[async_trait::async_trait]
-impl FileAssembler for MockFileAssembler {
+impl DataSource for MockDataSource {
     async fn read_range(
         &self,
         info_hash: InfoHash,
         range: Range<u64>,
-    ) -> Result<Vec<u8>, FileAssemblerError> {
+    ) -> DataResult<Vec<u8>> {
         let data =
             self.file_data
                 .get(&info_hash)
-                .ok_or_else(|| FileAssemblerError::InsufficientData {
+                .ok_or_else(|| DataError::InsufficientData {
                     start: 0,
                     end: 0,
                     missing_count: 1,
                 })?;
 
         if range.end > data.len() as u64 {
-            return Err(FileAssemblerError::RangeExceedsFile {
+            return Err(DataError::RangeExceedsFile {
                 start: range.start,
                 end: range.end,
                 file_size: data.len() as u64,
@@ -83,9 +83,9 @@ impl FileAssembler for MockFileAssembler {
         Ok(data[range.start as usize..range.end as usize].to_vec())
     }
 
-    async fn file_size(&self, info_hash: InfoHash) -> Result<u64, FileAssemblerError> {
+    async fn file_size(&self, info_hash: InfoHash) -> DataResult<u64> {
         self.file_sizes.get(&info_hash).copied().ok_or_else(|| {
-            FileAssemblerError::InsufficientData {
+            DataError::InsufficientData {
                 start: 0,
                 end: 0,
                 missing_count: 1,
@@ -93,15 +93,36 @@ impl FileAssembler for MockFileAssembler {
         })
     }
 
-    fn is_range_available(&self, info_hash: InfoHash, range: Range<u64>) -> bool {
-        if let Ok(ranges) = self.available_ranges.try_read() {
-            if let Some(available) = ranges.get(&info_hash) {
-                return available
-                    .iter()
-                    .any(|r| r.start <= range.start && r.end >= range.end);
-            }
+    async fn check_range_availability(
+        &self,
+        info_hash: InfoHash,
+        range: Range<u64>,
+    ) -> DataResult<RangeAvailability> {
+        let ranges = self.available_ranges.read().await;
+        if let Some(available) = ranges.get(&info_hash) {
+            let is_available = available
+                .iter()
+                .any(|r| r.start <= range.start && r.end >= range.end);
+            Ok(RangeAvailability {
+                available: is_available,
+                missing_pieces: if is_available { Vec::new() } else { vec![0] },
+                cache_hit: false,
+            })
+        } else {
+            Ok(RangeAvailability {
+                available: false,
+                missing_pieces: vec![0],
+                cache_hit: false,
+            })
         }
-        false
+    }
+
+    fn source_type(&self) -> &'static str {
+        "mock_data_source"
+    }
+
+    async fn can_handle(&self, info_hash: InfoHash) -> bool {
+        self.file_sizes.contains_key(&info_hash)
     }
 }
 
@@ -133,7 +154,7 @@ fn create_test_config() -> RemuxStreamingConfig {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_strategy_creation() {
-    let file_assembler: Arc<dyn FileAssembler> = Arc::new(MockFileAssembler::new());
+    let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
     let strategy = create_remux_streaming_strategy_with_config(file_assembler, config);
 
@@ -146,11 +167,11 @@ async fn test_unified_streaming_strategy_creation() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_insufficient_head_data() {
-    let mut file_assembler = MockFileAssembler::new();
+    let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([1u8; 20]);
     let test_data = create_test_video_data(1024 * 1024); // 1MB test file
 
-    file_assembler.add_file(info_hash, test_data.len() as u64, test_data);
+    data_source.add_file(info_hash, test_data.len() as u64, test_data);
 
     let file_assembler: Arc<dyn FileAssembler> = Arc::new(file_assembler);
     let config = create_test_config();
@@ -168,14 +189,14 @@ async fn test_unified_streaming_insufficient_head_data() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_with_head_data() {
-    let mut file_assembler = MockFileAssembler::new();
+    let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([2u8; 20]);
     let test_data = create_test_video_data(2 * 1024 * 1024); // 2MB test file
 
-    file_assembler.add_file(info_hash, test_data.len() as u64, test_data);
+    data_source.add_file(info_hash, test_data.len() as u64, test_data);
 
     // Make head data available before converting to trait object
-    file_assembler
+    data_source
         .make_head_available(info_hash, 128 * 1024)
         .await;
 
@@ -211,7 +232,7 @@ async fn test_unified_streaming_with_head_data() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_container_format_output() {
-    let file_assembler: Arc<dyn FileAssembler> = Arc::new(MockFileAssembler::new());
+    let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
     let strategy = create_remux_streaming_strategy_with_config(file_assembler, config);
 
@@ -226,14 +247,14 @@ async fn test_unified_streaming_container_format_output() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_file_size_estimation() {
-    let mut file_assembler = MockFileAssembler::new();
+    let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([4u8; 20]);
     let test_data = create_test_video_data(1024 * 1024); // 1MB test file
 
-    file_assembler.add_file(info_hash, test_data.len() as u64, test_data);
+    data_source.add_file(info_hash, test_data.len() as u64, test_data);
 
     // Make head data available before converting to trait object
-    file_assembler
+    data_source
         .make_head_available(info_hash, 128 * 1024)
         .await;
 
@@ -252,7 +273,7 @@ async fn test_unified_streaming_file_size_estimation() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_concurrent_sessions() {
-    let mut file_assembler = MockFileAssembler::new();
+    let mut data_source = MockDataSource::new();
     let test_data = create_test_video_data(512 * 1024); // 512KB test file
 
     // Add multiple files
@@ -265,7 +286,7 @@ async fn test_unified_streaming_concurrent_sessions() {
         .collect();
 
     for &info_hash in &info_hashes {
-        file_assembler.add_file(info_hash, test_data.len() as u64, test_data.clone());
+        data_source.add_file(info_hash, test_data.len() as u64, test_data.clone());
     }
 
     // Make head data available for all files before converting to trait object
@@ -319,7 +340,7 @@ async fn test_unified_streaming_concurrent_sessions() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_format_support() {
-    let file_assembler: Arc<dyn FileAssembler> = Arc::new(MockFileAssembler::new());
+    let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
     let strategy = create_remux_streaming_strategy_with_config(file_assembler, config);
 
@@ -335,7 +356,7 @@ async fn test_unified_streaming_format_support() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_error_handling() {
-    let file_assembler: Arc<dyn FileAssembler> = Arc::new(MockFileAssembler::new());
+    let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
     let strategy = create_remux_streaming_strategy_with_config(file_assembler, config);
 
@@ -352,14 +373,14 @@ async fn test_unified_streaming_error_handling() {
 #[tokio::test]
 #[ignore] // TODO: Re-enable after streaming refactor
 async fn test_unified_streaming_range_requests() {
-    let mut file_assembler = MockFileAssembler::new();
+    let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([5u8; 20]);
     let test_data = create_test_video_data(1024 * 1024); // 1MB test file
 
-    file_assembler.add_file(info_hash, test_data.len() as u64, test_data);
+    data_source.add_file(info_hash, test_data.len() as u64, test_data);
 
     // Make head data available before converting to trait object
-    file_assembler
+    data_source
         .make_head_available(info_hash, 128 * 1024)
         .await;
 
