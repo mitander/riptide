@@ -92,6 +92,11 @@ impl Mp4Structure {
 }
 
 /// Validates MP4 file structure from a byte stream
+///
+/// # Errors
+/// - `Mp4ValidationError::IoError` - I/O error reading from the stream
+/// - `Mp4ValidationError::InvalidStructure` - Invalid MP4 structure detected
+/// - `Mp4ValidationError::BoxParsingError` - Error parsing MP4 box headers
 pub fn validate_mp4_structure<R: Read + Seek>(
     reader: &mut R,
 ) -> Result<Mp4Structure, Mp4ValidationError> {

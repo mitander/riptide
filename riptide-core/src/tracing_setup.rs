@@ -85,6 +85,18 @@ pub enum CliLogLevel {
 }
 
 impl CliLogLevel {
+    /// Converts CLI log level to tracing Level enum.
+    ///
+    /// Maps user-friendly CLI log level names to the corresponding tracing::Level
+    /// values for configuring log output verbosity.
+    ///
+    /// # Examples
+    /// ```
+    /// use riptide_core::tracing_setup::CliLogLevel;
+    ///
+    /// let level = CliLogLevel::Info.as_tracing_level();
+    /// assert_eq!(level, tracing::Level::INFO);
+    /// ```
     pub fn as_tracing_level(self) -> Level {
         match self {
             CliLogLevel::Error => Level::ERROR,

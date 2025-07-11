@@ -23,6 +23,25 @@ enum ReadinessResult {
     Error(String),
 }
 
+/// Checks if torrent stream is ready for playback.
+///
+/// Evaluates torrent download progress, buffer health, and remux status to determine
+/// if streaming can begin. Returns readiness status with detailed progress information
+/// for the frontend to display loading indicators.
+///
+/// # Arguments
+/// * `state` - Application state containing torrent engine and streaming service
+/// * `hash` - Torrent info hash as hex string
+///
+/// # Returns
+/// JSON response with readiness status, progress percentage, and descriptive message.
+/// Always returns 200 OK with readiness information in the response body.
+///
+/// # Examples
+/// ```ignore
+/// // HTTP request: GET /stream/abc123def456.../ready
+/// // Response: { "ready": false, "progress": 0.45, "message": "Buffer: 1.8MB/2.0MB" }
+/// ```
 pub async fn streaming_readiness_handler(
     State(state): State<AppState>,
     Path(hash): Path<String>,

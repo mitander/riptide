@@ -58,16 +58,16 @@ impl MockDataSource {
         }
     }
 
-    async fn set_head_available(&self, info_hash: InfoHash, size: u64) {
+    async fn mark_head_available(&self, info_hash: InfoHash, size: u64) {
         self.add_range(info_hash, 0..size).await;
     }
 
-    async fn set_tail_available(&self, info_hash: InfoHash, file_size: u64, tail_size: u64) {
+    async fn mark_tail_available(&self, info_hash: InfoHash, file_size: u64, tail_size: u64) {
         let start = file_size.saturating_sub(tail_size);
         self.add_range(info_hash, start..file_size).await;
     }
 
-    async fn set_full_file_available(&self, info_hash: InfoHash) {
+    async fn mark_full_file_available(&self, info_hash: InfoHash) {
         let files = self.files.read().await;
         if let Some(file) = files.get(&info_hash) {
             let file_size = file.size;
@@ -199,7 +199,7 @@ mod tests {
         // Add file with only head data (common in torrent downloads)
         data_source.add_file(info_hash, file_size).await;
         data_source
-            .set_head_available(info_hash, 5 * 1024 * 1024)
+            .mark_head_available(info_hash, 5 * 1024 * 1024)
             .await; // 5MB head
 
         let manager = RemuxSessionManager::new(
@@ -228,10 +228,10 @@ mod tests {
         // Add file with both head and tail data
         data_source.add_file(info_hash, file_size).await;
         data_source
-            .set_head_available(info_hash, 5 * 1024 * 1024)
+            .mark_head_available(info_hash, 5 * 1024 * 1024)
             .await; // 5MB head
         data_source
-            .set_tail_available(info_hash, file_size, 3 * 1024 * 1024)
+            .mark_tail_available(info_hash, file_size, 3 * 1024 * 1024)
             .await; // 3MB tail
 
         let manager = RemuxSessionManager::new(
@@ -255,7 +255,7 @@ mod tests {
 
         // Add small file with full content
         data_source.add_file(info_hash, file_size).await;
-        data_source.set_full_file_available(info_hash).await;
+        data_source.mark_full_file_available(info_hash).await;
 
         let manager = RemuxSessionManager::new(
             config,
@@ -278,7 +278,7 @@ mod tests {
 
         // Add file with full content
         data_source.add_file(info_hash, file_size).await;
-        data_source.set_full_file_available(info_hash).await;
+        data_source.mark_full_file_available(info_hash).await;
 
         let manager = RemuxSessionManager::new(
             config,
@@ -315,7 +315,7 @@ mod tests {
 
         // Add head data
         data_source
-            .set_head_available(info_hash, 5 * 1024 * 1024)
+            .mark_head_available(info_hash, 5 * 1024 * 1024)
             .await;
 
         // With head-only strategy, should progress to Processing once head is available
@@ -324,7 +324,7 @@ mod tests {
 
         // Add tail data
         data_source
-            .set_tail_available(info_hash, file_size, 3 * 1024 * 1024)
+            .mark_tail_available(info_hash, file_size, 3 * 1024 * 1024)
             .await;
 
         // Now should be processing
@@ -341,9 +341,11 @@ mod tests {
 
         // Add file with insufficient head data
         data_source.add_file(info_hash, file_size).await;
-        data_source.set_head_available(info_hash, 1024 * 1024).await; // Only 1MB head
         data_source
-            .set_tail_available(info_hash, file_size, 3 * 1024 * 1024)
+            .mark_head_available(info_hash, 1024 * 1024)
+            .await; // Only 1MB head
+        data_source
+            .mark_tail_available(info_hash, file_size, 3 * 1024 * 1024)
             .await; // 3MB tail
 
         let manager = RemuxSessionManager::new(
@@ -368,10 +370,10 @@ mod tests {
         // Add file with insufficient tail data
         data_source.add_file(info_hash, file_size).await;
         data_source
-            .set_head_available(info_hash, 5 * 1024 * 1024)
+            .mark_head_available(info_hash, 5 * 1024 * 1024)
             .await; // 5MB head
         data_source
-            .set_tail_available(info_hash, file_size, 1024 * 1024)
+            .mark_tail_available(info_hash, file_size, 1024 * 1024)
             .await; // Only 1MB tail
 
         let manager = RemuxSessionManager::new(
@@ -441,16 +443,16 @@ mod tests {
         // Set up first file with head and tail
         data_source.add_file(info_hash1, file_size).await;
         data_source
-            .set_head_available(info_hash1, 5 * 1024 * 1024)
+            .mark_head_available(info_hash1, 5 * 1024 * 1024)
             .await;
         data_source
-            .set_tail_available(info_hash1, file_size, 3 * 1024 * 1024)
+            .mark_tail_available(info_hash1, file_size, 3 * 1024 * 1024)
             .await;
 
         // Set up second file with only head (sufficient for head-only strategy)
         data_source.add_file(info_hash2, file_size).await;
         data_source
-            .set_head_available(info_hash2, 5 * 1024 * 1024)
+            .mark_head_available(info_hash2, 5 * 1024 * 1024)
             .await;
 
         let manager = RemuxSessionManager::new(
@@ -514,10 +516,10 @@ mod tests {
         // Add file with exactly the minimum required head and tail
         data_source.add_file(info_hash, file_size).await;
         data_source
-            .set_head_available(info_hash, 3 * 1024 * 1024)
+            .mark_head_available(info_hash, 3 * 1024 * 1024)
             .await; // Exactly 3MB head
         data_source
-            .set_tail_available(info_hash, file_size, 2 * 1024 * 1024)
+            .mark_tail_available(info_hash, file_size, 2 * 1024 * 1024)
             .await; // Exactly 2MB tail
 
         let manager = RemuxSessionManager::new(
@@ -542,10 +544,10 @@ mod tests {
         // Add file with one byte less than required
         data_source.add_file(info_hash, file_size).await;
         data_source
-            .set_head_available(info_hash, 3 * 1024 * 1024 - 1)
+            .mark_head_available(info_hash, 3 * 1024 * 1024 - 1)
             .await; // 1 byte short
         data_source
-            .set_tail_available(info_hash, file_size, 2 * 1024 * 1024)
+            .mark_tail_available(info_hash, file_size, 2 * 1024 * 1024)
             .await; // Exactly 2MB tail
 
         let manager = RemuxSessionManager::new(
@@ -571,7 +573,7 @@ mod tests {
         // Add file with only head data (no tail)
         data_source.add_file(info_hash, file_size).await;
         data_source
-            .set_head_available(info_hash, 5 * 1024 * 1024)
+            .mark_head_available(info_hash, 5 * 1024 * 1024)
             .await; // 5MB head (more than 3MB minimum)
 
         let manager = RemuxSessionManager::new(
@@ -597,7 +599,7 @@ mod tests {
         // Add file with only head data
         data_source.add_file(info_hash, file_size).await;
         data_source
-            .set_head_available(info_hash, 3 * 1024 * 1024)
+            .mark_head_available(info_hash, 3 * 1024 * 1024)
             .await; // 3MB head
 
         let manager = RemuxSessionManager::new(
@@ -624,16 +626,16 @@ mod tests {
         // File 1: Only head data (new strategy should work)
         data_source.add_file(info_hash1, file_size).await;
         data_source
-            .set_head_available(info_hash1, 5 * 1024 * 1024)
+            .mark_head_available(info_hash1, 5 * 1024 * 1024)
             .await;
 
         // File 2: Head + tail data (traditional approach)
         data_source.add_file(info_hash2, file_size).await;
         data_source
-            .set_head_available(info_hash2, 5 * 1024 * 1024)
+            .mark_head_available(info_hash2, 5 * 1024 * 1024)
             .await;
         data_source
-            .set_tail_available(info_hash2, file_size, 3 * 1024 * 1024)
+            .mark_tail_available(info_hash2, file_size, 3 * 1024 * 1024)
             .await;
 
         let manager = RemuxSessionManager::new(
@@ -662,7 +664,9 @@ mod tests {
 
         // Add file with insufficient head data (less than 3MB minimum)
         data_source.add_file(info_hash, file_size).await;
-        data_source.set_head_available(info_hash, 1024 * 1024).await; // Only 1MB head (less than 3MB minimum)
+        data_source
+            .mark_head_available(info_hash, 1024 * 1024)
+            .await; // Only 1MB head (less than 3MB minimum)
 
         let manager = RemuxSessionManager::new(
             config,
