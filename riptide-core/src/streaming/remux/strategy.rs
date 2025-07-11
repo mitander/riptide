@@ -89,7 +89,7 @@ impl StreamingStrategy for RemuxStreamStrategy {
         info_hash: InfoHash,
         _format: ContainerFormat,
     ) -> StreamingResult<StreamHandle> {
-        self.session_manager.get_or_create_session(info_hash).await
+        self.session_manager.find_or_create_session(info_hash).await
     }
 
     async fn serve_range(
@@ -113,10 +113,7 @@ impl StreamingStrategy for RemuxStreamStrategy {
         match readiness {
             StreamReadiness::Ready => {
                 // Get the output file path and serve from it
-                let output_path = self
-                    .session_manager
-                    .get_output_path(handle.info_hash)
-                    .await?;
+                let output_path = self.session_manager.output_path(handle.info_hash).await?;
 
                 // For progressive streaming, check if we're requesting beyond available data
                 let file_size = tokio::fs::metadata(&output_path)
@@ -188,7 +185,7 @@ impl StreamingStrategy for RemuxStreamStrategy {
     }
 
     async fn status(&self, handle: &StreamHandle) -> StreamingResult<StreamingStatus> {
-        self.session_manager.get_status(handle.info_hash).await
+        self.session_manager.status(handle.info_hash).await
     }
 }
 

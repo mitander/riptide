@@ -71,7 +71,7 @@ impl LocalDataSource {
     }
 
     /// Get file metadata from library
-    async fn get_file_info(&self, info_hash: InfoHash) -> DataResult<(String, u64)> {
+    async fn file_info(&self, info_hash: InfoHash) -> DataResult<(String, u64)> {
         let file_manager = self.file_manager.read().await;
 
         match file_manager.file_by_hash(info_hash) {
@@ -121,7 +121,7 @@ impl DataSource for LocalDataSource {
         }
 
         // Get file info and validate range bounds
-        let (file_name, file_size) = self.get_file_info(info_hash).await?;
+        let (file_name, file_size) = self.file_info(info_hash).await?;
         validate_range_bounds(&range, file_size)?;
 
         let length = range.end - range.start;
@@ -168,7 +168,7 @@ impl DataSource for LocalDataSource {
     async fn file_size(&self, info_hash: InfoHash) -> DataResult<u64> {
         debug!("LocalDataSource: Getting file size for {}", info_hash);
 
-        let (file_name, size) = self.get_file_info(info_hash).await?;
+        let (file_name, size) = self.file_info(info_hash).await?;
 
         debug!(
             "LocalDataSource: File size for {} ({}) is {} bytes",
@@ -200,7 +200,7 @@ impl DataSource for LocalDataSource {
         }
 
         // Validate range bounds
-        let (_, file_size) = self.get_file_info(info_hash).await?;
+        let (_, file_size) = self.file_info(info_hash).await?;
         let range_valid = validate_range_bounds(&range, file_size).is_ok();
 
         debug!(

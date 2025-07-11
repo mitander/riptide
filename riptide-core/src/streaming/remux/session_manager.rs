@@ -50,8 +50,8 @@ impl RemuxSessionManager {
         }
     }
 
-    /// Get or create a session handle for the given info hash
-    pub async fn get_or_create_session(
+    /// Find or create a session handle for the given info hash
+    pub async fn find_or_create_session(
         &self,
         info_hash: InfoHash,
     ) -> StreamingResult<StreamHandle> {
@@ -136,7 +136,7 @@ impl RemuxSessionManager {
     }
 
     /// Get the current status of a streaming session
-    pub async fn get_status(&self, info_hash: InfoHash) -> StreamingResult<StreamingStatus> {
+    pub async fn status(&self, info_hash: InfoHash) -> StreamingResult<StreamingStatus> {
         debug!("Getting status for remux session: {}", info_hash);
 
         let sessions = self.sessions.read().await;
@@ -182,7 +182,7 @@ impl RemuxSessionManager {
     }
 
     /// Get the output file path for a completed session
-    pub async fn get_output_path(&self, info_hash: InfoHash) -> StreamingResult<PathBuf> {
+    pub async fn output_path(&self, info_hash: InfoHash) -> StreamingResult<PathBuf> {
         let sessions = self.sessions.read().await;
         let session = sessions
             .get(&info_hash)
@@ -744,7 +744,7 @@ mod tests {
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
 
-        let handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let handle = manager.find_or_create_session(info_hash).await.unwrap();
         assert_eq!(handle.info_hash, info_hash);
         assert_eq!(handle.session_id, 1);
     }
@@ -761,7 +761,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         let readiness = manager.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
@@ -784,7 +784,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         let readiness = manager.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);

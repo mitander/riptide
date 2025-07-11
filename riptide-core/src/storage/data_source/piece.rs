@@ -56,7 +56,7 @@ impl PieceDataSource {
     }
 
     /// Get or create torrent metadata for efficient range calculations
-    async fn get_metadata(&self, info_hash: InfoHash) -> DataResult<TorrentMetadata> {
+    async fn metadata(&self, info_hash: InfoHash) -> DataResult<TorrentMetadata> {
         // Check cache first
         {
             let metadata_cache = self.metadata_cache.read().await;
@@ -225,7 +225,7 @@ impl DataSource for PieceDataSource {
         );
 
         // Get metadata and validate range
-        let metadata = self.get_metadata(info_hash).await?;
+        let metadata = self.metadata(info_hash).await?;
         validate_range_bounds(&range, metadata.layout.total_size)?;
 
         // Calculate required pieces
@@ -266,7 +266,7 @@ impl DataSource for PieceDataSource {
     }
 
     async fn file_size(&self, info_hash: InfoHash) -> DataResult<u64> {
-        let metadata = self.get_metadata(info_hash).await?;
+        let metadata = self.metadata(info_hash).await?;
         Ok(metadata.layout.total_size)
     }
 
@@ -292,7 +292,7 @@ impl DataSource for PieceDataSource {
         }
 
         // Get metadata and validate range
-        let metadata = self.get_metadata(info_hash).await?;
+        let metadata = self.metadata(info_hash).await?;
         validate_range_bounds(&range, metadata.layout.total_size)?;
 
         // Calculate required pieces

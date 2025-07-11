@@ -143,7 +143,7 @@ mod tests {
             "moov should not be before mdat"
         );
 
-        let issues = structure.get_issues();
+        let issues = structure.issues();
         assert!(!issues.is_empty(), "Should have structural issues");
         assert!(
             issues.iter().any(|issue| issue.contains("moov")),

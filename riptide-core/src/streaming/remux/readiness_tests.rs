@@ -207,14 +207,14 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // With head-only strategy, should now progress to Processing with sufficient head data
         let readiness = manager.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
 
         // Status should show we're processing
-        let status = manager.get_status(info_hash).await.unwrap();
+        let status = manager.status(info_hash).await.unwrap();
         assert_eq!(status.readiness, StreamReadiness::Processing);
     }
 
@@ -239,7 +239,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // This should progress to Processing because we have both head and tail
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -262,7 +262,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Small file should be ready immediately
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -285,7 +285,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should be ready because file is smaller than head requirement
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -307,7 +307,7 @@ mod tests {
             Arc::new(data_source.clone()),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Initially should be waiting for data
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -351,7 +351,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should be waiting because head data is insufficient
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -379,7 +379,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // With head-only strategy, should progress with sufficient head data regardless of tail
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -401,11 +401,11 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Both readiness and status should be consistent
         let readiness = manager.check_readiness(info_hash).await.unwrap();
-        let status = manager.get_status(info_hash).await.unwrap();
+        let status = manager.status(info_hash).await.unwrap();
 
         assert_eq!(readiness, StreamReadiness::WaitingForData);
         assert_eq!(status.readiness, StreamReadiness::WaitingForData);
@@ -423,7 +423,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should fail because file doesn't exist
         let result = manager.check_readiness(info_hash).await;
@@ -458,8 +458,8 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle1 = manager.get_or_create_session(info_hash1).await.unwrap();
-        let _handle2 = manager.get_or_create_session(info_hash2).await.unwrap();
+        let _handle1 = manager.find_or_create_session(info_hash1).await.unwrap();
+        let _handle2 = manager.find_or_create_session(info_hash2).await.unwrap();
 
         // Both should be processing with head-only strategy
         let readiness1 = manager.check_readiness(info_hash1).await.unwrap();
@@ -489,7 +489,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Fixed: Now with head-only strategy, remux starts with sufficient head data
         // This prevents the UI from being stuck at "Preparing stream metadata"
@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(readiness, StreamReadiness::Processing);
 
         // Status should show we're processing, not stuck waiting
-        let status = manager.get_status(info_hash).await.unwrap();
+        let status = manager.status(info_hash).await.unwrap();
         assert_eq!(status.readiness, StreamReadiness::Processing);
 
         // Progress should be at some value (0.9 based on the original issue)
@@ -525,7 +525,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should be ready with exact requirements
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -553,7 +553,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should be waiting because head is 1 byte short
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -579,7 +579,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should start processing with head-only data for streaming optimization
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -605,7 +605,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should still be waiting because small files need full content
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -641,8 +641,8 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle1 = manager.get_or_create_session(info_hash1).await.unwrap();
-        let _handle2 = manager.get_or_create_session(info_hash2).await.unwrap();
+        let _handle1 = manager.find_or_create_session(info_hash1).await.unwrap();
+        let _handle2 = manager.find_or_create_session(info_hash2).await.unwrap();
 
         // Both should be ready to process
         let readiness1 = manager.check_readiness(info_hash1).await.unwrap();
@@ -669,7 +669,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should still wait because head data is insufficient
         let readiness = manager.check_readiness(info_hash).await.unwrap();
@@ -693,7 +693,7 @@ mod tests {
             Arc::new(data_source),
             Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
         );
-        let _handle = manager.get_or_create_session(info_hash).await.unwrap();
+        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
 
         // Should wait because no data is available
         let readiness = manager.check_readiness(info_hash).await.unwrap();

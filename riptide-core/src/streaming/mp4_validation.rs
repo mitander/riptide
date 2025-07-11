@@ -68,7 +68,7 @@ impl Mp4Structure {
     }
 
     /// Get a summary of structural issues
-    pub fn get_issues(&self) -> Vec<String> {
+    pub fn issues(&self) -> Vec<String> {
         let mut issues = Vec::new();
 
         if !self.has_ftyp {
