@@ -12,13 +12,10 @@ pub mod piece_reader;
 
 pub mod range_handler;
 pub mod remux;
-pub mod remux_streaming;
 
 pub mod storage_cache;
-pub mod strategy;
 
-pub mod stream_coordinator;
-
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub use ffmpeg::{
@@ -31,128 +28,167 @@ pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
 pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
+// Legacy aliases for backward compatibility
+pub use remux::RemuxStreamStrategy as RemuxStreamingStrategy;
+pub use remux::types::RemuxConfig as RemuxStreamingConfig;
 pub use remux::{
-    RemuxError, RemuxProgress, RemuxSessionManager, RemuxState, RemuxStreamStrategy, StreamData,
-    StreamHandle, StreamReadiness, StreamingStatus,
-};
-pub use remux_streaming::{
-    RemuxStreamingConfig, RemuxStreamingStrategy, create_remux_streaming_strategy,
-    create_remux_streaming_strategy_with_config,
+    ContainerFormat, DirectStreamStrategy, RemuxError, RemuxProgress, RemuxSessionManager,
+    RemuxState, RemuxStreamStrategy, StrategyError, StreamData, StreamHandle, StreamReadiness,
+    StreamingError, StreamingResult, StreamingStatus, StreamingStrategy,
 };
 pub use storage_cache::{
     CacheEntry, CacheKey, CacheStatistics, StorageCache, StorageCacheConfig, StorageCacheError,
 };
-pub use strategy::{
-    ContainerDetector, ContainerFormat, StreamingError as StrategyError, StreamingResult,
-    StreamingStrategy,
-};
-pub use stream_coordinator::{StreamCoordinator, StreamingError, StreamingSession, StreamingStats};
-use tokio::sync::RwLock;
 
 use crate::config::RiptideConfig;
-use crate::torrent::{
-    EnhancedPeerManager, TcpPeerManager, TorrentEngineHandle, TrackerManager, spawn_torrent_engine,
-};
+use crate::torrent::TorrentEngineHandle;
 
-/// Streaming service integrating HTTP server with BitTorrent backend.
+/// Streaming service coordinator integrating multiple streaming strategies.
 ///
-/// Coordinates between HTTP range requests from media players and the underlying
-/// BitTorrent downloading system to provide media streaming.
+/// Acts as a lightweight coordinator that delegates to appropriate streaming
+/// strategies based on container format detection.
 pub struct DirectStreamingService {
-    stream_coordinator: Arc<RwLock<StreamCoordinator>>,
+    strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>>,
+    session_manager: Arc<RemuxSessionManager>,
     torrent_engine: TorrentEngineHandle,
-    peer_manager: Arc<RwLock<EnhancedPeerManager>>,
+    file_assembler: Arc<dyn FileAssembler>,
+}
+
+impl Clone for DirectStreamingService {
+    fn clone(&self) -> Self {
+        Self {
+            strategies: self.strategies.clone(),
+            session_manager: self.session_manager.clone(),
+            torrent_engine: self.torrent_engine.clone(),
+            file_assembler: self.file_assembler.clone(),
+        }
+    }
 }
 
 impl DirectStreamingService {
-    /// Creates new streaming service with configuration.
-    pub fn new(config: RiptideConfig) -> Self {
-        let peer_manager = Arc::new(RwLock::new(EnhancedPeerManager::new(config.clone())));
-        let peer_manager_impl = TcpPeerManager::new_default();
-        let tracker_manager = TrackerManager::new(config.network.clone());
-        let torrent_engine = spawn_torrent_engine(config, peer_manager_impl, tracker_manager);
-        let stream_coordinator = Arc::new(RwLock::new(StreamCoordinator::new(
-            torrent_engine.clone(),
-            Arc::clone(&peer_manager),
-        )));
+    /// Create new streaming service with default strategies
+    pub fn new(
+        torrent_engine: TorrentEngineHandle,
+        file_assembler: Arc<dyn FileAssembler>,
+        config: RiptideConfig,
+    ) -> Self {
+        let session_manager =
+            RemuxSessionManager::new(Default::default(), Arc::clone(&file_assembler));
+
+        let mut strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>> = HashMap::new();
+
+        // Direct streaming strategies
+        strategies.insert(
+            ContainerFormat::Mp4,
+            Arc::new(DirectStreamStrategy::new(Arc::clone(&file_assembler))),
+        );
+        strategies.insert(
+            ContainerFormat::WebM,
+            Arc::new(DirectStreamStrategy::new(Arc::clone(&file_assembler))),
+        );
+
+        // Remux streaming strategies
+        let remux_strategy = RemuxStreamStrategy::new(session_manager.clone());
+        strategies.insert(ContainerFormat::Avi, Arc::new(remux_strategy.clone()));
+        strategies.insert(ContainerFormat::Mkv, Arc::new(remux_strategy.clone()));
+        strategies.insert(ContainerFormat::Mov, Arc::new(remux_strategy));
 
         Self {
-            stream_coordinator,
+            strategies,
+            session_manager: Arc::new(session_manager),
             torrent_engine,
-            peer_manager,
+            file_assembler,
         }
     }
 
-    /// Start the streaming service on the configured port.
-    ///
-    /// # Errors
-    /// - `StreamingError::ServerStartFailed` - Failed to bind to port or start server
-    pub async fn start(&self) -> Result<(), StreamingError> {
-        // Start background tasks for peer management
-        let _ = self
-            .peer_manager
-            .read()
+    /// Handle streaming request by delegating to appropriate strategy
+    pub async fn handle_stream_request(
+        &self,
+        info_hash: crate::torrent::InfoHash,
+        range: std::ops::Range<u64>,
+    ) -> StreamingResult<StreamData> {
+        // Detect container format
+        let format = self.detect_container_format(info_hash).await?;
+
+        // Get appropriate strategy
+        let strategy =
+            self.strategies
+                .get(&format)
+                .ok_or_else(|| StrategyError::UnsupportedFormat {
+                    format: format!("{:?}", format),
+                })?;
+
+        // Prepare stream handle
+        let handle = strategy.prepare_stream(info_hash, format).await?;
+
+        // Serve the requested range
+        strategy.serve_range(&handle, range).await
+    }
+
+    /// Check if stream is ready for the given range
+    pub async fn check_stream_readiness(
+        &self,
+        info_hash: crate::torrent::InfoHash,
+    ) -> StreamingResult<StreamingStatus> {
+        // Detect container format
+        let format = self.detect_container_format(info_hash).await?;
+
+        // Get appropriate strategy
+        let strategy =
+            self.strategies
+                .get(&format)
+                .ok_or_else(|| StrategyError::UnsupportedFormat {
+                    format: format!("{:?}", format),
+                })?;
+
+        // Prepare stream handle
+        let handle = strategy.prepare_stream(info_hash, format).await?;
+
+        // Get status
+        strategy.status(&handle).await
+    }
+
+    /// Detect container format from file headers
+    async fn detect_container_format(
+        &self,
+        info_hash: crate::torrent::InfoHash,
+    ) -> StreamingResult<ContainerFormat> {
+        // Read first few bytes to detect format
+        const HEADER_SIZE: u64 = 32;
+        let header_data = self
+            .file_assembler
+            .read_range(info_hash, 0..HEADER_SIZE)
             .await
-            .start_background_tasks()
-            .await;
+            .map_err(|_| StrategyError::FormatDetectionFailed)?;
 
-        Ok(())
-    }
-
-    /// Add a torrent for streaming by magnet link or info hash.
-    ///
-    /// # Errors
-    /// - `StreamingError::TorrentAddFailed` - Failed to add torrent to engine
-    pub async fn add_torrent(&self, source: String) -> Result<String, StreamingError> {
-        let info_hash = if source.starts_with("magnet:") {
-            self.torrent_engine.add_magnet(&source).await.map_err(|e| {
-                StreamingError::TorrentAddFailed {
-                    reason: e.to_string(),
-                }
-            })?
+        // Simple format detection
+        if header_data.starts_with(b"ftyp") || header_data[4..8] == *b"ftyp" {
+            Ok(ContainerFormat::Mp4)
+        } else if header_data.starts_with(b"\x1A\x45\xDF\xA3") {
+            Ok(ContainerFormat::Mkv)
+        } else if header_data.starts_with(b"RIFF") && header_data[8..12] == *b"AVI " {
+            Ok(ContainerFormat::Avi)
+        } else if header_data.starts_with(b"\x1a\x45\xdf\xa3") {
+            Ok(ContainerFormat::WebM)
         } else {
-            return Err(StreamingError::UnsupportedSource);
-        };
-
-        // Register with stream coordinator
-        let mut coordinator = self.stream_coordinator.write().await;
-        coordinator
-            .register_torrent(info_hash, source.clone())
-            .await?;
-
-        Ok(format!("/stream/{}", hex::encode(info_hash.as_bytes())))
-    }
-
-    /// Returns streaming statistics for monitoring.
-    pub async fn statistics(&self) -> StreamingServiceStats {
-        let coordinator = self.stream_coordinator.read().await;
-        let peer_stats = self.peer_manager.read().await.statistics();
-        let streaming_stats = coordinator.statistics().await;
-
-        StreamingServiceStats {
-            active_streams: streaming_stats.active_sessions,
-            total_bytes_streamed: streaming_stats.total_bytes_served,
-            peer_connections: peer_stats.total_connections,
-            healthy_peers: peer_stats.active_connections,
-            bandwidth_utilization: peer_stats.bandwidth_utilization.download_rate_mbps,
+            Ok(ContainerFormat::Unknown)
         }
     }
 
-    /// Stop the streaming service gracefully.
-    ///
-    /// # Errors
-    /// Returns error if service shutdown fails or resources cannot be cleaned up.
-    pub async fn stop(&mut self) -> Result<(), StreamingError> {
-        Ok(())
+    /// Get streaming statistics
+    pub async fn statistics(&self) -> StreamingServiceStats {
+        StreamingServiceStats {
+            active_sessions: 0,           // TODO: Implement
+            total_bytes_streamed: 0,      // TODO: Implement
+            concurrent_remux_sessions: 0, // TODO: Implement
+        }
     }
 }
 
-/// Overall streaming service statistics.
+/// Streaming service statistics
 #[derive(Debug, Clone)]
 pub struct StreamingServiceStats {
-    pub active_streams: usize,
+    pub active_sessions: usize,
     pub total_bytes_streamed: u64,
-    pub peer_connections: usize,
-    pub healthy_peers: usize,
-    pub bandwidth_utilization: f64,
+    pub concurrent_remux_sessions: usize,
 }

@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 
-use super::strategy::{StreamingError, StreamingResult};
+use super::{StreamingError, StreamingResult};
 
 /// Abstraction for FFmpeg operations to enable both real and simulated remuxing
 #[async_trait]
@@ -218,9 +218,8 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
 
         // Get output file size
         let output_size = std::fs::metadata(output_path)
-            .map_err(|e| StreamingError::IoError {
+            .map_err(|e| StreamingError::IoErrorWithOperation {
                 operation: "get output file size".to_string(),
-                path: output_path.to_string_lossy().to_string(),
                 source: e,
             })?
             .len();
@@ -393,9 +392,8 @@ impl FfmpegProcessor for SimulationFfmpegProcessor {
 
         // Calculate simulated processing time based on file size
         let input_size = std::fs::metadata(input_path)
-            .map_err(|e| StreamingError::IoError {
+            .map_err(|e| StreamingError::IoErrorWithOperation {
                 operation: "get input file size".to_string(),
-                path: input_path.to_string_lossy().to_string(),
                 source: e,
             })?
             .len();

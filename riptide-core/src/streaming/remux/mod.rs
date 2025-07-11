@@ -27,5 +27,6 @@ pub use session_manager::RemuxSessionManager;
 pub use state::{RemuxError, RemuxProgress, RemuxState};
 pub use strategy::{DirectStreamStrategy, RemuxStreamStrategy, StreamingStrategy};
 pub use types::{
-    RemuxConfig, RemuxSession, StreamData, StreamHandle, StreamReadiness, StreamingStatus,
+    ContainerFormat, RemuxConfig, RemuxSession, StrategyError, StreamData, StreamHandle,
+    StreamReadiness, StreamingError, StreamingResult, StreamingStatus,
 };

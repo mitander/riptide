@@ -14,8 +14,8 @@ use riptide_core::streaming::remux::{
     DirectStreamStrategy, RemuxConfig, RemuxStreamStrategy, StreamingStrategy,
 };
 use riptide_core::streaming::{
-    ContainerDetector, ContainerFormat, FileAssembler, RemuxSessionManager, StreamData,
-    StreamHandle, StreamReadiness, StreamingStatus,
+    ContainerFormat, FileAssembler, RemuxSessionManager, StreamData, StreamHandle, StreamReadiness,
+    StreamingStatus,
 };
 use riptide_core::torrent::InfoHash;
 use riptide_core::video::VideoQuality;
@@ -172,7 +172,18 @@ impl StreamingCoordinator {
             .read_range(info_hash, 0..HEADER_SIZE)
             .await?;
 
-        Ok(ContainerDetector::detect_format(&header_data))
+        // Simple format detection
+        if header_data.starts_with(b"ftyp") || header_data[4..8] == *b"ftyp" {
+            Ok(ContainerFormat::Mp4)
+        } else if header_data.starts_with(b"\x1A\x45\xDF\xA3") {
+            Ok(ContainerFormat::Mkv)
+        } else if header_data.starts_with(b"RIFF") && header_data[8..12] == *b"AVI " {
+            Ok(ContainerFormat::Avi)
+        } else if header_data.starts_with(b"\x1a\x45\xdf\xa3") {
+            Ok(ContainerFormat::WebM)
+        } else {
+            Ok(ContainerFormat::Unknown)
+        }
     }
 
     /// Serve a range using the given strategy

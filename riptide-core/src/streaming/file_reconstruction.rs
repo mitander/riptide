@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
-use super::strategy::{StreamingError, StreamingResult};
+use super::{StreamingError, StreamingResult};
 use crate::torrent::{InfoHash, PieceIndex, PieceStore};
 
 /// Reconstructs complete files from BitTorrent pieces for remuxing
@@ -49,21 +49,18 @@ impl<P: PieceStore + ?Sized> FileReconstructor<P> {
             let piece_idx = PieceIndex::new(piece_index);
             if !self.piece_store.has_piece(info_hash, piece_idx) {
                 tracing::warn!("Missing piece {} for torrent {}", piece_index, info_hash);
-                return Err(StreamingError::MissingPieces {
-                    missing: vec![piece_index],
-                    total: piece_count,
-                });
+                return Err(StreamingError::MissingPieces { missing_count: 1 });
             }
         }
         tracing::info!("All {} pieces available for {}", piece_count, info_hash);
 
         // Create output file
-        let mut output_file =
-            std::fs::File::create(output_path).map_err(|e| StreamingError::IoError {
+        let mut output_file = std::fs::File::create(output_path).map_err(|e| {
+            StreamingError::IoErrorWithOperation {
                 operation: "create output file".to_string(),
-                path: output_path.to_string_lossy().to_string(),
                 source: e,
-            })?;
+            }
+        })?;
 
         let mut total_bytes_written = 0u64;
 
@@ -111,23 +108,21 @@ impl<P: PieceStore + ?Sized> FileReconstructor<P> {
                 })?;
 
             // Write piece data to output file
-            output_file
-                .write_all(&piece_data)
-                .map_err(|e| StreamingError::IoError {
+            output_file.write_all(&piece_data).map_err(|e| {
+                StreamingError::IoErrorWithOperation {
                     operation: "write piece data".to_string(),
-                    path: output_path.to_string_lossy().to_string(),
                     source: e,
-                })?;
+                }
+            })?;
 
             total_bytes_written += piece_data.len() as u64;
         }
 
-        // Ensure all data is written to disk
+        // Ensure data is written to disk
         output_file
             .sync_all()
-            .map_err(|e| StreamingError::IoError {
+            .map_err(|e| StreamingError::IoErrorWithOperation {
                 operation: "sync output file".to_string(),
-                path: output_path.to_string_lossy().to_string(),
                 source: e,
             })?;
 

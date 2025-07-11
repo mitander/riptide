@@ -16,8 +16,7 @@ use riptide_core::streaming::file_assembler::PieceFileAssembler;
 use riptide_core::streaming::mp4_validation::{
     analyze_mp4_for_streaming, debug_mp4_structure, test_remuxed_mp4_validity,
 };
-use riptide_core::streaming::remux_streaming::{RemuxStreamingConfig, RemuxStreamingStrategy};
-use riptide_core::streaming::strategy::ContainerFormat;
+use riptide_core::streaming::{RemuxStreamingConfig, RemuxStreamingStrategy, ContainerFormat};
 use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore, TorrentError};
 
 /// Mock piece store that simulates real torrent data for streaming tests

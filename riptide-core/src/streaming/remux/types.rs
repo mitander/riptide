@@ -5,8 +5,74 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::streaming::ContainerFormat;
 use crate::torrent::InfoHash;
+
+/// Container format for video files
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ContainerFormat {
+    Mp4,
+    Mkv,
+    Avi,
+    Mov,
+    WebM,
+    Unknown,
+}
+
+/// Errors that can occur during streaming operations
+#[derive(Debug, thiserror::Error)]
+pub enum StrategyError {
+    #[error("Container format not supported: {format}")]
+    UnsupportedFormat { format: String },
+
+    #[error("Failed to detect container format from headers")]
+    FormatDetectionFailed,
+
+    #[error("Streaming not ready: {reason}")]
+    StreamingNotReady { reason: String },
+
+    #[error("Remuxing failed: {reason}")]
+    RemuxingFailed { reason: String },
+
+    #[error("Invalid range request: {range:?}")]
+    InvalidRange { range: std::ops::Range<u64> },
+
+    #[error("FFmpeg error: {reason}")]
+    FfmpegError { reason: String },
+
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    #[error("Piece storage error: {reason}")]
+    PieceStorageError { reason: String },
+
+    #[error("Missing pieces for range")]
+    MissingPieces { missing_count: usize },
+
+    #[error("IO error during {operation}: {source}")]
+    IoErrorWithOperation {
+        operation: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Torrent not found")]
+    TorrentNotFound,
+
+    #[error("Unsupported source format")]
+    UnsupportedSource,
+
+    #[error("Failed to add torrent: {reason}")]
+    TorrentAddFailed { reason: String },
+
+    #[error("Server failed to start: {reason}")]
+    ServerStartFailed { reason: String },
+}
+
+/// Legacy alias for StreamingError
+pub type StreamingError = StrategyError;
+
+/// Result type for streaming operations
+pub type StreamingResult<T> = Result<T, StrategyError>;
 
 /// Configuration for remuxing operations
 #[derive(Debug, Clone)]
