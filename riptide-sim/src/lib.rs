@@ -1,4 +1,9 @@
 //! Riptide Simulation Framework - Deterministic testing for BitTorrent streaming.
+
+#![deny(missing_docs)]
+#![deny(clippy::missing_errors_doc)]
+#![deny(clippy::missing_panics_doc)]
+#![warn(clippy::too_many_lines)]
 //!
 //! This crate provides a comprehensive simulation environment for testing
 //! BitTorrent protocol implementations, streaming algorithms, and network
@@ -53,15 +58,13 @@
 //! - **Metrics Collection**: Detailed performance and behavior analysis
 
 pub mod deterministic;
-pub mod dev_peer_manager;
 pub mod magneto_provider;
 pub mod media;
 pub mod network;
 pub mod peer;
+pub mod peer_manager;
 pub mod peer_server;
-pub mod piece_store;
 pub mod scenarios;
-pub mod sim_peer_manager;
 pub mod simulation_mode;
 pub mod streaming;
 pub mod tracker;
@@ -80,7 +83,6 @@ pub use deterministic::{
     ResourceUsage, SimulationError, SimulationEvent, SimulationMetrics, SimulationReport,
     SimulationState, StreamingInvariant, ThrottleDirection,
 };
-pub use dev_peer_manager::{DevPeerManager, DevPeerManagerStats};
 pub use magneto_provider::{
     MockMagnetoProvider, MockMagnetoProviderBuilder, TorrentEntryParams,
     create_mock_magneto_client, create_streaming_test_client,
@@ -88,15 +90,17 @@ pub use magneto_provider::{
 pub use media::{MediaStreamingSimulation, MovieFolder, StreamingResult};
 pub use network::{NetworkSimulator, NetworkSimulatorBuilder};
 pub use peer::{MockPeer, MockPeerBuilder};
+pub use peer_manager::{
+    DeterministicConfig, DeterministicPeers, DevelopmentPeers, DevelopmentStats,
+    InMemoryPieceStore, PeerManagerFactory, PeerManagerMode, SimulationStats,
+};
 pub use peer_server::{BitTorrentPeerServer, spawn_peer_servers_for_torrent};
-pub use piece_store::InMemoryPieceStore;
 // Re-export config from core for convenience
 pub use riptide_core::config::SimulationConfig;
 pub use scenarios::{
     cascading_piece_failures_scenario, extreme_peer_churn_scenario, resource_exhaustion_scenario,
     severe_network_degradation_scenario, streaming_edge_cases, total_peer_failure_scenario,
 };
-pub use sim_peer_manager::{InMemoryPeerConfig, SimPeerManager};
 pub use simulation_mode::{
     NetworkConditions, SimulationConfigBuilder, SimulationMode, SimulationPeerManagerFactory,
 };
@@ -466,7 +470,7 @@ pub async fn create_fast_development_components(
     tracing::info!(
         "Fast development components: Using DevPeerManager for realistic streaming performance"
     );
-    let peer_manager_sim = DevPeerManager::new(piece_store_sim.clone());
+    let peer_manager_sim = DevelopmentPeers::new(piece_store_sim.clone());
 
     let tracker_manager_sim = tracker::SimulatedTrackerCoordinator::with_peer_registry(
         tracker::ResponseConfig::default(),
@@ -497,14 +501,16 @@ pub async fn create_deterministic_development_components(
     let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
 
     tracing::info!("Deterministic development components: Using SimPeerManager for testing");
-    let realistic_peer_config = InMemoryPeerConfig {
+    let realistic_peer_config = DeterministicConfig {
         message_delay_ms: 1,          // Minimal delay for development
         connection_failure_rate: 0.0, // No failures for development
         message_loss_rate: 0.0,       // No loss for development
         max_connections: 100,
+        upload_rate_bps: 10 * 1024 * 1024, // 10 MB/s
+        seed: 12345,
     };
 
-    let peer_manager_sim = SimPeerManager::new(realistic_peer_config, piece_store_sim.clone());
+    let peer_manager_sim = DeterministicPeers::new(realistic_peer_config, piece_store_sim.clone());
 
     let tracker_manager_sim = tracker::SimulatedTrackerCoordinator::with_peer_registry(
         tracker::ResponseConfig::default(),

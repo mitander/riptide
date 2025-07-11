@@ -21,8 +21,7 @@ mod remux_pipeline;
 mod sim_streaming_integration;
 #[path = "integration/streaming_integration.rs"]
 mod streaming_integration;
-#[path = "integration/style_enforcement.rs"]
-mod style_enforcement;
+
 #[path = "integration/torrent_integration.rs"]
 mod torrent_integration;
 #[path = "integration/torrent_protocol.rs"]

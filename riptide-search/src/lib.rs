@@ -1,4 +1,9 @@
 //! Riptide Search - Media search and discovery
+
+#![deny(missing_docs)]
+#![deny(clippy::missing_errors_doc)]
+#![deny(clippy::missing_panics_doc)]
+#![warn(clippy::too_many_lines)]
 //!
 //! Provides search capabilities across multiple media sources with fuzzy matching
 //! and rich IMDb metadata integration for streaming-optimized movie discovery.

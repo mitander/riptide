@@ -1,4 +1,9 @@
-//! Riptide Core - Essential BitTorrent and streaming functionality
+//! Riptide Core - BitTorrent and streaming functionality
+
+#![deny(missing_docs)]
+#![deny(clippy::missing_errors_doc)]
+#![deny(clippy::missing_panics_doc)]
+#![warn(clippy::too_many_lines)]
 //!
 //! This crate provides the fundamental building blocks for BitTorrent-based
 //! media streaming: torrent protocol implementation, file storage, streaming

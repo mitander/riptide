@@ -1,4 +1,9 @@
 //! Riptide Web - Modern HTMX + Tailwind Web Interface
+
+#![deny(missing_docs)]
+#![deny(clippy::missing_errors_doc)]
+#![deny(clippy::missing_panics_doc)]
+#![warn(clippy::too_many_lines)]
 //!
 //! Server-driven web interface with real-time updates using HTMX.
 //! Provides clean, responsive UI for torrent management and media streaming.
