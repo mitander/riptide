@@ -1,20 +1,13 @@
-//! Web streaming services and HTTP handlers
+//! Web streaming utilities
 //!
-//! Provides HTTP streaming functionality that integrates with riptide-core's
-//! FileAssembler and FFmpeg remuxing components.
+//! Provides web-specific streaming functionality like browser compatibility detection.
+//! All core streaming logic is now handled by riptide-core HttpStreamingService.
 
 pub mod browser_compatibility;
-pub mod coordinator;
 pub mod debug;
-pub mod http_streaming;
 
 pub use browser_compatibility::{BrowserCapabilityMatrix, BrowserCompatibilityTester, BrowserType};
 pub use debug::{
     CacheFileInfo, DebugStreamingService, StreamingDebugEndpoint, StreamingDebugInfo,
     SystemDebugInfo, TorrentDebugInfo,
-};
-pub use http_streaming::{
-    ClientCapabilities, HttpStreamingConfig, HttpStreamingError, HttpStreamingService,
-    SimpleRangeRequest, StreamingPerformanceMetrics, StreamingRequest, StreamingResponse,
-    StreamingStrategy,
 };

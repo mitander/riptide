@@ -12,7 +12,7 @@ use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
 use riptide_core::streaming::{FfmpegProcessor, PieceFileAssembler};
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
-use riptide_core::{FileLibraryManager, RuntimeMode};
+use riptide_core::{FileLibraryManager, HttpStreamingService, RuntimeMode};
 use riptide_search::MediaSearchService;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -33,7 +33,6 @@ use crate::htmx::{
 };
 // Import new architecture modules
 use crate::pages::{dashboard_page, library_page, search_page, torrents_page};
-use crate::streaming::{HttpStreamingConfig, HttpStreamingService};
 
 // Removed PieceStoreType enum - using trait objects instead
 
@@ -101,7 +100,7 @@ impl AppState {
         self.services.ffmpeg_processor()
     }
 
-    /// Get the HTTP streaming service.
+    /// Get the streaming service.
     pub fn streaming_service(&self) -> &Arc<HttpStreamingService> {
         &self.streaming_service
     }
@@ -124,9 +123,9 @@ pub async fn run_server(
     let file_assembler = Arc::new(PieceFileAssembler::new(piece_store.clone(), Some(100)));
 
     let streaming_service = Arc::new(HttpStreamingService::new(
+        components.engine().clone(),
         file_assembler,
-        piece_store.clone(),
-        HttpStreamingConfig::default(),
+        Default::default(),
     ));
 
     let state = AppState {

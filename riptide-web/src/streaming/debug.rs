@@ -4,13 +4,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use riptide_core::HttpStreamingService;
 use riptide_core::torrent::InfoHash;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
-
-use crate::streaming::{
-    HttpStreamingError, HttpStreamingService, StreamingRequest, StreamingResponse,
-};
 
 /// Debug information for a streaming session
 #[derive(Debug, Clone)]
@@ -81,16 +78,16 @@ impl DebugStreamingService {
     }
 
     /// Handle streaming request with debug logging
-    pub async fn handle_streaming_request_debug(
+    pub async fn handle_http_request_debug(
         &self,
-        request: StreamingRequest,
-    ) -> Result<StreamingResponse, HttpStreamingError> {
+        info_hash: InfoHash,
+        range_header: Option<&str>,
+    ) -> Result<riptide_core::streaming::HttpStreamingResponse, String> {
         let start_time = Instant::now();
-        let info_hash = request.info_hash;
 
         info!(
-            "DEBUG: Starting streaming request for {} - Range: {:?}, Time offset: {:?}, Quality: {:?}",
-            info_hash, request.range, request.time_offset, request.preferred_quality
+            "DEBUG: Starting streaming request for {} - Range: {:?}",
+            info_hash, range_header
         );
 
         // Update debug info
@@ -118,7 +115,11 @@ impl DebugStreamingService {
         self.check_piece_availability(info_hash).await;
 
         // Call inner service
-        let result = self.inner.handle_streaming_request(request).await;
+        let result = self
+            .inner
+            .handle_http_request(info_hash, range_header)
+            .await
+            .map_err(|e| format!("Streaming error: {e}"));
 
         let elapsed = start_time.elapsed();
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
@@ -141,14 +142,7 @@ impl DebugStreamingService {
                             "DEBUG: Request succeeded for {} - Status: {:?}, Time: {:.2}ms",
                             info_hash, response.status, elapsed_ms
                         );
-
-                        // Estimate bytes served from Content-Length header
-                        if let Some(content_length) = response.headers.get("Content-Length")
-                            && let Ok(length_str) = content_length.to_str()
-                            && let Ok(length) = length_str.parse::<u64>()
-                        {
-                            entry.total_bytes_served += length;
-                        }
+                        entry.total_bytes_served += response.body.len() as u64;
                     }
                     Err(e) => {
                         error!(

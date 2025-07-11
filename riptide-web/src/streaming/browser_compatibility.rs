@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use axum::http::HeaderMap;
 
-use super::{ClientCapabilities, HttpStreamingError};
+use crate::handlers::streaming::ClientCapabilities;
 
 /// Browser types detected from User-Agent strings
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -298,7 +298,7 @@ impl BrowserCompatibilityTester {
     ///
     /// Returns `HttpStreamingError` if any of the compatibility tests fail
     /// or if there are issues with the browser detection matrix.
-    pub fn run_browser_compatibility_tests(&self) -> Result<(), HttpStreamingError> {
+    pub fn run_browser_compatibility_tests(&self) -> Result<(), String> {
         tracing::info!("Running browser compatibility test suite");
 
         // Test 1: Browser detection accuracy
@@ -357,12 +357,10 @@ impl BrowserCompatibilityTester {
 
         // Success criteria: 100% browser detection accuracy
         if detection_results.detection_accuracy < 100.0 {
-            return Err(HttpStreamingError::BrowserCompatibilityFailed {
-                reason: format!(
-                    "Browser detection accuracy {:.1}% < 100%",
-                    detection_results.detection_accuracy
-                ),
-            });
+            return Err(format!(
+                "Browser detection accuracy {:.1}% < 100%",
+                detection_results.detection_accuracy
+            ));
         }
 
         tracing::info!("Browser compatibility tests passed");

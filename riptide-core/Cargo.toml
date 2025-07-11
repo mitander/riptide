@@ -22,6 +22,7 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 url = { workspace = true }
 urlencoding = { workspace = true }
+axum = { workspace = true }
 bencode-rs = { workspace = true }
 magnet-url = { workspace = true }
 magneto = { workspace = true }
