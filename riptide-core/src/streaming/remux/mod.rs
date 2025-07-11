@@ -23,6 +23,9 @@ pub mod state;
 pub mod strategy;
 pub mod types;
 
+#[cfg(test)]
+pub mod readiness_tests;
+
 pub use session_manager::RemuxSessionManager;
 pub use state::{RemuxError, RemuxProgress, RemuxState};
 pub use strategy::{DirectStreamStrategy, RemuxStreamStrategy, StreamingStrategy};

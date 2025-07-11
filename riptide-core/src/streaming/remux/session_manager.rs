@@ -321,15 +321,36 @@ impl RemuxSessionManager {
             }
         })?;
 
+        // For streaming, we prioritize getting started quickly with head data
+        // Tail data is nice to have but not required for initial streaming
+        let required_head_size = self.config.min_head_size.min(file_size);
+
         // Check if we have head data
         let head_available = self
             .data_source
-            .check_range_availability(info_hash, 0..self.config.min_head_size.min(file_size))
+            .check_range_availability(info_hash, 0..required_head_size)
             .await
             .map(|availability| availability.available)
             .unwrap_or(false);
 
-        // Check if we have tail data
+        // For small files (< 10MB), require the full file
+        if file_size < 10 * 1024 * 1024 {
+            let full_file_available = self
+                .data_source
+                .check_range_availability(info_hash, 0..file_size)
+                .await
+                .map(|availability| availability.available)
+                .unwrap_or(false);
+            return Ok(full_file_available);
+        }
+
+        // For streaming optimization, start remuxing with just head data
+        // This allows us to extract metadata and prepare the stream quickly
+        if head_available {
+            return Ok(true);
+        }
+
+        // Fallback: Check if we have both head and tail data (original behavior)
         let tail_start = file_size.saturating_sub(self.config.min_tail_size);
         let tail_available = self
             .data_source
