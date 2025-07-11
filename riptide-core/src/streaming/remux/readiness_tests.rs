@@ -262,7 +262,7 @@ mod tests {
         let config = create_test_config();
         let data_source = MockDataSource::new();
         let info_hash = InfoHash::new([4u8; 20]);
-        let file_size = 1 * 1024 * 1024; // 1MB file (smaller than 3MB head requirement)
+        let file_size = 1024 * 1024; // 1MB file (smaller than 3MB head requirement)
 
         // Add file with full content
         data_source.add_file(info_hash, file_size).await;
@@ -321,9 +321,7 @@ mod tests {
 
         // Add file with insufficient head data
         data_source.add_file(info_hash, file_size).await;
-        data_source
-            .set_head_available(info_hash, 1 * 1024 * 1024)
-            .await; // Only 1MB head
+        data_source.set_head_available(info_hash, 1024 * 1024).await; // Only 1MB head
         data_source
             .set_tail_available(info_hash, file_size, 3 * 1024 * 1024)
             .await; // 3MB tail
@@ -349,7 +347,7 @@ mod tests {
             .set_head_available(info_hash, 5 * 1024 * 1024)
             .await; // 5MB head
         data_source
-            .set_tail_available(info_hash, file_size, 1 * 1024 * 1024)
+            .set_tail_available(info_hash, file_size, 1024 * 1024)
             .await; // Only 1MB tail
 
         let manager = RemuxSessionManager::new(config, Arc::new(data_source));
@@ -600,9 +598,7 @@ mod tests {
 
         // Add file with insufficient head data (less than 3MB minimum)
         data_source.add_file(info_hash, file_size).await;
-        data_source
-            .set_head_available(info_hash, 1 * 1024 * 1024)
-            .await; // Only 1MB head (less than 3MB minimum)
+        data_source.set_head_available(info_hash, 1024 * 1024).await; // Only 1MB head (less than 3MB minimum)
 
         let manager = RemuxSessionManager::new(config, Arc::new(data_source));
         let _handle = manager.get_or_create_session(info_hash).await.unwrap();
