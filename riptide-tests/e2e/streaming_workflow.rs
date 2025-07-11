@@ -2,8 +2,6 @@
 //!
 //! Tests complete torrent download → HTTP streaming → browser workflow.
 //! Validates the entire streaming pipeline from BitTorrent protocol to HTTP responses.
-//!
-//! NOTE: Tests are ignored during streaming refactor. Use `cargo test -- --ignored` to run.
 
 use std::collections::HashMap;
 use std::ops::Range;

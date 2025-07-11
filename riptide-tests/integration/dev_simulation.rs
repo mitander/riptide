@@ -54,11 +54,11 @@ async fn test_development_mode_full_simulation_loop() {
     assert!(response.status().is_success());
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    println!("Initial torrents response: {:?}", body);
+    println!("Initial torrents response: {body:?}");
     let torrents = body["torrents"].as_array().unwrap();
     assert_eq!(torrents.len(), 1, "Expected one torrent from local movie");
     let info_hash = torrents[0]["info_hash"].as_str().unwrap();
-    println!("Found torrent with info_hash: {}", info_hash);
+    println!("Found torrent with info_hash: {info_hash}");
     println!("Initial torrent state: {:?}", torrents[0]);
 
     // 5. Poll for progress and verify it increases (download started automatically in development mode)
@@ -77,7 +77,7 @@ async fn test_development_mode_full_simulation_loop() {
 
         if progress > last_progress {
             progress_increased = true;
-            println!("Progress increased: {:.1}%", progress);
+            println!("Progress increased: {progress:.1}%");
         }
         last_progress = progress;
         if progress >= 100.0 {

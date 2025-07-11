@@ -241,7 +241,7 @@ async fn test_message_queue_behavior() {
 
     // For this test, we just want to see what messages we get
     assert!(
-        received_messages.len() > 0,
+        !received_messages.is_empty(),
         "Should receive at least some messages"
     );
 

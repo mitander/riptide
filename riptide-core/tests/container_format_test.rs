@@ -2,8 +2,6 @@
 //!
 //! Integration tests for container format detection and MP4 validation
 //! logic. Ensures proper format identification and structure analysis.
-//!
-//! NOTE: Tests are ignored during streaming refactor. Use `cargo test -- --ignored` to run.
 
 use riptide_core::streaming::mp4_validation::{
     analyze_mp4_for_streaming, test_remuxed_mp4_validity, validate_mp4_structure,

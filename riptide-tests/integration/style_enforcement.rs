@@ -72,6 +72,7 @@ impl FastRustStyleChecker {
     }
 
     /// Recursively find Rust files with safety limits
+    #[allow(clippy::only_used_in_recursion)]
     fn find_rust_files_recursive(
         &self,
         dir: &Path,
@@ -84,10 +85,10 @@ impl FastRustStyleChecker {
         }
 
         // Skip target directories and other build artifacts
-        if let Some(name) = dir.file_name() {
-            if name == "target" || name == ".git" {
-                return Ok(());
-            }
+        if let Some(name) = dir.file_name()
+            && (name == "target" || name == ".git")
+        {
+            return Ok(());
         }
 
         // Only process riptide directories
@@ -102,7 +103,7 @@ impl FastRustStyleChecker {
 
             if path.is_dir() {
                 self.find_rust_files_recursive(&path, files, depth + 1)?;
-            } else if path.extension().map_or(false, |ext| ext == "rs") {
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
                 files.push(path);
             }
         }
@@ -121,8 +122,7 @@ impl FastRustStyleChecker {
                 1,
                 "MODULE_SIZE_EXCEEDED",
                 &format!(
-                    "Module has {} lines, exceeding the recommended limit of {}. Consider refactoring.",
-                    line_count, MODULE_SIZE_LIMIT
+                    "Module has {line_count} lines, exceeding the recommended limit of {MODULE_SIZE_LIMIT}. Consider refactoring."
                 ),
             ));
         }
@@ -132,21 +132,17 @@ impl FastRustStyleChecker {
     fn check_banned_module_names(&mut self, file_path: &Path) {
         let banned_names = ["util", "helper", "common", "utils", "helpers"];
 
-        if let Some(file_name) = file_path.file_stem() {
-            if let Some(name_str) = file_name.to_str() {
-                if banned_names.contains(&name_str) {
-                    self.add_violation(StyleViolation::new(
-                        Severity::Critical,
-                        &file_path.display().to_string(),
-                        1,
-                        "BANNED_MODULE_NAME",
-                        &format!(
-                            "Module name '{}' violates anti-pattern rules from docs/STYLE.md",
-                            name_str
-                        ),
-                    ));
-                }
-            }
+        if let Some(file_name) = file_path.file_stem()
+            && let Some(name_str) = file_name.to_str()
+            && banned_names.contains(&name_str)
+        {
+            self.add_violation(StyleViolation::new(
+                Severity::Critical,
+                &file_path.display().to_string(),
+                1,
+                "BANNED_MODULE_NAME",
+                &format!("Module name '{name_str}' violates anti-pattern rules from docs/STYLE.md"),
+            ));
         }
     }
 
@@ -175,11 +171,11 @@ impl FastRustStyleChecker {
                 for &prefix in &forbidden_prefixes {
                     // Check for the prefix after "fn "
                     let has_forbidden_prefix = if trimmed.contains("pub fn ") {
-                        trimmed.contains(&format!("pub fn {}", prefix))
-                            || trimmed.contains(&format!("pub async fn {}", prefix))
+                        trimmed.contains(&format!("pub fn {prefix}"))
+                            || trimmed.contains(&format!("pub async fn {prefix}"))
                     } else {
-                        trimmed.contains(&format!("fn {}", prefix))
-                            || trimmed.contains(&format!("async fn {}", prefix))
+                        trimmed.contains(&format!("fn {prefix}"))
+                            || trimmed.contains(&format!("async fn {prefix}"))
                     };
 
                     if has_forbidden_prefix {
@@ -191,8 +187,7 @@ impl FastRustStyleChecker {
                             line_num + 1,
                             "FORBIDDEN_PREFIX",
                             &format!(
-                                "Function uses forbidden prefix '{}' - use descriptive names instead",
-                                prefix
+                                "Function uses forbidden prefix '{prefix}' - use descriptive names instead"
                             ),
                         ));
                     }
@@ -241,7 +236,7 @@ impl FastRustStyleChecker {
                             &file_path.display().to_string(),
                             i + 1,
                             "MISSING_PUBLIC_DOC",
-                            &format!("Public function '{}' missing documentation", fn_name),
+                            &format!("Public function '{fn_name}' missing documentation"),
                         ));
                     } else {
                         // Check for Result return type and # Errors section
@@ -252,8 +247,7 @@ impl FastRustStyleChecker {
                                 i + 1,
                                 "MISSING_ERRORS_DOC",
                                 &format!(
-                                    "Function '{}' returns Result but missing '# Errors' section",
-                                    fn_name
+                                    "Function '{fn_name}' returns Result but missing '# Errors' section"
                                 ),
                             ));
                         }
@@ -266,8 +260,7 @@ impl FastRustStyleChecker {
                                 i + 1,
                                 "MISSING_PANICS_DOC",
                                 &format!(
-                                    "Function '{}' can panic but missing '# Panics' section",
-                                    fn_name
+                                    "Function '{fn_name}' can panic but missing '# Panics' section"
                                 ),
                             ));
                         }
@@ -289,6 +282,7 @@ impl FastRustStyleChecker {
     }
 
     /// Check if function returns Result by looking at next few lines
+    #[allow(clippy::needless_range_loop)]
     fn returns_result(&self, start_line: usize, lines: &[&str]) -> bool {
         let end = std::cmp::min(start_line + 3, lines.len());
         for i in start_line..end {
@@ -300,6 +294,7 @@ impl FastRustStyleChecker {
     }
 
     /// Check if function can panic by looking within function boundaries
+    #[allow(clippy::needless_range_loop)]
     fn can_panic(&self, start_line: usize, lines: &[&str]) -> bool {
         // Find the function body by looking for opening brace
         let mut func_start = start_line;
@@ -372,6 +367,7 @@ impl FastRustStyleChecker {
                     std::cmp::max(func_start, if i >= 3 { i - 3 } else { func_start });
                 let mut has_safety_check = false;
 
+                #[allow(clippy::needless_range_loop)]
                 for j in check_start..i {
                     let prev_line = lines[j];
                     if prev_line.contains(".is_some()")
@@ -396,7 +392,7 @@ impl FastRustStyleChecker {
 
     /// Check if documentation contains # Errors section
     fn has_errors_section(&self, line_index: usize, lines: &[&str]) -> bool {
-        let start = if line_index > 15 { line_index - 15 } else { 0 };
+        let start = line_index.saturating_sub(15);
         for i in (start..line_index).rev() {
             let line = lines[i].trim();
             if line.contains("# Errors") {
@@ -412,7 +408,7 @@ impl FastRustStyleChecker {
 
     /// Check if function has documentation comments
     fn has_documentation(&self, line_index: usize, lines: &[&str]) -> bool {
-        let start = if line_index > 15 { line_index - 15 } else { 0 };
+        let start = line_index.saturating_sub(15);
         for i in (start..line_index).rev() {
             let line = lines[i].trim();
             if line.starts_with("///") {
@@ -428,7 +424,7 @@ impl FastRustStyleChecker {
 
     /// Check if documentation contains # Panics section
     fn has_panics_section(&self, line_index: usize, lines: &[&str]) -> bool {
-        let start = if line_index > 15 { line_index - 15 } else { 0 };
+        let start = line_index.saturating_sub(15);
         for i in (start..line_index).rev() {
             let line = lines[i].trim();
             if line.contains("# Panics") {
@@ -480,7 +476,7 @@ impl FastRustStyleChecker {
 
         for file_path in files {
             if let Err(e) = self.check_file(&file_path) {
-                eprintln!("Warning: Failed to check file {:?}: {}", file_path, e);
+                eprintln!("Warning: Failed to check file {file_path:?}: {e}");
             }
         }
 

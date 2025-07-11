@@ -945,3 +945,803 @@ impl<P: PeerManager + 'static, T: TrackerManagement + 'static> TorrentEngine<P, 
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::config::RiptideConfig;
+    use crate::engine::test_mocks::{MockPeerManager, MockTrackerManager};
+    use crate::torrent::InfoHash;
+    use crate::torrent::parsing::types::TorrentMetadata;
+
+    fn create_test_engine() -> (
+        TorrentEngine<MockPeerManager, MockTrackerManager>,
+        mpsc::UnboundedReceiver<TorrentEngineCommand>,
+    ) {
+        let config = RiptideConfig::default();
+        let peer_manager = MockPeerManager::new();
+        let tracker_manager = MockTrackerManager::new();
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let engine = TorrentEngine::new(config, peer_manager, tracker_manager, sender);
+        (engine, receiver)
+    }
+
+    fn create_test_metadata(info_hash: InfoHash, name: &str) -> TorrentMetadata {
+        TorrentMetadata {
+            info_hash,
+            name: name.to_string(),
+            piece_length: 32768,
+            piece_hashes: vec![[0u8; 20]; 10], // 10 pieces
+            total_length: 327680,              // 10 * 32768
+            announce_urls: vec!["udp://tracker.example.com:1337/announce".to_string()],
+            files: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_engine_creation() {
+        let (engine, _receiver) = create_test_engine();
+        assert_eq!(engine.active_torrents.len(), 0);
+        assert_eq!(engine.torrent_metadata.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_add_magnet_link() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Valid magnet link
+        let magnet =
+            "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=test%20torrent";
+        let result = engine.add_magnet(magnet).await;
+        assert!(result.is_ok());
+
+        let info_hash = result.unwrap();
+        assert_eq!(engine.active_torrents.len(), 1);
+        assert!(engine.active_torrents.contains_key(&info_hash));
+
+        // Test duplicate torrent
+        let duplicate_result = engine.add_magnet(magnet).await;
+        assert!(matches!(
+            duplicate_result,
+            Err(TorrentError::DuplicateTorrent { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_add_invalid_magnet_link() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Invalid magnet link
+        let invalid_magnet = "not-a-magnet-link";
+        let result = engine.add_magnet(invalid_magnet).await;
+        assert!(result.is_err());
+        assert_eq!(engine.active_torrents.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_add_torrent_metadata() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        let result = engine.add_torrent_metadata(metadata.clone());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), info_hash);
+
+        assert_eq!(engine.active_torrents.len(), 1);
+        assert_eq!(engine.torrent_metadata.len(), 1);
+        assert!(engine.torrent_metadata.contains_key(&info_hash));
+
+        // Test duplicate torrent
+        let duplicate_result = engine.add_torrent_metadata(metadata);
+        assert!(matches!(
+            duplicate_result,
+            Err(TorrentError::DuplicateTorrent { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_session_retrieval() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        let session = engine.session(info_hash);
+        assert!(session.is_some());
+        assert_eq!(session.unwrap().filename, "test torrent");
+
+        // Test non-existent torrent
+        let non_existent = InfoHash::new([2u8; 20]);
+        let missing_session = engine.session(non_existent);
+        assert!(missing_session.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_mark_pieces_completed() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Mark valid pieces as completed
+        let result = engine.mark_pieces_completed(info_hash, vec![0, 1, 2]);
+        assert!(result.is_ok());
+
+        let session = engine.session(info_hash).unwrap();
+        assert!(session.completed_pieces[0]);
+        assert!(session.completed_pieces[1]);
+        assert!(session.completed_pieces[2]);
+        assert!(!session.completed_pieces[3]);
+
+        // Test invalid piece index
+        let invalid_result = engine.mark_pieces_completed(info_hash, vec![999]);
+        assert!(matches!(
+            invalid_result,
+            Err(TorrentError::InvalidPieceIndex { .. })
+        ));
+
+        // Test non-existent torrent
+        let non_existent = InfoHash::new([2u8; 20]);
+        let missing_result = engine.mark_pieces_completed(non_existent, vec![0]);
+        assert!(matches!(
+            missing_result,
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_download_stats() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        let stats = DownloadStats {
+            download_speed_bps: 1000,
+            upload_speed_bps: 500,
+            bytes_downloaded: 10000,
+            bytes_uploaded: 5000,
+        };
+
+        let result = engine.update_download_stats(info_hash, stats.clone());
+        assert!(result.is_ok());
+
+        let session = engine.session(info_hash).unwrap();
+        assert_eq!(session.download_speed_bps, 1000);
+        assert_eq!(session.upload_speed_bps, 500);
+
+        // Test non-existent torrent
+        let non_existent = InfoHash::new([2u8; 20]);
+        let missing_result = engine.update_download_stats(non_existent, stats);
+        assert!(matches!(
+            missing_result,
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_seek_to_position() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Seek operation should succeed even without active piece picker
+        let result = engine.seek_to_position(info_hash, 100000, 1000000);
+        assert!(result.is_ok());
+
+        // Test non-existent torrent
+        let non_existent = InfoHash::new([2u8; 20]);
+        let missing_result = engine.seek_to_position(non_existent, 100000, 1000000);
+        assert!(matches!(
+            missing_result,
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_buffer_strategy() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Buffer strategy update should succeed even without active piece picker
+        let result = engine.update_buffer_strategy(info_hash, 1.5, 2000000);
+        assert!(result.is_ok());
+
+        // Test non-existent torrent
+        let non_existent = InfoHash::new([2u8; 20]);
+        let missing_result = engine.update_buffer_strategy(non_existent, 1.5, 2000000);
+        assert!(matches!(
+            missing_result,
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_buffer_status() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Buffer status should return default values without active piece picker
+        let result = engine.buffer_status(info_hash);
+        assert!(result.is_ok());
+        let status = result.unwrap();
+        assert_eq!(status.current_position, 0);
+        assert_eq!(status.bytes_ahead, 0);
+        assert_eq!(status.buffer_health, 0.0);
+
+        // Test non-existent torrent
+        let non_existent = InfoHash::new([2u8; 20]);
+        let missing_result = engine.buffer_status(non_existent);
+        assert!(matches!(
+            missing_result,
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_stop_download() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Initially not downloading
+        let session = engine.session(info_hash).unwrap();
+        assert!(!session.is_downloading);
+
+        // Stop download should succeed even if not started
+        let result = engine.stop_download(info_hash);
+        assert!(result.is_ok());
+
+        // Test non-existent torrent
+        let non_existent = InfoHash::new([2u8; 20]);
+        let missing_result = engine.stop_download(non_existent);
+        assert!(matches!(
+            missing_result,
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_active_sessions() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Initially no sessions
+        assert_eq!(engine.active_sessions().count(), 0);
+
+        // Add multiple torrents
+        let info_hash1 = InfoHash::new([1u8; 20]);
+        let info_hash2 = InfoHash::new([2u8; 20]);
+        let metadata1 = create_test_metadata(info_hash1, "torrent 1");
+        let metadata2 = create_test_metadata(info_hash2, "torrent 2");
+
+        engine.add_torrent_metadata(metadata1).unwrap();
+        engine.add_torrent_metadata(metadata2).unwrap();
+
+        // Should have 2 active sessions
+        assert_eq!(engine.active_sessions().count(), 2);
+
+        let session_names: Vec<&str> = engine
+            .active_sessions()
+            .map(|s| s.filename.as_str())
+            .collect();
+        assert!(session_names.contains(&"torrent 1"));
+        assert!(session_names.contains(&"torrent 2"));
+    }
+
+    #[tokio::test]
+    async fn test_download_statistics() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Initially no stats
+        let stats = engine.download_statistics().await;
+        assert_eq!(stats.active_torrents, 0);
+        assert_eq!(stats.total_peers, 0);
+        assert_eq!(stats.bytes_downloaded, 0);
+        assert_eq!(stats.bytes_uploaded, 0);
+        assert_eq!(stats.average_progress, 0.0);
+
+        // Add a torrent and mark some pieces completed
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+        engine.mark_pieces_completed(info_hash, vec![0, 1]).unwrap();
+
+        let stats = engine.download_statistics().await;
+        assert_eq!(stats.active_torrents, 1);
+        assert_eq!(stats.bytes_downloaded, 2 * 32768); // 2 pieces * piece_size
+        assert!(stats.average_progress > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_fallback_trackers() {
+        let (engine, _receiver) = create_test_engine();
+
+        let trackers = engine.fallback_trackers();
+        assert!(!trackers.is_empty());
+        assert!(
+            trackers
+                .iter()
+                .any(|t| t.contains("tracker.openbittorrent.com"))
+        );
+        assert!(trackers.iter().any(|t| t.contains("tracker.publicbt.com")));
+    }
+
+    #[tokio::test]
+    async fn test_magnet_with_fallback_trackers() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Magnet link without trackers should use fallback trackers
+        let magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=test";
+        let result = engine.add_magnet(magnet).await;
+        assert!(result.is_ok());
+
+        let info_hash = result.unwrap();
+        let session = engine.session(info_hash).unwrap();
+        assert!(!session.tracker_urls.is_empty());
+        assert!(
+            session
+                .tracker_urls
+                .iter()
+                .any(|t| t.contains("tracker.openbittorrent.com"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_magnet_with_display_name() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Magnet link with display name
+        let magnet =
+            "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=My%20Movie%20File";
+        let result = engine.add_magnet(magnet).await;
+        assert!(result.is_ok());
+
+        let info_hash = result.unwrap();
+        let session = engine.session(info_hash).unwrap();
+        assert_eq!(session.filename, "My Movie File");
+    }
+
+    #[tokio::test]
+    async fn test_magnet_without_display_name() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Magnet link without display name should generate readable fallback
+        let magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567";
+        let result = engine.add_magnet(magnet).await;
+        assert!(result.is_ok());
+
+        let info_hash = result.unwrap();
+        let session = engine.session(info_hash).unwrap();
+        assert!(session.filename.starts_with("Torrent_"));
+        assert!(session.filename.len() > 8); // Should include part of hash
+    }
+
+    #[tokio::test]
+    async fn test_piece_completion_progress() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Initially 0% progress
+        let session = engine.session(info_hash).unwrap();
+        assert_eq!(session.progress, 0.0);
+
+        // Mark half the pieces as completed
+        engine
+            .mark_pieces_completed(info_hash, vec![0, 1, 2, 3, 4])
+            .unwrap();
+
+        let session = engine.session(info_hash).unwrap();
+        assert_eq!(session.progress, 0.5); // 5 out of 10 pieces
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_operations() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Test that multiple operations can be performed concurrently
+        let info_hash1 = InfoHash::new([1u8; 20]);
+        let info_hash2 = InfoHash::new([2u8; 20]);
+        let metadata1 = create_test_metadata(info_hash1, "torrent 1");
+        let metadata2 = create_test_metadata(info_hash2, "torrent 2");
+
+        // Add torrents concurrently
+        let result1 = engine.add_torrent_metadata(metadata1);
+        let result2 = engine.add_torrent_metadata(metadata2);
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+
+        // Perform operations on both torrents
+        let mark_result1 = engine.mark_pieces_completed(info_hash1, vec![0, 1]);
+        let mark_result2 = engine.mark_pieces_completed(info_hash2, vec![2, 3]);
+
+        assert!(mark_result1.is_ok());
+        assert!(mark_result2.is_ok());
+
+        // Verify both torrents are properly managed
+        assert_eq!(engine.active_sessions().count(), 2);
+        let session1 = engine.session(info_hash1).unwrap();
+        let session2 = engine.session(info_hash2).unwrap();
+
+        assert!(session1.completed_pieces[0] && session1.completed_pieces[1]);
+        assert!(session2.completed_pieces[2] && session2.completed_pieces[3]);
+    }
+
+    #[tokio::test]
+    async fn test_start_download_success() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        let result = engine.start_download(info_hash).await;
+        assert!(result.is_ok());
+
+        // Verify download state is updated
+        let session = engine.session(info_hash).unwrap();
+        assert!(session.is_downloading);
+        assert!(session.started_at.elapsed() < Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn test_start_download_nonexistent_torrent() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+
+        let result = engine.start_download(info_hash).await;
+        assert!(matches!(result, Err(TorrentError::TorrentNotFound { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_start_download_already_downloading() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Start download first time
+        let result1 = engine.start_download(info_hash).await;
+        assert!(result1.is_ok());
+
+        // Start download second time - should succeed (idempotent)
+        let result2 = engine.start_download(info_hash).await;
+        assert!(result2.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_peer_success() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+        let peer_address: SocketAddr = "127.0.0.1:6881".parse().unwrap();
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        let result = engine.connect_peer(info_hash, peer_address).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_peer_with_failure() {
+        let config = RiptideConfig::default();
+        let peer_manager = MockPeerManager::new_with_connection_failure();
+        let tracker_manager = MockTrackerManager::new();
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        let mut engine = TorrentEngine::new(config, peer_manager, tracker_manager, sender);
+
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+        let peer_address: SocketAddr = "127.0.0.1:6881".parse().unwrap();
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        let result = engine.connect_peer(info_hash, peer_address).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_maintenance_operations() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Maintenance should succeed
+        engine.maintenance().await;
+    }
+
+    #[tokio::test]
+    async fn test_configure_upload_manager_for_streaming() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        engine
+            .configure_upload_manager_for_streaming(info_hash, 32768)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_update_streaming_position_coordinated() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        let result = engine
+            .update_streaming_position_coordinated(info_hash, 100000)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_engine_with_empty_session() {
+        let (engine, _receiver) = create_test_engine();
+
+        // Test methods that should handle empty engine gracefully
+        let stats = engine.download_statistics().await;
+        assert_eq!(stats.active_torrents, 0);
+        assert_eq!(stats.total_peers, 0);
+
+        let sessions: Vec<_> = engine.active_sessions().collect();
+        assert_eq!(sessions.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_torrent_metadata_storage() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        // Add metadata
+        engine.add_torrent_metadata(metadata.clone()).unwrap();
+
+        // Verify metadata is stored
+        assert!(engine.torrent_metadata.contains_key(&info_hash));
+        let stored_metadata = engine.torrent_metadata.get(&info_hash).unwrap();
+        assert_eq!(stored_metadata.name, metadata.name);
+        assert_eq!(stored_metadata.piece_length, metadata.piece_length);
+        assert_eq!(stored_metadata.total_length, metadata.total_length);
+    }
+
+    #[tokio::test]
+    async fn test_piece_picker_initialization() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Before start_download, no piece picker should exist
+        assert!(!engine.piece_pickers.contains_key(&info_hash));
+
+        // After start_download, piece picker should be created
+        let _result = engine.start_download(info_hash).await;
+        assert!(engine.piece_pickers.contains_key(&info_hash));
+    }
+
+    #[tokio::test]
+    async fn test_multiple_torrent_management() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Add multiple different torrents
+        let info_hashes: Vec<InfoHash> = (0..5).map(|i| InfoHash::new([i; 20])).collect();
+
+        for (i, info_hash) in info_hashes.iter().enumerate() {
+            let metadata = create_test_metadata(*info_hash, &format!("torrent {i}"));
+            engine.add_torrent_metadata(metadata).unwrap();
+        }
+
+        // Verify all torrents are tracked
+        assert_eq!(engine.active_torrents.len(), 5);
+        assert_eq!(engine.torrent_metadata.len(), 5);
+
+        // Start downloads for all torrents
+        for info_hash in &info_hashes {
+            let result = engine.start_download(*info_hash).await;
+            assert!(result.is_ok());
+        }
+
+        // Verify all downloads started
+        for info_hash in &info_hashes {
+            let session = engine.session(*info_hash).unwrap();
+            assert!(session.is_downloading);
+        }
+
+        // Stop some downloads
+        for info_hash in info_hashes.iter().take(3) {
+            let result = engine.stop_download(*info_hash);
+            assert!(result.is_ok());
+        }
+
+        // Verify selective stopping
+        for (i, info_hash) in info_hashes.iter().enumerate() {
+            let session = engine.session(*info_hash).unwrap();
+            if i < 3 {
+                assert!(!session.is_downloading);
+            } else {
+                assert!(session.is_downloading);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_download_statistics_with_multiple_torrents() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Add multiple torrents with different progress
+        let info_hashes: Vec<InfoHash> = (0..3).map(|i| InfoHash::new([i; 20])).collect();
+
+        for (i, info_hash) in info_hashes.iter().enumerate() {
+            let metadata = create_test_metadata(*info_hash, &format!("torrent {i}"));
+            engine.add_torrent_metadata(metadata).unwrap();
+        }
+
+        // Mark different amounts of pieces completed
+        engine
+            .mark_pieces_completed(info_hashes[0], vec![0, 1, 2])
+            .unwrap(); // 30%
+        engine
+            .mark_pieces_completed(info_hashes[1], vec![0, 1, 2, 3, 4])
+            .unwrap(); // 50%
+        engine
+            .mark_pieces_completed(info_hashes[2], vec![0, 1, 2, 3, 4, 5, 6, 7])
+            .unwrap(); // 80%
+
+        let stats = engine.download_statistics().await;
+        assert_eq!(stats.active_torrents, 3);
+        assert_eq!(stats.bytes_downloaded, 16 * 32768); // 16 pieces total
+        assert!((stats.average_progress - 0.533).abs() < 0.01); // (30% + 50% + 80%) / 3 ≈ 53.3%
+    }
+
+    #[tokio::test]
+    async fn test_magnet_link_edge_cases() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Test magnet with multiple trackers
+        let magnet_with_trackers = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&tr=udp://tracker1.example.com:1337&tr=udp://tracker2.example.com:1337";
+        let result = engine.add_magnet(magnet_with_trackers).await;
+        assert!(result.is_ok());
+
+        let info_hash = result.unwrap();
+        let session = engine.session(info_hash).unwrap();
+        assert_eq!(session.tracker_urls.len(), 2);
+        assert!(
+            session
+                .tracker_urls
+                .contains(&"udp://tracker1.example.com:1337".to_string())
+        );
+        assert!(
+            session
+                .tracker_urls
+                .contains(&"udp://tracker2.example.com:1337".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_error_handling_edge_cases() {
+        let (mut engine, _receiver) = create_test_engine();
+
+        // Test operations on non-existent torrents
+        let non_existent = InfoHash::new([99u8; 20]);
+
+        assert!(matches!(
+            engine.seek_to_position(non_existent, 0, 0),
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+
+        assert!(matches!(
+            engine.update_buffer_strategy(non_existent, 1.0, 1000),
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+
+        assert!(matches!(
+            engine.buffer_status(non_existent),
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+
+        assert!(matches!(
+            engine.stop_download(non_existent),
+            Err(TorrentError::TorrentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_piece_completion_edge_cases() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Test empty piece list
+        let result = engine.mark_pieces_completed(info_hash, vec![]);
+        assert!(result.is_ok());
+
+        // Test duplicate piece indices
+        let result = engine.mark_pieces_completed(info_hash, vec![0, 0, 1, 1, 2]);
+        assert!(result.is_ok());
+
+        let session = engine.session(info_hash).unwrap();
+        assert!(session.completed_pieces[0]);
+        assert!(session.completed_pieces[1]);
+        assert!(session.completed_pieces[2]);
+
+        // Test out-of-bounds piece indices
+        let result = engine.mark_pieces_completed(info_hash, vec![999, 1000]);
+        assert!(matches!(
+            result,
+            Err(TorrentError::InvalidPieceIndex { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_download_stats_edge_cases() {
+        let (mut engine, _receiver) = create_test_engine();
+        let info_hash = InfoHash::new([1u8; 20]);
+        let metadata = create_test_metadata(info_hash, "test torrent");
+
+        engine.add_torrent_metadata(metadata).unwrap();
+
+        // Test with zero stats
+        let zero_stats = DownloadStats {
+            download_speed_bps: 0,
+            upload_speed_bps: 0,
+            bytes_downloaded: 0,
+            bytes_uploaded: 0,
+        };
+
+        let result = engine.update_download_stats(info_hash, zero_stats);
+        assert!(result.is_ok());
+
+        // Test with maximum values
+        let max_stats = DownloadStats {
+            download_speed_bps: u64::MAX,
+            upload_speed_bps: u64::MAX,
+            bytes_downloaded: u64::MAX,
+            bytes_uploaded: u64::MAX,
+        };
+
+        let result = engine.update_download_stats(info_hash, max_stats.clone());
+        assert!(result.is_ok());
+
+        let session = engine.session(info_hash).unwrap();
+        assert_eq!(session.download_speed_bps, u64::MAX);
+        assert_eq!(session.upload_speed_bps, u64::MAX);
+    }
+}

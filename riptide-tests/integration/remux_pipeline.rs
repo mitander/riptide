@@ -3,8 +3,6 @@
 //! Tests FFmpeg remuxing pipeline from file assembly through transcoding
 //! to progressive streaming output. Validates remuxing behavior across
 //! different container formats and file completion states.
-//!
-//! NOTE: Tests are ignored during streaming refactor. Use `cargo test -- --ignored` to run.
 
 use std::collections::HashMap;
 use std::ops::Range;

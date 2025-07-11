@@ -50,7 +50,7 @@ async fn test_simple_piece_download() {
         announce_urls: vec!["http://test.tracker/announce".to_string()],
     };
 
-    println!("SIMPLE_TEST: Created metadata for {} pieces", piece_count);
+    println!("SIMPLE_TEST: Created metadata for {piece_count} pieces");
 
     // Create and populate piece store
     let piece_store = Arc::new(InMemoryPieceStore::new());
@@ -108,10 +108,7 @@ async fn test_simple_piece_download() {
         )
         .await;
 
-    println!(
-        "SIMPLE_TEST: Injected single peer {} with all pieces",
-        peer_addr
-    );
+    println!("SIMPLE_TEST: Injected single peer {peer_addr} with all pieces");
 
     // Create temporary storage
     let temp_dir = tempfile::tempdir().unwrap();
@@ -146,7 +143,7 @@ async fn test_simple_piece_download() {
             // Verify piece was completed
             let progress = piece_downloader.progress().await;
             let piece_0_progress = &progress[0];
-            println!("SIMPLE_TEST: Piece 0 progress: {:?}", piece_0_progress);
+            println!("SIMPLE_TEST: Piece 0 progress: {piece_0_progress:?}");
 
             assert!(matches!(
                 piece_0_progress.status,
@@ -174,23 +171,20 @@ async fn test_simple_piece_download() {
                         })
                         .count();
 
-                    println!(
-                        "SIMPLE_TEST: Completed pieces: {}/{}",
-                        completed_count, piece_count
-                    );
+                    println!("SIMPLE_TEST: Completed pieces: {completed_count}/{piece_count}");
                     assert_eq!(completed_count, piece_count as usize);
 
                     println!("SIMPLE_TEST: Test completed successfully!");
                 }
                 Err(e) => {
-                    println!("SIMPLE_TEST: Failed to download piece 1: {:?}", e);
-                    panic!("Piece 1 download failed: {:?}", e);
+                    println!("SIMPLE_TEST: Failed to download piece 1: {e:?}");
+                    panic!("Piece 1 download failed: {e:?}");
                 }
             }
         }
         Err(e) => {
-            println!("SIMPLE_TEST: Failed to download piece 0: {:?}", e);
-            panic!("Piece 0 download failed: {:?}", e);
+            println!("SIMPLE_TEST: Failed to download piece 0: {e:?}");
+            panic!("Piece 0 download failed: {e:?}");
         }
     }
 }
@@ -245,14 +239,14 @@ async fn test_peer_manager_basic_functionality() {
 
     match result {
         Ok(()) => println!("BASIC_TEST: Successfully connected to peer"),
-        Err(e) => println!("BASIC_TEST: Failed to connect to peer: {:?}", e),
+        Err(e) => println!("BASIC_TEST: Failed to connect to peer: {e:?}"),
     }
 
     // Test piece availability
     let has_piece = peer_manager
         .peer_has_piece(peer_addr, PieceIndex::new(0))
         .await;
-    println!("BASIC_TEST: Peer has piece 0: {}", has_piece);
+    println!("BASIC_TEST: Peer has piece 0: {has_piece}");
     assert!(has_piece);
 
     println!("BASIC_TEST: Basic functionality test completed");
