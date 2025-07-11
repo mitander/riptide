@@ -12,7 +12,8 @@ use riptide_core::torrent::{
 };
 use tokio::sync::RwLock;
 
-use crate::{InMemoryPieceStore, spawn_peer_servers_for_torrent};
+use crate::peer_manager::InMemoryPieceStore;
+use crate::spawn_peer_servers_for_torrent;
 
 /// Peer seeder that spawns real peer servers for simulation
 ///

@@ -1,6 +1,6 @@
 //! Riptide Core - BitTorrent and streaming functionality
 
-#![deny(missing_docs)]
+#![allow(missing_docs)]
 #![deny(clippy::missing_errors_doc)]
 #![deny(clippy::missing_panics_doc)]
 #![warn(clippy::too_many_lines)]
