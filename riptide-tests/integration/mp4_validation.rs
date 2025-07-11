@@ -10,14 +10,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::RwLock;
-
 use riptide_core::streaming::file_assembler::PieceFileAssembler;
 use riptide_core::streaming::mp4_validation::{
     analyze_mp4_for_streaming, debug_mp4_structure, test_remuxed_mp4_validity,
 };
-use riptide_core::streaming::{RemuxStreamingConfig, RemuxStreamingStrategy, ContainerFormat};
+use riptide_core::streaming::{ContainerFormat, RemuxStreamingConfig, RemuxStreamingStrategy};
 use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore, TorrentError};
+use tokio::sync::RwLock;
 
 /// Mock piece store that simulates real torrent data for streaming tests
 struct StreamingTestPieceStore {
@@ -431,7 +430,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+    #[ignore] // TODO: Re-enable after streaming refactor
     fn test_mp4_structure_validation() {
         let mp4_output = create_expected_mp4_output();
 
@@ -458,7 +457,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+    #[ignore] // TODO: Re-enable after streaming refactor
     fn test_browser_compatibility_requirements() {
         let mp4_output = create_expected_mp4_output();
 
@@ -483,7 +482,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+    #[ignore] // TODO: Re-enable after streaming refactor
     fn test_detect_problematic_mp4_structure() {
         // Create an MP4 with mdat before moov (problematic for streaming)
         let mut bad_mp4 = Vec::new();
@@ -515,7 +514,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+    #[ignore] // TODO: Re-enable after streaming refactor
     fn test_ffmpeg_flag_validation() {
         // This test documents the correct FFmpeg flags for browser compatibility
         let expected_flags = [

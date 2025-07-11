@@ -64,7 +64,6 @@ pub mod scenarios;
 pub mod sim_peer_manager;
 pub mod simulation_mode;
 pub mod streaming;
-pub mod streaming_integration_tests;
 pub mod tracker;
 pub mod tracker_manager;
 

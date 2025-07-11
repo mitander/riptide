@@ -5,8 +5,7 @@ pub mod downloader;
 pub mod enhanced_peer_connection;
 pub mod enhanced_peer_manager;
 pub mod error_recovery;
-#[cfg(test)]
-pub mod integration_tests;
+
 pub mod parsing;
 pub mod peer_connection;
 pub mod peer_manager;

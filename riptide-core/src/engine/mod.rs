@@ -40,10 +40,7 @@ mod actor;
 mod commands;
 mod core;
 mod handle;
-#[cfg(test)]
-mod integration_tests;
-#[cfg(test)]
-mod streaming_integration_tests;
+
 #[cfg(test)]
 mod test_mocks;
 

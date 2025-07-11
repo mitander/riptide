@@ -64,7 +64,7 @@ mod tests {
     use super::*;
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_mp4_streaming_validation_good() {
         let good_mp4 = create_test_mp4_header();
         let analysis = analyze_mp4_for_streaming(&good_mp4);
@@ -82,7 +82,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_mp4_streaming_validation_bad() {
         let bad_mp4 = create_bad_mp4_header();
         let analysis = analyze_mp4_for_streaming(&bad_mp4);
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_remuxed_mp4_validity_function() {
         let good_mp4 = create_test_mp4_header();
         let result = test_remuxed_mp4_validity(&good_mp4);
@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_mp4_structure_validation() {
         let good_mp4 = create_test_mp4_header();
         let mut cursor = std::io::Cursor::new(&good_mp4);
@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_mp4_structure_validation_bad() {
         let bad_mp4 = create_bad_mp4_header();
         let mut cursor = std::io::Cursor::new(&bad_mp4);
@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_streaming_mp4_validation_integration() {
         // Test that catches the real streaming issues
         let good_mp4 = create_test_mp4_header();
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_browser_compatibility_validation() {
         // Test cases for common browser compatibility issues
         let test_cases = vec![
@@ -187,15 +187,15 @@ mod tests {
         for (name, data, should_pass) in test_cases {
             let result = test_remuxed_mp4_validity(&data);
             if should_pass {
-                assert!(result.is_ok(), "{} should pass validation", name);
+                assert!(result.is_ok(), "{name} should pass validation");
             } else {
-                assert!(result.is_err(), "{} should fail validation", name);
+                assert!(result.is_err(), "{name} should fail validation");
             }
         }
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_streaming_analysis_details() {
         let good_mp4 = create_test_mp4_header();
         let analysis = analyze_mp4_for_streaming(&good_mp4);
@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-#[ignore] // TODO: Re-enable after streaming refactor
+
     fn test_mp4_validation_error_messages() {
         let bad_mp4 = create_bad_mp4_header();
         let result = test_remuxed_mp4_validity(&bad_mp4);

@@ -2,11 +2,10 @@
 
 #[cfg(test)]
 mod tests {
+    use riptide_core::config::RiptideConfig;
+    use riptide_core::engine::spawn_torrent_engine;
+    use riptide_core::torrent::InfoHash;
     use sha1::{Digest, Sha1};
-
-    use crate::config::RiptideConfig;
-    use crate::engine::spawn_torrent_engine;
-    use crate::torrent::InfoHash;
 
     /// Generates proper SHA1 hashes for test torrent metadata.
     fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {
@@ -38,14 +37,14 @@ mod tests {
         let total_size = piece_count as u64 * piece_size as u64;
         let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-        let metadata = crate::torrent::parsing::types::TorrentMetadata {
-            info_hash: InfoHash::new([42u8; 20]),
-            name: "streaming_movie.mp4".to_string(),
+        let metadata = riptide_core::torrent::parsing::types::TorrentMetadata {
+            info_hash: InfoHash::new([99u8; 20]),
+            name: "adaptive_movie.mp4".to_string(),
             total_length: total_size,
             piece_length: piece_size,
             piece_hashes,
-            files: vec![crate::torrent::parsing::types::TorrentFile {
-                path: vec!["streaming_movie.mp4".to_string()],
+            files: vec![riptide_core::torrent::parsing::types::TorrentFile {
+                path: vec!["adaptive_movie.mp4".to_string()],
                 length: total_size,
             }],
             announce_urls: vec!["http://tracker.example.com/announce".to_string()],
@@ -230,13 +229,13 @@ mod tests {
             let total_size = piece_count as u64 * piece_size as u64;
             let piece_hashes = generate_test_piece_hashes(piece_count, piece_size);
 
-            let metadata = crate::torrent::parsing::types::TorrentMetadata {
+            let metadata = riptide_core::torrent::parsing::types::TorrentMetadata {
                 info_hash: InfoHash::new(hash_bytes),
                 name: name.to_string(),
                 total_length: total_size,
                 piece_length: piece_size,
-                piece_hashes,
-                files: vec![crate::torrent::parsing::types::TorrentFile {
+                piece_hashes: piece_hashes.clone(),
+                files: vec![riptide_core::torrent::parsing::types::TorrentFile {
                     path: vec![name.to_string()],
                     length: total_size,
                 }],
