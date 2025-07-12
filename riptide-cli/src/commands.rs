@@ -107,13 +107,13 @@ pub async fn create_server_components(
     }
 }
 
-/// Handle the CLI command
+/// Execute the CLI command
 ///
 /// # Errors
 ///
 /// - `anyhow::Error` - If torrent engine spawn fails
 /// - `anyhow::Error` - If command execution fails
-pub async fn handle_command(command: Commands) -> Result<()> {
+pub async fn execute_command(command: Commands) -> Result<()> {
     let config = RiptideConfig::default();
     let peers = TcpPeers::new_default();
     let tracker = Tracker::new(config.network.clone());

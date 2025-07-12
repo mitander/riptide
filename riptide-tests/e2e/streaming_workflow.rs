@@ -276,7 +276,7 @@ async fn test_direct_mp4_streaming() {
 
     // Test full file request
     let response = http_streaming
-        .handle_http_request(info_hash, None)
+        .serve_http_stream(info_hash, None)
         .await
         .expect("Failed to handle streaming request");
 
@@ -286,7 +286,7 @@ async fn test_direct_mp4_streaming() {
 
     // Test range request
     let range_response = http_streaming
-        .handle_http_request(info_hash, Some("bytes=0-1023"))
+        .serve_http_stream(info_hash, Some("bytes=0-1023"))
         .await
         .expect("Failed to handle range request");
 
@@ -333,7 +333,7 @@ async fn test_container_format_detection() {
     // Test MP4 detection
     data_source.add_file(info_hash, mp4_data).await;
     let response = http_streaming
-        .handle_http_request(info_hash, Some("bytes=0-31"))
+        .serve_http_stream(info_hash, Some("bytes=0-31"))
         .await
         .expect("Failed to detect MP4");
     assert!(response.content_type.contains("video/mp4"));
@@ -384,7 +384,7 @@ async fn test_range_request_parsing() {
 
     // Test standard range request
     let response = http_streaming
-        .handle_http_request(info_hash, Some("bytes=100-199"))
+        .serve_http_stream(info_hash, Some("bytes=100-199"))
         .await
         .expect("Failed to handle range request");
 
@@ -393,7 +393,7 @@ async fn test_range_request_parsing() {
 
     // Test open-ended range request
     let response = http_streaming
-        .handle_http_request(info_hash, Some("bytes=100-"))
+        .serve_http_stream(info_hash, Some("bytes=100-"))
         .await
         .expect("Failed to handle open-ended range");
 
@@ -402,7 +402,7 @@ async fn test_range_request_parsing() {
 
     // Test suffix range request (last 100 bytes)
     let result = http_streaming
-        .handle_http_request(info_hash, Some("bytes=-100"))
+        .serve_http_stream(info_hash, Some("bytes=-100"))
         .await;
 
     match result {
@@ -439,7 +439,7 @@ async fn test_concurrent_streaming_requests() {
 
         let handle = tokio::spawn(async move {
             service
-                .handle_http_request(info_hash, Some(&range_header))
+                .serve_http_stream(info_hash, Some(&range_header))
                 .await
         });
 
@@ -465,7 +465,7 @@ async fn test_streaming_error_handling() {
     // Test with non-existent file
     let non_existent_hash = InfoHash::from_hex("9999999999999999999999999999999999999999").unwrap();
     let result = http_streaming
-        .handle_http_request(non_existent_hash, None)
+        .serve_http_stream(non_existent_hash, None)
         .await;
 
     assert!(result.is_err());
@@ -479,7 +479,7 @@ async fn test_streaming_error_handling() {
 
     // Test invalid range header
     let result = http_streaming
-        .handle_http_request(info_hash, Some("bytes=invalid-range"))
+        .serve_http_stream(info_hash, Some("bytes=invalid-range"))
         .await;
 
     // Should fallback to full file request
@@ -555,7 +555,7 @@ async fn test_multiple_format_streaming() {
 
     // Test MP4 direct streaming
     let mp4_response = http_streaming
-        .handle_http_request(mp4_hash, Some("bytes=0-1023"))
+        .serve_http_stream(mp4_hash, Some("bytes=0-1023"))
         .await
         .expect("Failed to stream MP4");
 

@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Riptide CLI starting with log level: {}", cli.log_level);
 
-    let result = commands::handle_command(cli.command).await;
+    let result = commands::execute_command(cli.command).await;
 
     if let Err(e) = &result {
         tracing::error!("Command failed: {}", e);

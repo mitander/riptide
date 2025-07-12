@@ -118,13 +118,13 @@ impl HttpStreaming {
         }
     }
 
-    /// Handle streaming request by delegating to appropriate strategy
+    /// Serve streaming data by delegating to appropriate strategy
     ///
     /// # Errors
     ///
     /// - `StreamingError::DataSource` - If data source access fails
     /// - `StreamingError::Strategy` - If streaming strategy cannot handle the request
-    pub async fn handle_stream_request(
+    pub async fn serve_stream_data(
         &self,
         info_hash: crate::torrent::InfoHash,
         range: std::ops::Range<u64>,
@@ -308,7 +308,7 @@ impl HttpStreaming {
     /// # Panics
     ///
     /// Panics if content length conversion to string fails (should never happen for valid u64)
-    pub async fn handle_http_request(
+    pub async fn serve_http_stream(
         &self,
         info_hash: crate::torrent::InfoHash,
         range_header: Option<&str>,

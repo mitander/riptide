@@ -37,7 +37,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     ///
     /// # Errors
     ///
-    /// Returns error if TCP listener cannot bind to the specified address
+    /// - `std::io::Error` - If TCP listener cannot bind to the specified address
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(self.listen_address).await?;
         tracing::info!(
@@ -58,7 +58,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
                         };
 
                         tokio::spawn(async move {
-                            if let Err(e) = server.handle_connection(stream, peer_addr).await {
+                            if let Err(e) = server.serve_peer_connection(stream, peer_addr).await {
                                 tracing::debug!("Connection from {} ended: {}", peer_addr, e);
                             }
                         });
@@ -78,8 +78,8 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     ///
     /// # Errors
     ///
-    /// Returns error if I/O operations fail or protocol violations occur
-    async fn handle_connection(
+    /// - `std::io::Error` - If I/O operations fail or protocol violations occur
+    async fn serve_peer_connection(
         &self,
         mut stream: TcpStream,
         peer_addr: SocketAddr,
@@ -129,7 +129,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
                         offset,
                         length,
                     } => {
-                        self.handle_piece_request(&mut stream, piece_index, offset, length)
+                        self.serve_piece_data(&mut stream, piece_index, offset, length)
                             .await?;
                     }
                     PeerMessage::Interested => {
@@ -258,8 +258,8 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
         }
     }
 
-    /// Handles a piece request by sending the requested piece data
-    async fn handle_piece_request(
+    /// Serves piece data by sending the requested piece data
+    async fn serve_piece_data(
         &self,
         stream: &mut TcpStream,
         piece_index: PieceIndex,

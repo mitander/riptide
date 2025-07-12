@@ -97,7 +97,7 @@ impl DebugStreaming {
     /// # Panics
     ///
     /// Panics if debug info tracking fails to find the expected entry.
-    pub async fn handle_http_request_debug(
+    pub async fn debug_http_stream(
         &self,
         info_hash: InfoHash,
         range_header: Option<&str>,
@@ -136,7 +136,7 @@ impl DebugStreaming {
         // Call inner service
         let result = self
             .inner
-            .handle_http_request(info_hash, range_header)
+            .serve_http_stream(info_hash, range_header)
             .await
             .map_err(|e| format!("Streaming error: {e}"));
 

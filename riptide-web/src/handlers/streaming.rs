@@ -65,7 +65,7 @@ pub async fn stream_torrent(
 
     // Call core HTTP streaming
     match http_streaming
-        .handle_http_request(info_hash, range_header.as_deref())
+        .serve_http_stream(info_hash, range_header.as_deref())
         .await
     {
         Ok(response) => {
@@ -168,7 +168,7 @@ pub async fn debug_stream_status(
 
     // Test HTTP streaming call with small range
     match http_streaming
-        .handle_http_request(info_hash, Some("bytes=0-99"))
+        .serve_http_stream(info_hash, Some("bytes=0-99"))
         .await
     {
         Ok(response) => Json(serde_json::json!({
@@ -224,7 +224,7 @@ pub async fn debug_stream_data(
 
     // Test HTTP streaming call with actual data (first 1KB)
     match http_streaming
-        .handle_http_request(info_hash, Some("bytes=0-1023"))
+        .serve_http_stream(info_hash, Some("bytes=0-1023"))
         .await
     {
         Ok(response) => Json(serde_json::json!({

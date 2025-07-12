@@ -190,8 +190,8 @@ impl<P: PieceStore> DevelopmentPeers<P> {
         }
     }
 
-    /// Handles piece request with realistic rate limiting.
-    async fn handle_piece_request(
+    /// Serves piece data with realistic rate limiting.
+    async fn serve_piece_data(
         &mut self,
         peer_address: SocketAddr,
         piece_index: PieceIndex,
@@ -302,8 +302,8 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DevelopmentPeers<P> 
                 offset: _,
                 length: _,
             } => {
-                // Handle piece request immediately for development speed
-                self.handle_piece_request(peer_address, piece_index).await?;
+                // Serve piece data immediately for development speed
+                self.serve_piece_data(peer_address, piece_index).await?;
             }
             PeerMessage::Interested => {
                 tracing::debug!(
