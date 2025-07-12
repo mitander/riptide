@@ -75,7 +75,7 @@ impl<P: PieceStore + ?Sized> PieceBasedStreamReader<P> {
     /// - `PieceReaderError::InvalidRange` - If start >= end or invalid range
     /// - `PieceReaderError::RangeExceedsFile` - If range extends beyond file size
     /// - `PieceReaderError::Torrent` - If failed to read pieces from store
-    /// - `PieceReaderError::PieceTooSmall` - Piece smaller than expected for range
+    /// - `PieceReaderError::PieceTooSmall` - If piece smaller than expected for range
     pub async fn read_range(
         &self,
         info_hash: InfoHash,

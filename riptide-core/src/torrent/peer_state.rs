@@ -86,7 +86,8 @@ impl PeerBitfield {
     /// Create bitfield from raw bytes (received from peer)
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Invalid bitfield size for piece count
+    ///
+    /// - `TorrentError::ProtocolError` - If invalid bitfield size for piece count
     pub fn from_bytes(piece_data: Bytes, piece_count: u32) -> Result<Self, TorrentError> {
         let expected_bytes = piece_count.div_ceil(8);
         if piece_data.len() != expected_bytes as usize {
@@ -193,7 +194,8 @@ impl PeerConnectionState {
     /// Set peer's bitfield from received message
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Invalid bitfield data
+    ///
+    /// - `TorrentError::ProtocolError` - If invalid bitfield data
     pub fn update_peer_bitfield(&mut self, bitfield_data: Bytes) -> Result<(), TorrentError> {
         self.record_activity();
         self.peer_pieces = Some(PeerBitfield::from_bytes(bitfield_data, self.total_pieces)?);

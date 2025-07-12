@@ -175,7 +175,8 @@ pub trait PeerManager: Send + Sync {
     /// implementations can safely return Ok(()) as a no-op.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Update failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If update failed
     async fn update_streaming_position(
         &mut self,
         info_hash: InfoHash,

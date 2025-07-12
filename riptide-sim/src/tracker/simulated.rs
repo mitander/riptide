@@ -242,7 +242,7 @@ impl TrackerClient for SimulatedTrackerClient {
     ///
     /// # Errors
     ///
-    /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
+    /// - `TorrentError::TrackerConnectionFailed` - If configured for failure simulation
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError> {
         self.announce_count.fetch_add(1, Ordering::Relaxed);
 
@@ -308,7 +308,7 @@ impl TrackerClient for SimulatedTrackerClient {
     ///
     /// # Errors
     ///
-    /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
+    /// - `TorrentError::TrackerConnectionFailed` - If configured for failure simulation
     async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError> {
         // Simulate scrape failure if configured
         if let Some(ref failure_msg) = self.response_config.failure_message {
@@ -419,7 +419,7 @@ impl TrackerManager for SimulatedTracker {
     ///
     /// # Errors
     ///
-    /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
+    /// - `TorrentError::TrackerConnectionFailed` - If configured for failure simulation
     async fn announce_to_trackers(
         &mut self,
         tracker_urls: &[String],
@@ -439,7 +439,7 @@ impl TrackerManager for SimulatedTracker {
     ///
     /// # Errors
     ///
-    /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
+    /// - `TorrentError::TrackerConnectionFailed` - If configured for failure simulation
     async fn scrape_from_trackers(
         &mut self,
         tracker_urls: &[String],

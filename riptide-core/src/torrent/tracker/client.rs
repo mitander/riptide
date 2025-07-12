@@ -74,8 +74,9 @@ impl HttpTrackerClient {
     /// Build scrape URL from announce URL
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - No scrape URL available
-    /// - `TorrentError::UrlParsing` - Invalid URL format
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If no scrape URL available
+    /// - `TorrentError::UrlParsing` - If invalid URL format
     pub(super) fn build_scrape_url(&self, request: &ScrapeRequest) -> Result<String, TorrentError> {
         let scrape_url =
             self.scrape_url
@@ -112,7 +113,8 @@ impl HttpTrackerClient {
     /// Parse compact peer list from tracker response
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Invalid compact peer data length (not multiple of 6 bytes)
+    ///
+    /// - `TorrentError::ProtocolError` - If invalid compact peer data length (not multiple of 6 bytes)
     pub(crate) fn parse_compact_peers(peer_bytes: &[u8]) -> PeerList {
         if !peer_bytes.len().is_multiple_of(6) {
             return Err(TorrentError::ProtocolError {
@@ -296,8 +298,9 @@ impl TrackerClient for HttpTrackerClient {
     /// Handles HTTP request/response cycle with proper error handling.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
-    /// - `TorrentError::ProtocolError` - Invalid tracker response format
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If network or HTTP error
+    /// - `TorrentError::ProtocolError` - If invalid tracker response format
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError> {
         let url = self.build_announce_url(&request)?;
         tracing::debug!("Announcing to tracker: {}", self.announce_url);
@@ -367,8 +370,9 @@ impl TrackerClient for HttpTrackerClient {
     /// Returns statistics indexed by info hash.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
-    /// - `TorrentError::ProtocolError` - Invalid scrape response format
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If network or HTTP error
+    /// - `TorrentError::ProtocolError` - If invalid scrape response format
     async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError> {
         self.scrape_url
             .as_ref()

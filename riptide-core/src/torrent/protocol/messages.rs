@@ -89,7 +89,8 @@ impl MessageCodec {
     /// Deserializes peer message following BEP 3
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Invalid message format or unsupported message type
+    ///
+    /// - `TorrentError::ProtocolError` - If invalid message format or unsupported message type
     pub fn deserialize_message(data: &[u8]) -> Result<PeerMessage, TorrentError> {
         if data.len() < 4 {
             return Err(TorrentError::ProtocolError {

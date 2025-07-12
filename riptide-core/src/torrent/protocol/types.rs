@@ -160,8 +160,9 @@ pub trait PeerProtocol: Send + Sync {
     /// protocol compatibility and info hash matching.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - TCP connection failed
-    /// - `TorrentError::ProtocolError` - Handshake validation failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If TCP connection failed
+    /// - `TorrentError::ProtocolError` - If handshake validation failed
     async fn connect(
         &mut self,
         address: SocketAddr,
@@ -171,8 +172,9 @@ pub trait PeerProtocol: Send + Sync {
     /// Sends wire protocol message to connected peer.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Connection lost or write failed
-    /// - `TorrentError::ProtocolError` - Message encoding failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If connection lost or write failed
+    /// - `TorrentError::ProtocolError` - If message encoding failed
     async fn send_message(&mut self, message: PeerMessage) -> Result<(), TorrentError>;
 
     /// Receives next wire protocol message from peer.
@@ -180,8 +182,9 @@ pub trait PeerProtocol: Send + Sync {
     /// Blocks until complete message received or connection fails.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Connection lost or read failed
-    /// - `TorrentError::ProtocolError` - Message decoding failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If connection lost or read failed
+    /// - `TorrentError::ProtocolError` - If message decoding failed
     async fn receive_message(&mut self) -> Result<PeerMessage, TorrentError>;
 
     /// Returns current connection state.
@@ -193,6 +196,7 @@ pub trait PeerProtocol: Send + Sync {
     /// Closes connection gracefully.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Error during shutdown
+    ///
+    /// - `TorrentError::PeerConnectionError` - If error during shutdown
     async fn disconnect(&mut self) -> Result<(), TorrentError>;
 }

@@ -150,7 +150,8 @@ impl BencodeParser {
     /// Find the end position of a bencode dictionary
     ///
     /// # Errors
-    /// - `TorrentError::InvalidTorrentFile` - Invalid bencode dictionary format
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If invalid bencode dictionary format
     pub fn find_bencode_dictionary_end(data: &[u8]) -> Result<usize, TorrentError> {
         if data.is_empty() || data[0] != b'd' {
             return Err(TorrentError::InvalidTorrentFile {

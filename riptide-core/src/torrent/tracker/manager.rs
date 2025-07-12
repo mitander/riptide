@@ -38,7 +38,8 @@ impl Tracker {
     /// tracker clients for reuse and implements basic failover logic.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - All trackers failed
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If all trackers failed
     pub async fn announce_to_trackers(
         &mut self,
         tracker_urls: &[String],

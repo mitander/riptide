@@ -16,9 +16,10 @@ pub trait PieceStore: Send + Sync {
     /// Retrieves piece data for specified torrent and piece index
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Unknown info hash
-    /// - `TorrentError::PieceHashMismatch` - Invalid piece index
-    /// - `TorrentError::Io` - Storage access error
+    ///
+    /// - `TorrentError::TorrentNotFound` - If unknown info hash
+    /// - `TorrentError::PieceHashMismatch` - If invalid piece index
+    /// - `TorrentError::Io` - If storage access error
     async fn piece_data(
         &self,
         info_hash: InfoHash,
@@ -31,6 +32,7 @@ pub trait PieceStore: Send + Sync {
     /// Returns total number of pieces for a torrent
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Unknown info hash
+    ///
+    /// - `TorrentError::TorrentNotFound` - If unknown info hash
     fn piece_count(&self, info_hash: InfoHash) -> Result<u32, TorrentError>;
 }
