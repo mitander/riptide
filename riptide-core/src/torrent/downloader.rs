@@ -18,7 +18,7 @@ type PieceDataStore = Arc<RwLock<HashMap<PieceIndex, Vec<u8>>>>;
 
 #[cfg(test)]
 use super::enhanced_peer_connection::EnhancedPeerConnection;
-use super::error_recovery::ErrorRecoveryManager;
+use super::error_recovery::ErrorRecovery;
 use super::protocol::types::{PeerId, PeerMessage};
 use super::{PeerManager, PeerMessageEvent, PieceIndex, TorrentError, TorrentMetadata};
 use crate::storage::Storage;
@@ -90,7 +90,7 @@ pub struct PieceDownloader<S: Storage, P: PeerManager> {
     piece_status: Arc<RwLock<HashMap<PieceIndex, PieceStatus>>>,
     piece_data: PieceDataStore,
     available_peers: Arc<RwLock<Vec<SocketAddr>>>,
-    error_recovery: Arc<RwLock<ErrorRecoveryManager>>,
+    error_recovery: Arc<RwLock<ErrorRecovery>>,
 }
 
 impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
@@ -128,7 +128,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
             piece_status: Arc::new(RwLock::new(piece_status)),
             piece_data: Arc::new(RwLock::new(HashMap::new())),
             available_peers: Arc::new(RwLock::new(Vec::new())),
-            error_recovery: Arc::new(RwLock::new(ErrorRecoveryManager::new())),
+            error_recovery: Arc::new(RwLock::new(ErrorRecovery::new())),
         })
     }
 

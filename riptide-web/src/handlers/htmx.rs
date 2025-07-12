@@ -207,7 +207,7 @@ pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> 
 ///
 /// # Errors
 ///
-/// Returns `StatusCode::BAD_REQUEST` if form processing fails
+/// - `StatusCode` - If form processing fails
 pub async fn add_torrent_htmx(
     State(state): State<AppState>,
     Form(form): Form<AddTorrentForm>,

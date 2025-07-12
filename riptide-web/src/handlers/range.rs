@@ -47,7 +47,7 @@ pub fn parse_range_header(range: &str, total_size: u64) -> (u64, u64, u64) {
 ///
 /// # Errors
 ///
-/// Returns StatusCode error if response building fails
+/// - `StatusCode` - If response building fails
 #[allow(clippy::too_many_arguments)]
 pub fn build_range_response(
     headers: &HeaderMap,
@@ -87,7 +87,7 @@ pub fn build_range_response(
 ///
 /// # Errors
 ///
-/// Returns RANGE_NOT_SATISFIABLE if start position exceeds available size
+/// - `StatusCode` - If start position exceeds available size
 pub fn validate_range_bounds(
     start: u64,
     end: u64,

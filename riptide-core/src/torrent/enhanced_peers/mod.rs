@@ -16,7 +16,7 @@ use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::time::Instant;
 
-pub use bandwidth::{BandwidthAllocator, GlobalBandwidthManager};
+pub use bandwidth::{BandwidthAllocator, BandwidthAllocatorPool};
 pub use connection::{ChokingReason, EnhancedConnectionState, EnhancedPeerConnection};
 pub use metrics::{
     BehavioralFlags, ConnectionHealth, ConnectionMetrics, ExponentialMovingAverage,
@@ -30,7 +30,8 @@ use crate::torrent::{InfoHash, PieceIndex, TorrentError};
 /// Enhanced peer manager with bandwidth control and performance-based peer selection
 pub struct EnhancedPeers {
     torrents: HashMap<InfoHash, TorrentPeerPool>,
-    _bandwidth_manager: GlobalBandwidthManager,
+    #[allow(dead_code)]
+    bandwidth_pool: BandwidthAllocatorPool,
     _config: RiptideConfig,
 }
 
@@ -108,7 +109,7 @@ impl EnhancedPeers {
     pub fn new(config: RiptideConfig) -> Self {
         Self {
             torrents: HashMap::new(),
-            _bandwidth_manager: GlobalBandwidthManager::new(),
+            bandwidth_pool: BandwidthAllocatorPool::new(),
             _config: config,
         }
     }

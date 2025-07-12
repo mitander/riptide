@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use riptide_core::storage::FileStorage;
 use riptide_core::torrent::enhanced_peer_connection::EnhancedPeerConnection;
-use riptide_core::torrent::error_recovery::ErrorRecoveryManager;
+use riptide_core::torrent::error_recovery::ErrorRecovery;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
 use riptide_core::torrent::protocol::types::PeerId;
 use riptide_core::torrent::{PieceDownloader, PieceIndex, PieceStatus, TcpPeers, TorrentError};
@@ -381,7 +381,7 @@ pub async fn test_enhanced_peer_connection_real_protocol() -> Result<(), Torrent
 
 /// Test error recovery with real peer failures
 pub async fn test_error_recovery_real_failures() -> Result<(), TorrentError> {
-    let mut error_recovery = ErrorRecoveryManager::new();
+    let mut error_recovery = ErrorRecovery::new();
     let peer_addr = "127.0.0.1:6881".parse().unwrap();
     let piece_index = PieceIndex::new(0);
 

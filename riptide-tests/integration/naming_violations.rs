@@ -161,10 +161,14 @@ impl NamingChecker {
                 || trimmed.starts_with("pub trait ")
                 || trimmed.starts_with("trait ")
             {
-                let type_name = if let Some(name_part) = trimmed.split_whitespace().nth(2) {
-                    name_part.split('{').next().unwrap_or("").trim()
-                } else {
-                    continue;
+                let type_name = {
+                    let words: Vec<&str> = trimmed.split_whitespace().collect();
+                    let name_index = if words.first() == Some(&"pub") { 2 } else { 1 };
+                    if let Some(name_part) = words.get(name_index) {
+                        name_part.split('{').next().unwrap_or("").trim()
+                    } else {
+                        continue;
+                    }
                 };
 
                 // Check for banned suffixes (apply to all types)
@@ -174,7 +178,7 @@ impl NamingChecker {
                             &file_path.display().to_string(),
                             line_num + 1,
                             "BANNED_TYPE_SUFFIX",
-                            &format!("Type uses banned '{suffix}' suffix. {message}"),
+                            &format!("Type '{type_name}' uses banned '{suffix}' suffix. {message}"),
                         ));
                     }
                 }
@@ -191,7 +195,9 @@ impl NamingChecker {
                                 &file_path.display().to_string(),
                                 line_num + 1,
                                 "VERBOSE_TYPE_SUFFIX",
-                                &format!("Type uses verbose '{suffix}' suffix. {message}"),
+                                &format!(
+                                    "Type '{type_name}' uses verbose '{suffix}' suffix. {message}"
+                                ),
                             ));
                         }
                     }
@@ -234,13 +240,56 @@ impl NamingChecker {
         }
     }
 
-    /// Check for invalid documentation format
+    /// Check for invalid documentation format and section ordering
     fn check_documentation_format(&mut self, file_path: &Path, content: &str) {
         let lines: Vec<&str> = content.lines().collect();
         let mut i = 0;
 
         while i < lines.len() {
             let line = lines[i].trim();
+
+            // Look for start of documentation block that contains function documentation
+            if line.starts_with("///") && i + 1 < lines.len() {
+                // Find the extent of this documentation block
+                let doc_start = i;
+                let mut doc_end = i;
+
+                // Scan forward to find the end of the documentation block
+                while doc_end < lines.len() && lines[doc_end].trim().starts_with("///") {
+                    doc_end += 1;
+                }
+
+                // Check if this documentation block is followed by a function
+                let mut next_non_empty = doc_end;
+                while next_non_empty < lines.len() && lines[next_non_empty].trim().is_empty() {
+                    next_non_empty += 1;
+                }
+
+                let is_function_doc = next_non_empty < lines.len()
+                    && (lines[next_non_empty].trim().starts_with("pub fn ")
+                        || lines[next_non_empty].trim().starts_with("fn ")
+                        || lines[next_non_empty].trim().starts_with("pub async fn ")
+                        || lines[next_non_empty].trim().starts_with("async fn "));
+
+                if is_function_doc {
+                    // Process this documentation block
+                    self.check_doc_block(file_path, &lines[doc_start..doc_end], doc_start);
+                }
+
+                i = doc_end;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Check a single documentation block for section format and ordering
+    fn check_doc_block(&mut self, file_path: &Path, doc_lines: &[&str], start_line: usize) {
+        let mut sections_found = Vec::new();
+        let mut i = 0;
+
+        while i < doc_lines.len() {
+            let line = doc_lines[i].trim();
 
             // Look for # Errors or # Panics sections
             if line == "/// # Errors" || line == "/// # Panics" {
@@ -250,11 +299,14 @@ impl NamingChecker {
                     "Panics"
                 };
 
+                let absolute_line = start_line + i + 1;
+                sections_found.push((section_type, absolute_line));
+
                 // Check if next line is blank documentation line (required)
-                if i + 1 >= lines.len() || lines[i + 1].trim() != "///" {
+                if i + 1 >= doc_lines.len() || doc_lines[i + 1].trim() != "///" {
                     self.violations.push(NamingViolation::new(
                         &file_path.display().to_string(),
-                        i + 1,
+                        absolute_line,
                         "INVALID_DOC_FORMAT",
                         &format!("# {section_type} section must be followed by blank line: `///`"),
                     ));
@@ -262,18 +314,24 @@ impl NamingChecker {
                     continue;
                 }
 
-                // Check content lines (must start with bullet points)
+                // Check content lines (must start with bullet points for Errors)
                 let mut j = i + 2; // Skip the blank line
                 let mut found_content = false;
 
-                while j < lines.len() && lines[j].trim().starts_with("///") {
-                    let content_line = lines[j].trim();
+                while j < doc_lines.len() && doc_lines[j].trim().starts_with("///") {
+                    let content_line = doc_lines[j].trim();
                     if content_line == "///" {
                         j += 1;
                         continue; // Skip blank lines
                     }
 
                     let doc_content = content_line.strip_prefix("///").unwrap_or("").trim();
+
+                    // Stop if we hit another section header
+                    if doc_content.starts_with("# ") {
+                        break;
+                    }
+
                     if !doc_content.is_empty() {
                         found_content = true;
 
@@ -281,7 +339,7 @@ impl NamingChecker {
                         if section_type == "Errors" && !doc_content.starts_with("- ") {
                             self.violations.push(NamingViolation::new(
                                 &file_path.display().to_string(),
-                                j + 1,
+                                start_line + j + 1,
                                 "INVALID_DOC_FORMAT",
                                 &format!("# {section_type} content must use bullet points: `- ErrorType - condition`"),
                             ));
@@ -290,7 +348,7 @@ impl NamingChecker {
                         else if doc_content.contains("Returns ") && section_type == "Errors" {
                             self.violations.push(NamingViolation::new(
                                 &file_path.display().to_string(),
-                                j + 1,
+                                start_line + j + 1,
                                 "INVALID_DOC_FORMAT",
                                 "Use format `- ErrorType - condition` not `Returns ErrorType if condition`",
                             ));
@@ -301,7 +359,7 @@ impl NamingChecker {
                             if !bullet_content.contains("`") || !bullet_content.contains(" - ") {
                                 self.violations.push(NamingViolation::new(
                                     &file_path.display().to_string(),
-                                    j + 1,
+                                    start_line + j + 1,
                                     "INVALID_DOC_FORMAT",
                                     "Use format `- ErrorType - condition` with backticks around error type",
                                 ));
@@ -314,7 +372,7 @@ impl NamingChecker {
                 if !found_content && section_type == "Errors" {
                     self.violations.push(NamingViolation::new(
                         &file_path.display().to_string(),
-                        i + 1,
+                        absolute_line,
                         "INVALID_DOC_FORMAT",
                         "# Errors section cannot be empty - list specific error types",
                     ));
@@ -323,6 +381,23 @@ impl NamingChecker {
                 i = j;
             } else {
                 i += 1;
+            }
+        }
+
+        // Validate section ordering: Errors should come before Panics (only within this function)
+        if sections_found.len() >= 2 {
+            for window in sections_found.windows(2) {
+                let (section1, _line1) = window[0];
+                let (section2, line2) = window[1];
+
+                if section1 == "Panics" && section2 == "Errors" {
+                    self.violations.push(NamingViolation::new(
+                        &file_path.display().to_string(),
+                        line2,
+                        "INVALID_DOC_FORMAT",
+                        "# Errors section must come before # Panics section",
+                    ));
+                }
             }
         }
     }
@@ -487,6 +562,7 @@ struct PrivateFactory {
         checker.check_type_naming(Path::new("test.rs"), test_code);
         // Should find: Factory (2), Service (1), Manager struct (1) = 4 violations
         // But NOT Manager traits (those are allowed)
+
         assert_eq!(checker.violations.len(), 4);
 
         // Check for specific violations

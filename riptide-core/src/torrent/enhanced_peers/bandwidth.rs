@@ -5,9 +5,9 @@ use std::time::Instant;
 
 use super::Priority;
 
-/// Global bandwidth manager for all torrent connections
+/// Global bandwidth pool for all torrent connections
 #[derive(Debug)]
-pub struct GlobalBandwidthManager {
+pub struct BandwidthAllocatorPool {
     upload_allocator: BandwidthAllocator,
     download_allocator: BandwidthAllocator,
     last_update: Instant,
@@ -21,8 +21,8 @@ pub struct BandwidthAllocator {
     reserved_bandwidth: HashMap<Priority, u64>,
 }
 
-impl GlobalBandwidthManager {
-    /// Create a new global bandwidth manager
+impl BandwidthAllocatorPool {
+    /// Create a new global bandwidth pool
     pub fn new() -> Self {
         Self {
             upload_allocator: BandwidthAllocator::new(1_000_000), // 1 MB/s default
@@ -136,7 +136,7 @@ impl BandwidthAllocator {
     }
 }
 
-impl Default for GlobalBandwidthManager {
+impl Default for BandwidthAllocatorPool {
     fn default() -> Self {
         Self::new()
     }

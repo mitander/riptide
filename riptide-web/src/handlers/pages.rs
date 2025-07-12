@@ -246,7 +246,7 @@ pub async fn search_page(State(_state): State<AppState>) -> Html<String> {
 ///
 /// # Errors
 ///
-/// Returns error HTML page if the info hash is invalid or torrent not found
+/// - `Html<String>` - If the info hash is invalid or torrent not found
 pub async fn video_player_page(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,

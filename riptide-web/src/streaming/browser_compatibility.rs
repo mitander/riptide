@@ -322,8 +322,7 @@ impl BrowserCompatibilityTester {
     ///
     /// # Errors
     ///
-    /// Returns `HttpStreamingError` if any of the compatibility tests fail
-    /// or if there are issues with the browser detection matrix.
+    /// - `String` - If any of the compatibility tests fail or if there are issues with the browser detection matrix
     pub fn run_browser_compatibility_tests(&self) -> Result<(), String> {
         tracing::info!("Running browser compatibility test suite");
 

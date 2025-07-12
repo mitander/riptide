@@ -23,7 +23,7 @@ use tracing_subscriber::{EnvFilter, Layer, fmt};
 /// This ensures LLMs and developers always have access to full debugging information.
 /// # Errors
 ///
-/// Returns error if logs directory cannot be created or log file cannot be opened for writing
+/// - `Box<dyn std::error::Error>` - If logs directory cannot be created or log file cannot be opened for writing
 pub fn init_tracing(
     console_level: Level,
     logs_dir: Option<&Path>,

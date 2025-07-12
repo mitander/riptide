@@ -96,7 +96,7 @@ pub struct PeerFailureInfo {
 
 /// Manages error recovery and retry logic for torrent downloads
 #[derive(Debug)]
-pub struct ErrorRecoveryManager {
+pub struct ErrorRecovery {
     /// Tracks retry attempts for each piece
     piece_retries: HashMap<PieceIndex, PieceRetryTracker>,
     /// Tracks failure information for each peer
@@ -297,7 +297,7 @@ impl PeerFailureInfo {
     }
 }
 
-impl ErrorRecoveryManager {
+impl ErrorRecovery {
     /// Create new error recovery manager
     pub fn new() -> Self {
         Self {
@@ -479,7 +479,7 @@ pub struct ErrorRecoveryStats {
     pub active_piece_retries: usize,
 }
 
-impl Default for ErrorRecoveryManager {
+impl Default for ErrorRecovery {
     fn default() -> Self {
         Self::new()
     }
@@ -570,45 +570,45 @@ mod tests {
 
     #[test]
     fn test_peer_blacklisting() {
-        let mut manager = ErrorRecoveryManager::new();
+        let mut recovery = ErrorRecovery::new();
         let peer = create_test_peer();
         let piece = PieceIndex::new(0);
         let error = create_test_error();
 
-        assert!(!manager.is_peer_blacklisted(&peer));
+        assert!(!recovery.is_peer_blacklisted(&peer));
 
         // Record failures below blacklist threshold
         for _ in 0..MAX_CONSECUTIVE_FAILURES - 1 {
-            manager.record_piece_failure(piece, peer, &error);
+            recovery.record_piece_failure(piece, peer, &error);
         }
-        assert!(!manager.is_peer_blacklisted(&peer));
+        assert!(!recovery.is_peer_blacklisted(&peer));
 
-        // One more failure should trigger blacklist
-        manager.record_piece_failure(piece, peer, &error);
-        assert!(manager.is_peer_blacklisted(&peer));
+        // Record one more failure to trigger blacklist
+        recovery.record_piece_failure(piece, peer, &error);
+        assert!(recovery.is_peer_blacklisted(&peer));
     }
 
     #[test]
     fn test_peer_success_recovery() {
-        let mut manager = ErrorRecoveryManager::new();
+        let mut recovery = ErrorRecovery::new();
         let peer = create_test_peer();
         let piece = PieceIndex::new(0);
         let error = create_test_error();
 
         // Record failures to trigger blacklist
         for _ in 0..MAX_CONSECUTIVE_FAILURES {
-            manager.record_piece_failure(piece, peer, &error);
+            recovery.record_piece_failure(piece, peer, &error);
         }
-        assert!(manager.is_peer_blacklisted(&peer));
+        assert!(recovery.is_peer_blacklisted(&peer));
 
-        // Success should clear blacklist
-        manager.record_piece_success(piece, peer);
-        assert!(!manager.is_peer_blacklisted(&peer));
+        // Record success to clear blacklist
+        recovery.record_piece_success(piece, peer);
+        assert!(!recovery.is_peer_blacklisted(&peer));
     }
 
     #[test]
     fn test_peers_to_avoid() {
-        let mut manager = ErrorRecoveryManager::new();
+        let mut recovery = ErrorRecovery::new();
         let peer1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let peer2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6882);
         let piece = PieceIndex::new(0);
@@ -616,26 +616,26 @@ mod tests {
 
         // Blacklist peer1
         for _ in 0..MAX_CONSECUTIVE_FAILURES {
-            manager.record_piece_failure(piece, peer1, &error);
+            recovery.record_piece_failure(piece, peer1, &error);
         }
 
-        let avoided_peers = manager.peers_to_avoid_for_piece(piece);
-        assert!(avoided_peers.contains(&peer1));
-        assert!(!avoided_peers.contains(&peer2));
+        let peers_to_avoid = recovery.peers_to_avoid_for_piece(piece);
+        assert!(peers_to_avoid.contains(&peer1));
+        assert!(!peers_to_avoid.contains(&peer2));
     }
 
     #[test]
     fn test_cleanup_expired() {
-        let mut manager = ErrorRecoveryManager::new();
+        let mut recovery = ErrorRecovery::new();
         let peer = create_test_peer();
         let piece = PieceIndex::new(0);
         let error = create_test_error();
 
-        manager.record_piece_failure(piece, peer, &error);
-        assert!(manager.piece_retries.contains_key(&piece));
+        recovery.record_piece_failure(piece, peer, &error);
+        assert!(recovery.piece_retries.contains_key(&piece));
 
         // Cleanup should not remove recent entries
-        manager.cleanup_expired();
-        assert!(manager.piece_retries.contains_key(&piece));
+        recovery.cleanup_expired();
+        assert!(recovery.piece_retries.contains_key(&piece));
     }
 }
