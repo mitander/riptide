@@ -71,7 +71,9 @@ impl<F: DataSource + 'static> StreamingPerformanceTester<F> {
     /// Test 4K streaming throughput requirement (25+ Mbps)
     ///
     /// # Errors
-    /// Returns `DataError` if file access fails or streaming performance cannot be measured
+    ///
+    /// - `DataError::FileNotFound` - If file access fails
+    /// - `DataError::Performance` - If streaming performance cannot be measured
     pub async fn test_4k_streaming_throughput(
         &self,
         info_hash: InfoHash,
@@ -151,7 +153,9 @@ impl<F: DataSource + 'static> StreamingPerformanceTester<F> {
     /// Test seeking latency requirement (<500ms)
     ///
     /// # Errors
-    /// Returns `DataError` if file access fails or seeking operations cannot be performed
+    ///
+    /// - `DataError::FileNotFound` - If file access fails
+    /// - `DataError::SeekOperation` - If seeking operations cannot be performed
     pub async fn test_seeking_latency(
         &self,
         info_hash: InfoHash,
@@ -203,7 +207,9 @@ impl<F: DataSource + 'static> StreamingPerformanceTester<F> {
     /// Test concurrent streaming capability (3+ streams)
     ///
     /// # Errors
-    /// Returns `DataError` if file access fails or concurrent streaming cannot be tested
+    ///
+    /// - `DataError::FileNotFound` - If file access fails
+    /// - `DataError::ConcurrentTest` - If concurrent streaming cannot be tested
     pub async fn test_concurrent_streams(
         &self,
         info_hash: InfoHash,
@@ -277,7 +283,9 @@ impl<F: DataSource + 'static> StreamingPerformanceTester<F> {
     /// Test startup time requirement (<2s)
     ///
     /// # Errors
-    /// Returns `DataError` if file access fails or startup timing cannot be measured
+    ///
+    /// - `DataError::FileNotFound` - If file access fails
+    /// - `DataError::TimingMeasurement` - If startup timing cannot be measured
     pub async fn test_startup_time(
         &self,
         info_hash: InfoHash,
@@ -311,7 +319,9 @@ impl<F: DataSource + 'static> StreamingPerformanceTester<F> {
     /// Run complete performance test suite
     ///
     /// # Errors
-    /// Returns `DataError` if any individual test fails or performance cannot be measured
+    ///
+    /// - `DataError::TestFailure` - If any individual test fails
+    /// - `DataError::Performance` - If performance cannot be measured
     pub async fn run_complete_test_suite(
         &self,
         info_hash: InfoHash,

@@ -10,6 +10,7 @@ use crate::server::AppState;
 /// Renders the torrents management page
 ///
 /// # Panics
+///
 /// Panics if the torrent engine fails to return active sessions.
 pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();

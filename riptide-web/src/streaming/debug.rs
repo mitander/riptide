@@ -91,9 +91,11 @@ impl DebugStreaming {
     /// Handle streaming request with debug logging
     ///
     /// # Errors
-    /// - `String` - Streaming request failed or debug tracking error
+    ///
+    /// - `String` - If streaming request failed or debug tracking error
     ///
     /// # Panics
+    ///
     /// Panics if debug info tracking fails to find the expected entry.
     pub async fn handle_http_request_debug(
         &self,

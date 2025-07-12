@@ -31,6 +31,7 @@ pub struct StreamingQuery {
 /// the core HttpStreaming service and converts responses to Axum format.
 ///
 /// # Panics
+///
 /// Panics if the HTTP response builder fails to construct a valid response.
 #[axum::debug_handler]
 pub async fn stream_torrent(

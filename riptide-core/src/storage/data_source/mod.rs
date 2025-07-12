@@ -160,10 +160,11 @@ pub trait DataSource: Send + Sync {
     /// Vector containing the requested bytes
     ///
     /// # Errors
-    /// - `DataError::InvalidRange` - Invalid range parameters
-    /// - `DataError::RangeExceedsFile` - Range beyond file size
-    /// - `DataError::InsufficientData` - Missing required data
-    /// - `DataError::Storage` - Storage access error
+    ///
+    /// - `DataError::InvalidRange` - If invalid range parameters
+    /// - `DataError::RangeExceedsFile` - If range beyond file size
+    /// - `DataError::InsufficientData` - If missing required data
+    /// - `DataError::Storage` - If storage access error
     async fn read_range(&self, info_hash: InfoHash, range: Range<u64>) -> DataResult<Vec<u8>>;
 
     /// Get total file size without downloading entire file
@@ -175,8 +176,9 @@ pub trait DataSource: Send + Sync {
     /// Total file size in bytes
     ///
     /// # Errors
-    /// - `DataError::FileNotFound` - File not found
-    /// - `DataError::Storage` - Storage access error
+    ///
+    /// - `DataError::FileNotFound` - If file not found
+    /// - `DataError::Storage` - If storage access error
     async fn file_size(&self, info_hash: InfoHash) -> DataResult<u64>;
 
     /// Check if byte range is available without downloading
@@ -243,7 +245,8 @@ impl CacheStats {
 /// Validate that a byte range is well-formed
 ///
 /// # Errors
-/// - `DataError::InvalidRange` if start >= end
+///
+/// - `DataError::InvalidRange` - If start >= end
 pub fn validate_range(range: &Range<u64>) -> DataResult<()> {
     if range.start >= range.end {
         return Err(DataError::InvalidRange {
@@ -257,8 +260,9 @@ pub fn validate_range(range: &Range<u64>) -> DataResult<()> {
 /// Validate that a byte range is within file bounds
 ///
 /// # Errors
-/// - `DataError::InvalidRange` if range is malformed
-/// - `DataError::RangeExceedsFile` if range extends beyond file size
+///
+/// - `DataError::InvalidRange` - If range is malformed
+/// - `DataError::RangeExceedsFile` - If range extends beyond file size
 pub fn validate_range_bounds(range: &Range<u64>, file_size: u64) -> DataResult<()> {
     validate_range(range)?;
 

@@ -101,7 +101,7 @@ All `pub` items **must** have complete documentation. This is enforced by `cargo
 -   **`# Errors`**: Required for any function returning a `Result`. **Always** use a bulleted list.
 -   **`# Panics`**: Required for any function that can panic. Use a sentence for a single condition; use a list for multiple.
 
-**Golden Standard:**
+**Example:**
 ```rust
 /// Handles an HTTP streaming request.
 ///

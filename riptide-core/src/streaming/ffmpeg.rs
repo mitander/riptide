@@ -13,8 +13,9 @@ pub trait Ffmpeg: Send + Sync {
     /// Remux input file to MP4 format with optimal streaming settings
     ///
     /// # Errors
-    /// - `StreamingError::FfmpegError` - FFmpeg process failed
-    /// - `StreamingError::IoError` - File I/O error
+    ///
+    /// - `StreamingError::FfmpegError` - If FFmpeg process failed
+    /// - `StreamingError::IoError` - If file I/O error
     async fn remux_to_mp4(
         &self,
         input_path: &Path,

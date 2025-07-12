@@ -9,6 +9,7 @@ type TempStorageDirs = (tempfile::TempDir, std::path::PathBuf, std::path::PathBu
 /// Creates temporary directory structure for test storage operations.
 ///
 /// # Panics
+///
 /// Panics if temporary directory creation fails or if subdirectories cannot be created.
 /// This is acceptable in test fixtures where failures indicate environment issues.
 pub fn create_temp_storage_dirs() -> TempStorageDirs {

@@ -10,7 +10,8 @@ impl MagnetParser {
     /// Parses magnet link to extract torrent information.
     ///
     /// # Errors
-    /// - `TorrentError::InvalidTorrentFile` - Malformed magnet URI
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If malformed magnet URI
     pub fn parse_magnet_link(magnet_url: &str) -> Result<MagnetLink, TorrentError> {
         let magnet =
             magnet_url::Magnet::new(magnet_url).map_err(|e| TorrentError::InvalidTorrentFile {

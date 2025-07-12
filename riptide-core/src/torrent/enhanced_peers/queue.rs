@@ -93,6 +93,7 @@ impl PriorityRequestQueue {
     /// Remove expired requests based on deadlines
     ///
     /// # Panics
+    ///
     /// Panics if system time has moved backwards or deadline calculations overflow.
     pub fn remove_expired(&mut self) -> Vec<PendingRequest> {
         let now = Instant::now();

@@ -116,7 +116,8 @@ impl EnhancedPeers {
     /// Add a peer to a torrent's peer pool
     ///
     /// # Errors
-    /// Returns `TorrentError` if peer cannot be added to the pool or connection fails
+    ///
+    /// - `TorrentError` - If peer cannot be added to the pool or connection fails
     pub fn add_peer(
         &mut self,
         info_hash: InfoHash,
@@ -144,7 +145,8 @@ impl EnhancedPeers {
     /// Request a piece with priority handling and quality-based peer selection
     ///
     /// # Errors
-    /// Returns `TorrentError` if no peers are available or piece request fails
+    ///
+    /// - `TorrentError` - If no peers are available or piece request fails
     pub async fn request_piece_prioritized(
         &self,
         params: PieceRequestParams,
@@ -187,7 +189,8 @@ impl EnhancedPeers {
     /// Start background tasks for peer management
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Background task initialization failed
+    ///
+    /// - `TorrentError::ProtocolError` - If background task initialization failed
     pub async fn start_background_tasks(&self) -> Result<(), TorrentError> {
         // Background cleanup, connection monitoring, etc.
         Ok(())

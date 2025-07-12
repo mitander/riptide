@@ -240,6 +240,7 @@ impl MockTracker {
     /// Creates a new mock tracker manager.
     ///
     /// # Panics
+    ///
     /// Panics if hardcoded test socket addresses fail to parse.
     /// This is acceptable in test code as it indicates a programming error.
     pub fn new() -> Self {

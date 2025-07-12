@@ -72,7 +72,8 @@ impl InfoHash {
     /// Creates InfoHash from a 40-character hex string.
     ///
     /// # Errors
-    /// - `TorrentError::InvalidTorrentFile` if the hex string is invalid.
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If the hex string is invalid
     pub fn from_hex(hex_str: &str) -> Result<Self, TorrentError> {
         if hex_str.len() != 40 {
             return Err(TorrentError::InvalidTorrentFile {

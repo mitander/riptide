@@ -36,6 +36,7 @@ fn format_elapsed_time(started_at: Instant) -> String {
 /// download/upload speeds, library size, and connected peers with real-time updates.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or statistics are unavailable.
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     let engine_stats = state.engine().download_statistics().await.unwrap();
@@ -139,6 +140,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
 /// Shows up to 8 recent activities or default system status when no torrents are active.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -209,6 +211,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
 /// Displays empty state when no active downloads are in progress.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -364,6 +367,7 @@ pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
 /// peer counts, and tracker availability with status indicators.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn network_status(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();

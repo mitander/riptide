@@ -14,8 +14,9 @@ impl PeerConnection {
     /// Establishes connection and performs BitTorrent handshake
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - TCP connection failed
-    /// - `TorrentError::ProtocolError` - Handshake validation failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If TCP connection failed
+    /// - `TorrentError::ProtocolError` - If handshake validation failed
     pub async fn connect(
         address: SocketAddr,
         info_hash: InfoHash,
@@ -43,7 +44,8 @@ impl PeerConnection {
     /// Send message to peer
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Connection lost or send failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If connection lost or send failed
     pub async fn send_message(&mut self, message: super::PeerMessage) -> Result<(), TorrentError> {
         self.protocol.send_message(message).await
     }
@@ -51,7 +53,8 @@ impl PeerConnection {
     /// Receive message from peer
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Connection lost or receive failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If connection lost or receive failed
     pub async fn receive_message(&mut self) -> Result<super::PeerMessage, TorrentError> {
         self.protocol.receive_message().await
     }
@@ -59,7 +62,8 @@ impl PeerConnection {
     /// Disconnect from peer
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Error during disconnect
+    ///
+    /// - `TorrentError::PeerConnectionError` - If error during disconnect
     pub async fn disconnect(&mut self) -> Result<(), TorrentError> {
         self.protocol.disconnect().await
     }

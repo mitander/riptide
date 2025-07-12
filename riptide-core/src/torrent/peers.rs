@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 
 /// Type alias for peer connection storage
 type PeerConnections = Arc<RwLock<HashMap<SocketAddr, Arc<Mutex<PeerConnection>>>>>;
-/// Type alias for active task storage  
+/// Type alias for active task storage
 type ActiveTasks = Arc<Mutex<HashMap<SocketAddr, JoinHandle<()>>>>;
 
 use super::peer_connection::PeerConnection;
@@ -87,8 +87,9 @@ pub trait PeerManager: Send + Sync {
     /// Peer is added to active connection pool for message routing.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - TCP connection or handshake failed
-    /// - `TorrentError::ProtocolError` - Invalid peer response
+    ///
+    /// - `TorrentError::PeerConnectionError` - If TCP connection or handshake failed
+    /// - `TorrentError::ProtocolError` - If invalid peer response
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -102,7 +103,8 @@ pub trait PeerManager: Send + Sync {
     /// No-op if peer is not currently connected.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Error during disconnect
+    ///
+    /// - `TorrentError::PeerConnectionError` - If error during disconnect
     async fn disconnect_peer(&mut self, address: SocketAddr) -> Result<(), TorrentError>;
 
     /// Sends message to specific peer.
@@ -111,8 +113,9 @@ pub trait PeerManager: Send + Sync {
     /// Message is queued if peer is temporarily unavailable.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Peer not connected or send failed
-    /// - `TorrentError::ProtocolError` - Message serialization failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If peer not connected or send failed
+    /// - `TorrentError::ProtocolError` - If message serialization failed
     async fn send_message(
         &mut self,
         peer_address: SocketAddr,
@@ -125,8 +128,9 @@ pub trait PeerManager: Send + Sync {
     /// Returns both message content and source peer address.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - All connections lost
-    /// - `TorrentError::ProtocolError` - Message deserialization failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If all connections lost
+    /// - `TorrentError::ProtocolError` - If message deserialization failed
     async fn receive_message(&mut self) -> Result<PeerMessageEvent, TorrentError>;
 
     /// Returns list of currently connected peers with connection information.
@@ -144,7 +148,8 @@ pub trait PeerManager: Send + Sync {
     /// Disconnects all peers and shuts down connection pool.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Error during shutdown
+    ///
+    /// - `TorrentError::PeerConnectionError` - If error during shutdown
     async fn shutdown(&mut self) -> Result<(), TorrentError>;
 
     /// Configure upload manager for streaming optimization.
@@ -154,7 +159,8 @@ pub trait PeerManager: Send + Sync {
     /// safely return Ok(()) as a no-op.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Configuration failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If configuration failed
     async fn configure_upload(
         &mut self,
         info_hash: InfoHash,

@@ -52,6 +52,7 @@ pub struct SeekRequest {
 /// transfer speeds, and peer connection counts.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or statistics are unavailable.
 pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
     let stats = state.engine().download_statistics().await.unwrap();
@@ -70,6 +71,7 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 /// download status, and metadata.
 ///
 /// # Panics
+///
 /// Panics if engine active sessions cannot be retrieved
 pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -146,7 +148,8 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
 /// Returns the torrent's info hash on success.
 ///
 /// # Errors
-/// Returns `StatusCode::BAD_REQUEST` if magnet link is empty
+///
+/// - `StatusCode::BAD_REQUEST` - If magnet link is empty.
 pub async fn api_add_torrent(
     State(state): State<AppState>,
     Query(params): Query<AddTorrentQuery>,
@@ -329,6 +332,7 @@ pub async fn api_search_movies(
 /// metadata, file paths, and streaming information.
 ///
 /// # Panics
+///
 /// Panics if the torrent engine fails to return active sessions.
 pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Value> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -432,9 +436,10 @@ pub async fn api_settings(State(_state): State<AppState>) -> Json<serde_json::Va
 /// allowing clients to download the torrent file directly.
 ///
 /// # Errors
-/// - `StatusCode::BAD_REQUEST` - Invalid magnet link or missing parameters
-/// - `StatusCode::NOT_FOUND` - Torrent not found in the system
-/// - `StatusCode::INTERNAL_SERVER_ERROR` - Failed to retrieve torrent data
+///
+/// - `StatusCode::BAD_REQUEST` - If magnet link invalid or missing parameters.
+/// - `StatusCode::NOT_FOUND` - If torrent not found in the system.
+/// - `StatusCode::INTERNAL_SERVER_ERROR` - If failed to retrieve torrent data.
 pub async fn api_download_torrent(
     State(state): State<AppState>,
     Json(payload): Json<DownloadRequest>,
@@ -507,9 +512,10 @@ pub async fn api_download_torrent(
 /// the torrent engine to prioritize pieces around that position.
 ///
 /// # Errors
-/// - `StatusCode::BAD_REQUEST` - Invalid info hash or seek parameters
-/// - `StatusCode::NOT_FOUND` - Torrent not found or not active
-/// - `StatusCode::INTERNAL_SERVER_ERROR` - Failed to perform seek operation
+///
+/// - `StatusCode::BAD_REQUEST` - If info hash or seek parameters invalid.
+/// - `StatusCode::NOT_FOUND` - If torrent not found or not active.
+/// - `StatusCode::INTERNAL_SERVER_ERROR` - If failed to perform seek operation.
 pub async fn api_seek_torrent(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,

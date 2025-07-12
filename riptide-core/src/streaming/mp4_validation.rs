@@ -109,9 +109,10 @@ impl Mp4Structure {
 /// Validates MP4 file structure from a byte stream
 ///
 /// # Errors
-/// - `Mp4ValidationError::IoError` - I/O error reading from the stream
-/// - `Mp4ValidationError::InvalidStructure` - Invalid MP4 structure detected
-/// - `Mp4ValidationError::BoxParsingError` - Error parsing MP4 box headers
+///
+/// - `Mp4ValidationError::IoError` - If I/O error reading from the stream
+/// - `Mp4ValidationError::InvalidStructure` - If invalid MP4 structure detected
+/// - `Mp4ValidationError::BoxParsingError` - If error parsing MP4 box headers
 pub fn validate_mp4_structure<R: Read + Seek>(
     reader: &mut R,
 ) -> Result<Mp4Structure, Mp4ValidationError> {
@@ -324,7 +325,8 @@ pub enum Mp4ValidationError {
 /// Test utility to validate remuxed MP4 output
 ///
 /// # Errors
-/// Returns error message if MP4 is not streaming-ready or has structural issues
+///
+/// - `String` - If MP4 is not streaming-ready or has structural issues
 pub fn test_remuxed_mp4_validity(mp4_data: &[u8]) -> Result<(), String> {
     let analysis = analyze_mp4_for_streaming(mp4_data);
 

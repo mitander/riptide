@@ -35,8 +35,9 @@ pub trait Storage: Send + Sync {
     /// Stores verified piece data to persistent storage.
     ///
     /// # Errors
-    /// - `StorageError::InsufficientSpace` - Not enough disk space
-    /// - `StorageError::Io` - File system operation failed
+    ///
+    /// - `StorageError::InsufficientSpace` - If not enough disk space
+    /// - `StorageError::Io` - If file system operation failed
     async fn store_piece(
         &mut self,
         info_hash: InfoHash,
@@ -47,8 +48,9 @@ pub trait Storage: Send + Sync {
     /// Loads piece data from storage.
     ///
     /// # Errors
-    /// - `StorageError::PieceNotFound` - Piece not yet downloaded
-    /// - `StorageError::Io` - File system operation failed
+    ///
+    /// - `StorageError::PieceNotFound` - If piece not yet downloaded
+    /// - `StorageError::Io` - If file system operation failed
     async fn load_piece(
         &self,
         info_hash: InfoHash,
@@ -58,7 +60,8 @@ pub trait Storage: Send + Sync {
     /// Checks if piece exists in storage.
     ///
     /// # Errors
-    /// - `StorageError::Io` - File system operation failed
+    ///
+    /// - `StorageError::Io` - If file system operation failed
     async fn has_piece(&self, info_hash: InfoHash, index: PieceIndex)
     -> Result<bool, StorageError>;
 
@@ -67,7 +70,8 @@ pub trait Storage: Send + Sync {
     /// Returns final path where torrent data is stored.
     ///
     /// # Errors
-    /// - `StorageError::Io` - File system operation failed
+    ///
+    /// - `StorageError::Io` - If file system operation failed
     async fn finalize_torrent(&mut self, info_hash: InfoHash) -> Result<PathBuf, StorageError>;
 }
 

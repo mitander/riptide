@@ -34,7 +34,8 @@ pub trait Invariant: Send + Sync {
     /// Returns error with violation details if invariant is violated.
     ///
     /// # Errors
-    /// Returns `InvariantViolation` if the invariant condition is not met.
+    ///
+    /// - `InvariantViolation` - If the invariant condition is not met
     fn check(&self, state: &SimulationState) -> Result<(), InvariantViolation>;
 
     /// Returns name of this invariant.

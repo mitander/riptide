@@ -118,8 +118,9 @@ impl EnhancedMediaSearch {
     /// results with detailed IMDb metadata including posters and ratings.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Search operation failed
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    ///
+    /// - `MediaSearchError::SearchFailed` - If search operation failed
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
     pub async fn search_movies_enhanced(
         &self,
         query: &str,
@@ -160,8 +161,9 @@ impl EnhancedMediaSearch {
     /// and common typo corrections to maximize results.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - All search attempts failed
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    ///
+    /// - `MediaSearchError::SearchFailed` - If all search attempts failed
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
     pub async fn search_with_typo_correction(
         &self,
         query: &str,

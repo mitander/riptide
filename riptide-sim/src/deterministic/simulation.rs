@@ -149,7 +149,8 @@ impl DeterministicSimulation {
     /// Creates new simulation with given configuration.
     ///
     /// # Errors
-    /// - `SimulationError::NoDeterministicSeed` - No seed provided in config
+    ///
+    /// - `SimulationError::NoDeterministicSeed` - If no seed provided in config.
     pub fn new(config: SimulationConfig) -> Result<Self, SimulationError> {
         let seed = config
             .deterministic_seed
@@ -198,7 +199,8 @@ impl DeterministicSimulation {
     /// Schedules an event to occur immediately.
     ///
     /// # Errors
-    /// - `SimulationError::EventQueueOverflow` - Too many events scheduled
+    ///
+    /// - `SimulationError::EventQueueOverflow` - If too many events scheduled.
     pub fn schedule_event(
         &mut self,
         event_type: EventType,
@@ -215,7 +217,8 @@ impl DeterministicSimulation {
     /// Schedules an event to occur after specified delay.
     ///
     /// # Errors
-    /// - `SimulationError::EventQueueOverflow` - Event queue is full
+    ///
+    /// - `SimulationError::EventQueueOverflow` - If event queue is full.
     pub fn schedule_delayed(
         &mut self,
         delay: Duration,
@@ -244,9 +247,10 @@ impl DeterministicSimulation {
     /// Runs simulation for specified duration.
     ///
     /// # Errors
-    /// - `SimulationError::TimeLimitExceeded` - Simulation time limit exceeded
-    /// - `SimulationError::ResourceLimitExceeded` - Resource limit exceeded
-    /// - `SimulationError::TooManyInvariantViolations` - Too many invariant violations
+    ///
+    /// - `SimulationError::TimeLimitExceeded` - If simulation time limit exceeded.
+    /// - `SimulationError::ResourceLimitExceeded` - If resource limit exceeded.
+    /// - `SimulationError::TooManyInvariantViolations` - If too many invariant violations.
     pub fn execute_for_duration(
         &mut self,
         duration: Duration,
@@ -258,9 +262,10 @@ impl DeterministicSimulation {
     /// Runs simulation until target time.
     ///
     /// # Errors
-    /// - `SimulationError::TimeLimitExceeded` - Simulation time limit exceeded
-    /// - `SimulationError::ResourceLimitExceeded` - Resource limit exceeded
-    /// - `SimulationError::TooManyInvariantViolations` - Too many invariant violations
+    ///
+    /// - `SimulationError::TimeLimitExceeded` - If simulation time limit exceeded.
+    /// - `SimulationError::ResourceLimitExceeded` - If resource limit exceeded.
+    /// - `SimulationError::TooManyInvariantViolations` - If too many invariant violations.
     pub fn execute_until(
         &mut self,
         target_time: Instant,
@@ -415,7 +420,8 @@ impl DeterministicSimulation {
     /// This is a convenience method that uses sensible defaults for streaming tests.
     ///
     /// # Errors
-    /// - `SimulationError::InvalidEventScheduling` - Failed to schedule simulation events
+    ///
+    /// - `SimulationError::InvalidEventScheduling` - If failed to schedule simulation events.
     pub fn create_streaming_scenario(
         &mut self,
         total_pieces: u32,
@@ -431,7 +437,8 @@ impl DeterministicSimulation {
     /// Creates a streaming scenario with full parameters.
     ///
     /// # Errors
-    /// - `SimulationError::InvalidEventScheduling` - Failed to schedule simulation events
+    ///
+    /// - `SimulationError::InvalidEventScheduling` - If failed to schedule simulation events.
     pub fn create_streaming_scenario_full(
         &mut self,
         info_hash: InfoHash,
@@ -493,7 +500,8 @@ impl DeterministicSimulation {
     /// Adds a deterministic peer to the simulation.
     ///
     /// # Errors
-    /// - `SimulationError::InvalidEventScheduling` - Failed to schedule peer connection event
+    ///
+    /// - `SimulationError::InvalidEventScheduling` - If failed to schedule peer connection event.
     pub fn add_deterministic_peer(
         &mut self,
         peer_id: String,

@@ -53,7 +53,8 @@ impl Remuxer {
     /// Find or create a session handle for the given info hash
     ///
     /// # Errors
-    /// Returns `StreamingError` if session creation fails or transcoding cannot be initialized
+    ///
+    /// - `StreamingError::SessionCreation` - If session creation fails or transcoding cannot be initialized
     pub async fn find_or_create_session(
         &self,
         info_hash: InfoHash,
@@ -87,7 +88,8 @@ impl Remuxer {
     /// Check the readiness of a stream for serving
     ///
     /// # Errors
-    /// Returns `StreamingError` if session is not found or readiness status cannot be determined
+    ///
+    /// - `StreamingError::SessionNotFound` - If session is not found or readiness status cannot be determined
     pub async fn check_readiness(&self, info_hash: InfoHash) -> StreamingResult<StreamReadiness> {
         let sessions = self.sessions.read().await;
         let session = sessions
@@ -144,7 +146,8 @@ impl Remuxer {
     /// Get the current status of a streaming session
     ///
     /// # Errors
-    /// Returns `StreamingError` if session is not found or status cannot be retrieved
+    ///
+    /// - `StreamingError::SessionNotFound` - If session is not found or status cannot be retrieved
     pub async fn status(&self, info_hash: InfoHash) -> StreamingResult<StreamingStatus> {
         debug!("Getting status for remux session: {}", info_hash);
 
@@ -193,7 +196,8 @@ impl Remuxer {
     /// Get the output file path for a completed session
     ///
     /// # Errors
-    /// Returns `StreamingError` if session is not found or output path is not available
+    ///
+    /// - `StreamingError::SessionNotFound` - If session is not found or output path is not available
     pub async fn output_path(&self, info_hash: InfoHash) -> StreamingResult<PathBuf> {
         let sessions = self.sessions.read().await;
         let session = sessions

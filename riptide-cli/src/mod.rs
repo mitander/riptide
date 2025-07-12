@@ -98,8 +98,9 @@ pub enum Commands {
 /// Main CLI entry point
 ///
 /// # Errors
-/// - Command parsing errors from clap
-/// - Individual command execution errors
+///
+/// - `anyhow::Error` - If command parsing fails
+/// - `anyhow::Error` - If command execution fails
 pub async fn run_cli() -> crate::Result<()> {
     let cli = Cli::parse();
 
@@ -120,6 +121,11 @@ pub async fn run_cli() -> crate::Result<()> {
         Commands::List => commands::list_torrents().await,
         #[cfg(feature = "simulation")]
         Commands::Simulate { peers, torrent } => commands::run_simulation(peers, torrent).await,
-        Commands::Server { port, host, mode, movies_dir } => commands::start_server(host, port, mode, movies_dir).await,
+        Commands::Server {
+            port,
+            host,
+            mode,
+            movies_dir,
+        } => commands::start_server(host, port, mode, movies_dir).await,
     }
 }

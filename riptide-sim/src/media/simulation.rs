@@ -42,6 +42,7 @@ impl MediaStreamingSimulation {
     /// file sizes and streaming requirements.
     ///
     /// # Errors
+    ///
     /// - I/O errors reading folder contents
     /// - Invalid movie folder structure
     pub async fn from_movie_folder(
@@ -210,6 +211,7 @@ impl MediaStreamingSimulation {
     /// Runs streaming simulation with media awareness.
     ///
     /// # Errors
+    ///
     /// - `SimulationError` - If simulation fails to run
     pub fn execute_streaming_simulation(
         &mut self,

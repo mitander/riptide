@@ -40,8 +40,9 @@ impl EnhancedPeerConnection {
     /// Establish connection and perform BitTorrent handshake with protocol initialization
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - TCP connection failed
-    /// - `TorrentError::ProtocolError` - Handshake validation failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If TCP connection failed
+    /// - `TorrentError::ProtocolError` - If handshake validation failed
     pub async fn connect_and_initialize(
         &mut self,
         info_hash: InfoHash,
@@ -97,7 +98,8 @@ impl EnhancedPeerConnection {
     /// Handle received peer message and update state accordingly
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Invalid message or protocol violation
+    ///
+    /// - `TorrentError::ProtocolError` - If invalid message or protocol violation
     pub async fn handle_peer_message(&mut self, message: PeerMessage) -> Result<(), TorrentError> {
         self.state.record_activity();
 
@@ -230,8 +232,9 @@ impl EnhancedPeerConnection {
     /// Request piece from peer
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Cannot request (choked, too many pending, etc.)
-    /// - `TorrentError::PeerConnectionError` - Send failed
+    ///
+    /// - `TorrentError::ProtocolError` - If cannot request (choked, too many pending, etc.)
+    /// - `TorrentError::PeerConnectionError` - If send failed
     pub async fn request_piece(
         &mut self,
         piece_index: PieceIndex,
@@ -263,7 +266,8 @@ impl EnhancedPeerConnection {
     /// Send choke message to peer
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Send failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If send failed
     pub async fn choke_peer(&mut self) -> Result<(), TorrentError> {
         if !self.state.is_choking_peer() {
             self.state.update_choking_peer(true);
@@ -275,7 +279,8 @@ impl EnhancedPeerConnection {
     /// Send unchoke message to peer
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Send failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If send failed
     pub async fn unchoke_peer(&mut self) -> Result<(), TorrentError> {
         if self.state.is_choking_peer() {
             self.state.update_choking_peer(false);
@@ -287,7 +292,8 @@ impl EnhancedPeerConnection {
     /// Mark that we have completed a piece (send Have message)
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Send failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If send failed
     pub async fn announce_piece(&mut self, piece_index: PieceIndex) -> Result<(), TorrentError> {
         self.state.we_have_piece(piece_index);
         let have_message = PeerMessage::Have { piece_index };
@@ -350,7 +356,8 @@ impl EnhancedPeerConnection {
     /// Disconnect from peer
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Disconnect failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If disconnect failed
     pub async fn disconnect(&mut self) -> Result<(), TorrentError> {
         self.protocol.disconnect().await?;
         self.connected_at = None;

@@ -46,6 +46,7 @@ impl PieceDataSource {
     /// Create new piece data source with specified cache size
     ///
     /// # Panics
+    ///
     /// Panics if cache size is zero. This is acceptable as zero cache size is invalid.
     pub fn new(piece_store: Arc<dyn PieceStore>, max_cache_entries: Option<usize>) -> Self {
         let cache_size = max_cache_entries.unwrap_or(100);

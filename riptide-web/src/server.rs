@@ -75,7 +75,8 @@ impl AppState {
     /// Get the file manager if available (Development mode only).
     ///
     /// # Errors
-    /// Returns error if file manager is not available in this mode.
+    ///
+    /// - `ServiceError::NotAvailable` - If file manager is not available in this mode
     pub fn file_library(
         &self,
     ) -> Result<&Arc<RwLock<FileLibrary>>, riptide_core::server_components::ServiceError> {
@@ -85,7 +86,8 @@ impl AppState {
     /// Get the piece store if available (Development mode only).
     ///
     /// # Errors
-    /// Returns error if piece store is not available in this mode.
+    ///
+    /// - `ServiceError::NotAvailable` - If piece store is not available in this mode
     pub fn piece_store(
         &self,
     ) -> Result<&Arc<dyn PieceStore>, riptide_core::server_components::ServiceError> {
@@ -95,7 +97,8 @@ impl AppState {
     /// Get conversion progress tracker if available (Development mode only).
     ///
     /// # Errors
-    /// Returns error if conversion tracking is not available in this mode.
+    ///
+    /// - `ServiceError::NotAvailable` - If conversion tracking is not available in this mode
     pub fn conversion_progress(
         &self,
     ) -> Result<&ConversionProgressRef, riptide_core::server_components::ServiceError> {
@@ -116,9 +119,11 @@ impl AppState {
 /// Starts the Riptide web server with the provided configuration and components.
 ///
 /// # Errors
+///
 /// Returns error if server fails to bind to address or start successfully.
 ///
 /// # Panics
+///
 /// Panics if the server components don't include a required piece store.
 pub async fn run_server(
     _config: RiptideConfig,

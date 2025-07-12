@@ -46,7 +46,8 @@ impl MockPeer {
     /// Simulate sending a piece of data
     ///
     /// # Errors
-    /// - `PeerError::ConnectionLost` - Simulated connection failure based on reliability
+    ///
+    /// - `PeerError::ConnectionLost` - If simulated connection failure based on reliability
     pub async fn send_piece(&self, piece_size: usize) -> Result<Vec<u8>, PeerError> {
         // Simulate connection reliability
         if rand::random::<f32>() > self.reliability {

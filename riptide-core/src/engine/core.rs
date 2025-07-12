@@ -110,8 +110,9 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// automatically - use `start_download` to begin downloading.
     ///
     /// # Errors
-    /// - `TorrentError::InvalidMagnetLink` - Malformed magnet link
-    /// - `TorrentError::DuplicateTorrent` - Torrent already exists
+    ///
+    /// - `TorrentError::InvalidMagnetLink` - If malformed magnet link
+    /// - `TorrentError::DuplicateTorrent` - If torrent already exists
     pub async fn add_magnet(&mut self, magnet_link: &str) -> Result<InfoHash, TorrentError> {
         let parsed = self.parser.parse_magnet_link(magnet_link).await?;
         let info_hash = parsed.info_hash;
@@ -162,7 +163,8 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// for simulation scenarios where metadata is generated programmatically.
     ///
     /// # Errors
-    /// - `TorrentError::DuplicateTorrent` - Torrent already exists
+    ///
+    /// - `TorrentError::DuplicateTorrent` - If torrent already exists
     pub fn add_torrent_metadata(
         &mut self,
         metadata: TorrentMetadata,
@@ -195,8 +197,9 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// to reflect the active download state.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    /// - `TorrentError::TrackerConnectionFailed` - Could not contact tracker
+    ///
+    /// - `TorrentError::TorrentNotFound` - If info hash not in active torrents
+    /// - `TorrentError::TrackerConnectionFailed` - If could not contact tracker
     pub async fn start_download(&mut self, info_hash: InfoHash) -> Result<(), TorrentError> {
         let session = self
             .active_torrents
@@ -583,8 +586,9 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// successfully downloaded and verified.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    /// - `TorrentError::InvalidPieceIndex` - Piece index out of bounds
+    ///
+    /// - `TorrentError::TorrentNotFound` - If info hash not in active torrents
+    /// - `TorrentError::InvalidPieceIndex` - If piece index out of bounds
     pub fn mark_pieces_completed(
         &mut self,
         info_hash: InfoHash,
@@ -615,7 +619,8 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// active downloads to provide real-time statistics.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    ///
+    /// - `TorrentError::TorrentNotFound` - If info hash not in active torrents
     pub fn update_download_stats(
         &mut self,
         info_hash: InfoHash,
@@ -648,7 +653,8 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// blocking the actor loop.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    ///
+    /// - `TorrentError::TorrentNotFound` - If info hash not in active torrents
     pub fn seek_to_position(
         &mut self,
         info_hash: InfoHash,
@@ -706,7 +712,8 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// current playback conditions to optimize buffering behavior.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    ///
+    /// - `TorrentError::TorrentNotFound` - If info hash not in active torrents
     pub fn update_buffer_strategy(
         &mut self,
         info_hash: InfoHash,
@@ -750,7 +757,8 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// current playback position.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    ///
+    /// - `TorrentError::TorrentNotFound` - If info hash not in active torrents
     pub fn buffer_status(&self, info_hash: InfoHash) -> Result<BufferStatus, TorrentError> {
         // Validate torrent exists
         self.active_torrents
@@ -796,7 +804,8 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// handshake process. This method is used during the peer discovery phase.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Could not connect to peer
+    ///
+    /// - `TorrentError::PeerConnectionError` - If could not connect to peer
     #[allow(dead_code)]
     pub async fn connect_peer(
         &self,
@@ -944,7 +953,8 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
     /// engine's list but is marked as not downloading.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    ///
+    /// - `TorrentError::TorrentNotFound` - If info hash not in active torrents
     pub fn stop_download(&mut self, info_hash: InfoHash) -> Result<(), TorrentError> {
         let session = self
             .active_torrents

@@ -43,12 +43,11 @@ impl NamingChecker {
     /// Find all Rust files in the workspace
     fn find_rust_files(&self) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
         let mut files = Vec::new();
-        self.find_rust_files_recursive(Path::new(".."), &mut files, 0)?;
+        Self::find_rust_files_recursive(Path::new(".."), &mut files, 0)?;
         Ok(files)
     }
 
     fn find_rust_files_recursive(
-        &self,
         dir: &Path,
         files: &mut Vec<PathBuf>,
         depth: usize,
@@ -77,11 +76,11 @@ impl NamingChecker {
             let path = entry.path();
 
             if path.is_dir() {
-                self.find_rust_files_recursive(&path, files, depth + 1)?;
-            } else if let Some(extension) = path.extension() {
-                if extension == "rs" {
-                    files.push(path);
-                }
+                Self::find_rust_files_recursive(&path, files, depth + 1)?;
+            } else if let Some(extension) = path.extension()
+                && extension == "rs"
+            {
+                files.push(path);
             }
         }
 
@@ -235,6 +234,102 @@ impl NamingChecker {
         }
     }
 
+    /// Check for invalid documentation format
+    fn check_documentation_format(&mut self, file_path: &Path, content: &str) {
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            let line = lines[i].trim();
+
+            // Look for # Errors or # Panics sections
+            if line == "/// # Errors" || line == "/// # Panics" {
+                let section_type = if line.contains("Errors") {
+                    "Errors"
+                } else {
+                    "Panics"
+                };
+
+                // Check if next line is blank (required)
+                if i + 1 >= lines.len()
+                    || !lines[i + 1].trim().is_empty()
+                    || !lines[i + 1].starts_with("///")
+                {
+                    self.violations.push(NamingViolation::new(
+                        &file_path.display().to_string(),
+                        i + 1,
+                        "INVALID_DOC_FORMAT",
+                        &format!("# {section_type} section must be followed by blank line: `///`"),
+                    ));
+                    i += 1;
+                    continue;
+                }
+
+                // Check content lines (must start with bullet points)
+                let mut j = i + 2; // Skip the blank line
+                let mut found_content = false;
+
+                while j < lines.len() && lines[j].trim().starts_with("///") {
+                    let content_line = lines[j].trim();
+                    if content_line == "///" {
+                        j += 1;
+                        continue; // Skip blank lines
+                    }
+
+                    let doc_content = content_line.strip_prefix("///").unwrap_or("").trim();
+                    if !doc_content.is_empty() {
+                        found_content = true;
+
+                        // Must start with bullet point
+                        if !doc_content.starts_with("- ") {
+                            self.violations.push(NamingViolation::new(
+                                &file_path.display().to_string(),
+                                j + 1,
+                                "INVALID_DOC_FORMAT",
+                                &format!("# {section_type} content must use bullet points: `- ErrorType - condition`"),
+                            ));
+                        }
+                        // Check for old "Returns" format
+                        else if doc_content.contains("Returns ") && section_type == "Errors" {
+                            self.violations.push(NamingViolation::new(
+                                &file_path.display().to_string(),
+                                j + 1,
+                                "INVALID_DOC_FORMAT",
+                                "Use format `- ErrorType - condition` not `Returns ErrorType if condition`",
+                            ));
+                        }
+                        // Check for missing error type format in Errors
+                        else if section_type == "Errors" && doc_content.starts_with("- ") {
+                            let bullet_content = doc_content.strip_prefix("- ").unwrap_or("");
+                            if !bullet_content.contains("`") || !bullet_content.contains(" - ") {
+                                self.violations.push(NamingViolation::new(
+                                    &file_path.display().to_string(),
+                                    j + 1,
+                                    "INVALID_DOC_FORMAT",
+                                    "Use format `- ErrorType - condition` with backticks around error type",
+                                ));
+                            }
+                        }
+                    }
+                    j += 1;
+                }
+
+                if !found_content && section_type == "Errors" {
+                    self.violations.push(NamingViolation::new(
+                        &file_path.display().to_string(),
+                        i + 1,
+                        "INVALID_DOC_FORMAT",
+                        "# Errors section cannot be empty - list specific error types",
+                    ));
+                }
+
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     /// Check a single file for all naming violations
     fn check_file(&mut self, file_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         // Skip test files to avoid false positives
@@ -251,6 +346,7 @@ impl NamingChecker {
         self.check_function_prefixes(file_path, &content);
         self.check_type_naming(file_path, &content);
         self.check_module_names(file_path);
+        self.check_documentation_format(file_path, &content);
 
         self.files_checked += 1;
         Ok(())

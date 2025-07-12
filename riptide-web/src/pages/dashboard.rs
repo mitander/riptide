@@ -9,6 +9,7 @@ use crate::server::AppState;
 /// Renders the main dashboard page with real-time components
 ///
 /// # Panics
+///
 /// Panics if the torrent engine fails to return download statistics or active sessions.
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let engine_stats = state.engine().download_statistics().await.unwrap();

@@ -162,6 +162,7 @@ impl SimulatedTrackerClient {
     /// or simulating swarm evolution over time.
     ///
     /// # Panics
+    ///
     /// Panics if the swarm stats mutex is poisoned.
     pub fn configure_swarm_stats(
         &self,
@@ -240,6 +241,7 @@ impl TrackerClient for SimulatedTrackerClient {
     /// Supports failure injection and configurable response characteristics.
     ///
     /// # Errors
+    ///
     /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError> {
         self.announce_count.fetch_add(1, Ordering::Relaxed);
@@ -305,6 +307,7 @@ impl TrackerClient for SimulatedTrackerClient {
     /// accumulated from previous announce operations.
     ///
     /// # Errors
+    ///
     /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
     async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError> {
         // Simulate scrape failure if configured
@@ -379,6 +382,7 @@ impl SimulatedTracker {
     /// without complex async coordination or dangerous block_on calls.
     ///
     /// # Panics
+    ///
     /// Panics if the peer registry mutex is poisoned.
     pub fn with_peer_registry(
         config: ResponseConfig,
@@ -414,6 +418,7 @@ impl TrackerManager for SimulatedTracker {
     /// for deterministic testing behavior.
     ///
     /// # Errors
+    ///
     /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
     async fn announce_to_trackers(
         &mut self,
@@ -433,6 +438,7 @@ impl TrackerManager for SimulatedTracker {
     /// Simulates scraping statistics from trackers.
     ///
     /// # Errors
+    ///
     /// - `TorrentError::TrackerConnectionFailed` - When configured for failure simulation
     async fn scrape_from_trackers(
         &mut self,

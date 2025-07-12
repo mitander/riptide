@@ -23,9 +23,10 @@ pub trait TorrentSearchProvider: Send + Sync + std::fmt::Debug {
     /// Search for torrents by query and optional category filter.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Search operation failed
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
-    /// - `MediaSearchError::ProviderError` - Provider-specific error
+    ///
+    /// - `MediaSearchError::SearchFailed` - If search operation failed
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
+    /// - `MediaSearchError::ProviderError` - If provider-specific error
     async fn search_torrents(
         &self,
         query: &str,

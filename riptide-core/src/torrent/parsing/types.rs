@@ -67,7 +67,8 @@ pub trait TorrentParser: Send + Sync {
     /// file listings, and announce URLs from bencode-encoded torrent data.
     ///
     /// # Errors
-    /// - `TorrentError::InvalidTorrentFile` - Malformed bencode or missing fields
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If malformed bencode or missing fields
     async fn parse_torrent_data(&self, data: &[u8]) -> Result<TorrentMetadata, TorrentError>;
 
     /// Parses torrent file from filesystem path.
@@ -75,8 +76,9 @@ pub trait TorrentParser: Send + Sync {
     /// Reads file from disk and delegates to parse_torrent_data for processing.
     /// Convenience method for loading .torrent files.
     ///
-    /// # Errors  
-    /// - `TorrentError::InvalidTorrentFile` - File I/O error or parsing failure
+    /// # Errors
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If file I/O error or parsing failure
     async fn parse_torrent_file(&self, path: &Path) -> Result<TorrentMetadata, TorrentError>;
 
     /// Parses magnet link to extract torrent information.
@@ -85,6 +87,7 @@ pub trait TorrentParser: Send + Sync {
     /// Limited metadata compared to .torrent files.
     ///
     /// # Errors
-    /// - `TorrentError::InvalidTorrentFile` - Malformed magnet URI
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If malformed magnet URI
     async fn parse_magnet_link(&self, magnet_url: &str) -> Result<MagnetLink, TorrentError>;
 }

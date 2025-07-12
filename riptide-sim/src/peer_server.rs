@@ -36,6 +36,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     /// The server runs in a background task and serves pieces to connecting peers
     ///
     /// # Errors
+    ///
     /// Returns error if TCP listener cannot bind to the specified address
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(self.listen_address).await?;
@@ -76,6 +77,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
     /// Handles a single peer connection with full BitTorrent wire protocol
     ///
     /// # Errors
+    ///
     /// Returns error if I/O operations fail or protocol violations occur
     async fn handle_connection(
         &self,
@@ -335,7 +337,8 @@ enum PeerMessage {
 /// Spawns multiple peer servers for a torrent on different ports
 ///
 /// # Errors
-/// - `Box<dyn std::error::Error + Send + Sync>` - Failed to bind socket or start server
+///
+/// - `Box<dyn std::error::Error + Send + Sync>` - If failed to bind socket or start server
 pub async fn spawn_peer_servers_for_torrent<P: PieceStore + Send + Sync + 'static>(
     info_hash: InfoHash,
     piece_store: Arc<P>,

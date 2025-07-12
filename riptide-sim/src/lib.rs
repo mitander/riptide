@@ -257,6 +257,7 @@ impl Invariant for MaxPeersInvariant {
 /// a simulation with reasonable defaults and common invariants.
 ///
 /// # Errors
+///
 /// - `SimulationError::InvalidEventScheduling` - Invalid configuration
 pub fn create_standard_streaming_simulation(
     seed: u64,
@@ -449,8 +450,9 @@ async fn create_deterministic_server_components(
 /// This provides realistic streaming performance (5-10 MB/s) for development.
 ///
 /// # Errors
-/// - `SimulationError::Setup` - Failed to initialize simulation components
-/// - `SimulationError::FileSystem` - Failed to scan movies directory
+///
+/// - `SimulationError::Setup` - If failed to initialize simulation components
+/// - `SimulationError::FileSystem` - If failed to scan movies directory
 pub async fn create_fast_development_components(
     config: riptide_core::config::RiptideConfig,
     movies_dir: Option<std::path::PathBuf>,
@@ -482,8 +484,9 @@ pub async fn create_fast_development_components(
 /// This provides deterministic, reproducible behavior for testing and bug reproduction.
 ///
 /// # Errors
-/// - `SimulationError::Setup` - Failed to initialize simulation components
-/// - `SimulationError::FileSystem` - Failed to scan movies directory
+///
+/// - `SimulationError::Setup` - If failed to initialize simulation components
+/// - `SimulationError::FileSystem` - If failed to scan movies directory
 pub async fn create_deterministic_development_components(
     config: riptide_core::config::RiptideConfig,
     movies_dir: Option<std::path::PathBuf>,
@@ -522,8 +525,9 @@ pub async fn create_deterministic_development_components(
 /// Use create_fast_development_components() or create_deterministic_development_components() directly.
 ///
 /// # Errors
-/// - `SimulationError::Setup` - Failed to initialize simulation components
-/// - `SimulationError::FileSystem` - Failed to scan movies directory
+///
+/// - `SimulationError::Setup` - If failed to initialize simulation components
+/// - `SimulationError::FileSystem` - If failed to scan movies directory
 pub async fn create_development_components(
     config: riptide_core::config::RiptideConfig,
     movies_dir: Option<std::path::PathBuf>,

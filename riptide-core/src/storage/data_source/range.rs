@@ -116,8 +116,9 @@ impl RangeCalculator {
     /// Validate that a byte range is well-formed and within file bounds
     ///
     /// # Errors
-    /// - `DataError::InvalidRange` if start >= end
-    /// - `DataError::RangeExceedsFile` if range extends beyond file size
+    ///
+    /// - `DataError::InvalidRange` - If start >= end
+    /// - `DataError::RangeExceedsFile` - If range extends beyond file size
     pub fn validate_range(&self, range: &Range<u64>) -> DataResult<()> {
         if range.start >= range.end {
             return Err(DataError::InvalidRange {
@@ -143,8 +144,9 @@ impl RangeCalculator {
     /// that are needed to fulfill the request.
     ///
     /// # Errors
-    /// - `DataError::InvalidRange` if range is malformed
-    /// - `DataError::RangeExceedsFile` if range extends beyond file size
+    ///
+    /// - `DataError::InvalidRange` - If range is malformed
+    /// - `DataError::RangeExceedsFile` - If range extends beyond file size
     pub fn pieces_for_range(&self, range: Range<u64>) -> DataResult<Vec<PieceRange>> {
         self.validate_range(&range)?;
 
@@ -186,8 +188,9 @@ impl RangeCalculator {
     /// Calculate buffer requirements for serving a byte range
     ///
     /// # Errors
-    /// - `DataError::InvalidRange` if range is malformed
-    /// - `DataError::RangeExceedsFile` if range extends beyond file size
+    ///
+    /// - `DataError::InvalidRange` - If range is malformed
+    /// - `DataError::RangeExceedsFile` - If range extends beyond file size
     pub fn calculate_buffer_requirements(&self, range: Range<u64>) -> DataResult<BufferInfo> {
         self.validate_range(&range)?;
 

@@ -18,7 +18,8 @@ impl BencodeParser {
     /// Parse bencode data and extract torrent metadata
     ///
     /// # Errors
-    /// - `TorrentError::InvalidTorrentFile` - Bencode parsing or metadata extraction failed
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If bencode parsing or metadata extraction failed
     pub fn parse_bencode_data(torrent_bytes: &[u8]) -> Result<TorrentMetadata, TorrentError> {
         let parsed = bencode_rs::Value::parse(torrent_bytes).map_err(|e| {
             TorrentError::InvalidTorrentFile {

@@ -36,7 +36,8 @@ pub trait PeerLayer: Send + Sync {
     /// Connects to a peer and performs BitTorrent handshake
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Connection failed
+    ///
+    /// - `TorrentError::PeerConnectionError` - If connection failed
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -77,7 +78,8 @@ impl ProductionPeerLayer {
     /// Performs BitTorrent handshake according to BEP 3
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - Handshake failed or protocol error
+    ///
+    /// - `TorrentError::PeerConnectionError` - If handshake failed or protocol error
     async fn perform_handshake(
         &self,
         stream: &mut tokio::net::TcpStream,

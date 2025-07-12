@@ -100,7 +100,8 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     /// All pieces start in Pending status.
     ///
     /// # Errors
-    /// - `TorrentError::InvalidTorrentFile` - Invalid torrent metadata
+    ///
+    /// - `TorrentError::InvalidTorrentFile` - If invalid torrent metadata
     pub fn new(
         torrent_metadata: TorrentMetadata,
         storage: S,
@@ -167,11 +168,13 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     /// peer blacklisting for robust error recovery.
     ///
     /// # Errors
-    /// - `TorrentError::PeerConnectionError` - No peers available or all peers failed
-    /// - `TorrentError::PieceHashMismatch` - Hash verification failed after all retries
-    /// - `TorrentError::StorageError` - Failed to store piece data
+    ///
+    /// - `TorrentError::PeerConnectionError` - If no peers available or all peers failed
+    /// - `TorrentError::PieceHashMismatch` - If hash verification failed after all retries
+    /// - `TorrentError::StorageError` - If failed to store piece data
     ///
     /// # Panics
+    ///
     /// Panics if hardcoded dummy peer address "0.0.0.0:0" cannot be parsed (should never happen)
     pub async fn download_piece(&mut self, piece_index: PieceIndex) -> Result<(), TorrentError> {
         let download_start = Instant::now();

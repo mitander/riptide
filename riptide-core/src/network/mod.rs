@@ -44,13 +44,15 @@ pub trait NetworkLayer: Send + Sync {
     /// Performs HTTP GET request
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If network or HTTP error
     async fn http_get(&self, url: &str) -> Result<HttpResponse, TorrentError>;
 
     /// Performs HTTP POST request
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - Network or HTTP error
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If network or HTTP error
     async fn http_post(&self, url: &str, body: &[u8]) -> Result<HttpResponse, TorrentError>;
 
     /// Configure timeout for HTTP requests
@@ -70,6 +72,7 @@ impl ProductionNetworkLayer {
     /// Creates a new production network layer with the specified timeout.
     ///
     /// # Panics
+    ///
     /// Panics if HTTP client creation fails due to invalid configuration.
     /// This should never happen with valid timeout and user agent values.
     pub fn new(timeout: Duration) -> Self {

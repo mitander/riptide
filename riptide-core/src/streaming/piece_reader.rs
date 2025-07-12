@@ -71,9 +71,10 @@ impl<P: PieceStore + ?Sized> PieceBasedStreamReader<P> {
     /// BitTorrent pieces. Handles partial piece reads and range boundaries efficiently.
     ///
     /// # Errors
-    /// - `PieceReaderError::InvalidRange` - Start >= end or invalid range
-    /// - `PieceReaderError::RangeExceedsFile` - Range extends beyond file size
-    /// - `PieceReaderError::Torrent` - Failed to read pieces from store
+    ///
+    /// - `PieceReaderError::InvalidRange` - If start >= end or invalid range
+    /// - `PieceReaderError::RangeExceedsFile` - If range extends beyond file size
+    /// - `PieceReaderError::Torrent` - If failed to read pieces from store
     /// - `PieceReaderError::PieceTooSmall` - Piece smaller than expected for range
     pub async fn read_range(
         &self,
@@ -157,7 +158,8 @@ impl<P: PieceStore + ?Sized> PieceBasedStreamReader<P> {
     /// Get total file size by calculating from pieces
     ///
     /// # Errors
-    /// - `PieceReaderError::Torrent` - Failed to access piece store
+    ///
+    /// - `PieceReaderError::Torrent` - If failed to access piece store
     pub async fn file_size(&self, info_hash: InfoHash) -> Result<u64, PieceReaderError> {
         let piece_count = self
             .piece_store

@@ -169,7 +169,7 @@ pub struct StorageCache {
     config: StorageCacheConfig,
     /// Number of cache hits for statistics
     hit_count: Arc<RwLock<u64>>,
-    /// Number of cache misses for statistics  
+    /// Number of cache misses for statistics
     miss_count: Arc<RwLock<u64>>,
     /// Number of evicted entries for statistics
     eviction_count: Arc<RwLock<u64>>,
@@ -181,6 +181,7 @@ impl StorageCache {
     /// Create new storage cache with configuration
     ///
     /// # Panics
+    ///
     /// Never panics - fallback capacity is hardcoded to 64 which is always valid
     pub fn new(config: StorageCacheConfig) -> Self {
         let capacity = std::num::NonZeroUsize::new(config.max_entries)
@@ -237,7 +238,8 @@ impl StorageCache {
     /// Put entry into cache
     ///
     /// # Errors
-    /// Returns `StorageCacheError::EntryTooLarge` if the entry exceeds the maximum size limit.
+    ///
+    /// - `StorageCacheError::EntryTooLarge` - If the entry exceeds the maximum size limit
     pub async fn put(&self, key: CacheKey, data: Vec<u8>) -> Result<(), StorageCacheError> {
         // Validate entry size
         if data.len() > self.config.max_entry_size {

@@ -112,8 +112,9 @@ pub trait TrackerClient: Send + Sync {
     /// Tracker may respond with different peer lists based on client state.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - Network or protocol error
-    /// - `TorrentError::ProtocolError` - Invalid tracker response format
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If network or protocol error
+    /// - `TorrentError::ProtocolError` - If invalid tracker response format
     async fn announce(&self, request: AnnounceRequest) -> Result<AnnounceResponse, TorrentError>;
 
     /// Retrieves torrent statistics from tracker without announcing.
@@ -122,8 +123,9 @@ pub trait TrackerClient: Send + Sync {
     /// without updating client's announced state.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - Network or protocol error
-    /// - `TorrentError::ProtocolError` - Invalid scrape response format
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If network or protocol error
+    /// - `TorrentError::ProtocolError` - If invalid scrape response format
     async fn scrape(&self, request: ScrapeRequest) -> Result<ScrapeResponse, TorrentError>;
 
     /// Returns tracker URL for debugging and logging purposes.

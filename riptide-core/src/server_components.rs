@@ -74,7 +74,8 @@ impl ServerComponents {
     /// Get the file manager if available (Development mode only).
     ///
     /// # Errors
-    /// Returns `ServiceError::NotAvailable` if file manager is not available in this mode.
+    ///
+    /// - `ServiceError::NotAvailable` - If file manager is not available in this mode
     pub fn file_library(&self) -> Result<&FileLibraryHandle, ServiceError> {
         self.movie_library
             .as_ref()
@@ -86,7 +87,8 @@ impl ServerComponents {
     /// Get the piece store if available (Development mode only).
     ///
     /// # Errors
-    /// Returns `ServiceError::NotAvailable` if piece store is not available in this mode.
+    ///
+    /// - `ServiceError::NotAvailable` - If piece store is not available in this mode
     pub fn piece_store(&self) -> Result<&Arc<dyn PieceStore>, ServiceError> {
         self.piece_store.as_ref().ok_or(ServiceError::NotAvailable(
             "Piece store not available in this mode",
@@ -96,7 +98,8 @@ impl ServerComponents {
     /// Get conversion progress tracker if available (Development mode only).
     ///
     /// # Errors
-    /// Returns `ServiceError::NotAvailable` if conversion tracking is not available in this mode.
+    ///
+    /// - `ServiceError::NotAvailable` - If conversion tracking is not available in this mode
     pub fn conversion_progress(&self) -> Result<&ConversionProgressMap, ServiceError> {
         self.conversion_progress
             .as_ref()

@@ -32,6 +32,7 @@ pub struct DownloadStats {
 /// showing current download/upload activity.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or download statistics are unavailable.
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let stats = state.engine().download_statistics().await.unwrap();
@@ -108,6 +109,7 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
 /// for torrent operations.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -243,6 +245,7 @@ pub async fn search_page(State(_state): State<AppState>) -> Html<String> {
 /// Includes navigation and player controls optimized for streaming.
 ///
 /// # Errors
+///
 /// Returns error HTML page if the info hash is invalid or torrent not found
 pub async fn video_player_page(
     State(state): State<AppState>,

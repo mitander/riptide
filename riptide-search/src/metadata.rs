@@ -101,7 +101,8 @@ impl ImdbMetadata {
     /// Fetch metadata by IMDb ID.
     ///
     /// # Errors
-    /// - `MediaSearchError::MetadataFetchFailed` - Failed to fetch or parse metadata
+    ///
+    /// - `MediaSearchError::MetadataFetchFailed` - If failed to fetch or parse metadata
     pub async fn fetch_by_imdb_id(&self, imdb_id: &str) -> Result<MediaMetadata, MediaSearchError> {
         let url = if let Some(ref api_key) = self.api_key {
             format!("http://www.omdbapi.com/?i={imdb_id}&apikey={api_key}")
@@ -137,7 +138,8 @@ impl ImdbMetadata {
     /// Search for metadata by title and year.
     ///
     /// # Errors
-    /// - `MediaSearchError::MetadataFetchFailed` - Failed to fetch or parse metadata
+    ///
+    /// - `MediaSearchError::MetadataFetchFailed` - If failed to fetch or parse metadata
     pub async fn search_by_title(
         &self,
         title: &str,

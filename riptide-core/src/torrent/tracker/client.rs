@@ -24,6 +24,7 @@ impl HttpTrackerClient {
     /// and user agent settings.
     ///
     /// # Panics
+    ///
     /// Panics if HTTP client creation fails (should never happen with valid configuration)
     pub fn new(announce_url: String, config: &NetworkConfig) -> Self {
         // BEP 48: Derive scrape URL by replacing "/announce" with "/scrape"

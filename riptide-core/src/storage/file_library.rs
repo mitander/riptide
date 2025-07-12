@@ -44,7 +44,8 @@ impl FileLibrary {
     /// Scan directory for media files and create library entries
     ///
     /// # Errors
-    /// - `std::io::Error` - Failed to read directory or file metadata
+    ///
+    /// - `std::io::Error` - If failed to read directory or file metadata
     pub async fn scan_directory(&mut self, dir: &Path) -> Result<usize, std::io::Error> {
         self.scan_directory_recursive(dir).await
     }
@@ -173,7 +174,8 @@ impl FileLibrary {
     /// Read file segment for streaming
     ///
     /// # Errors
-    /// - `std::io::Error` - Failed to read file
+    ///
+    /// - `std::io::Error` - If failed to read file
     pub async fn read_file_segment(
         &self,
         info_hash: InfoHash,

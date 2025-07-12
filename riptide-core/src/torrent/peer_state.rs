@@ -283,7 +283,8 @@ impl PeerConnectionState {
     /// Add piece request to pending queue
     ///
     /// # Errors
-    /// - `TorrentError::ProtocolError` - Too many pending requests
+    ///
+    /// - `TorrentError::ProtocolError` - If too many pending requests
     pub fn add_pending_request(
         &mut self,
         piece_index: PieceIndex,
@@ -318,6 +319,7 @@ impl PeerConnectionState {
     /// Remove expired requests and return them for retry
     ///
     /// # Panics
+    ///
     /// This function should not panic as the unwrap() call is safe due to the front() check.
     pub fn remove_expired_requests(&mut self) -> Vec<PendingPieceRequest> {
         let mut expired = Vec::new();

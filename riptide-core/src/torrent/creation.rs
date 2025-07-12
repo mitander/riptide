@@ -46,8 +46,9 @@ impl TorrentCreator {
     /// complete torrent metadata ready for BitTorrent protocol use.
     ///
     /// # Errors
-    /// - `TorrentError::Io` - File read error or access denied
-    /// - `TorrentError::InvalidTorrentFile` - File too large or invalid
+    ///
+    /// - `TorrentError::Io` - If file read error or access denied
+    /// - `TorrentError::InvalidTorrentFile` - If file too large or invalid
     pub async fn create_from_file(
         &self,
         file_path: &Path,
@@ -105,8 +106,9 @@ impl TorrentCreator {
     /// creating continuous piece sequence across all files.
     ///
     /// # Errors
-    /// - `TorrentError::Io` - Directory read error or file access issues
-    /// - `TorrentError::InvalidTorrentFile` - Directory empty or invalid files
+    ///
+    /// - `TorrentError::Io` - If directory read error or file access issues
+    /// - `TorrentError::InvalidTorrentFile` - If directory empty or invalid files
     pub async fn create_from_directory(
         &self,
         directory_path: &Path,
@@ -419,8 +421,9 @@ impl SimulationTorrentCreator {
     /// in simulated peer swarms.
     ///
     /// # Errors
-    /// - `TorrentError::Io` - File read error
-    /// - `TorrentError::InvalidTorrentFile` - Invalid file or data
+    ///
+    /// - `TorrentError::Io` - If file read error
+    /// - `TorrentError::InvalidTorrentFile` - If invalid file or data
     pub async fn create_with_pieces(
         &mut self,
         file_path: &Path,

@@ -111,8 +111,9 @@ impl PieceStore for InMemoryPieceStore {
     /// Retrieves piece data for specified torrent and piece index.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Unknown info hash
-    /// - `TorrentError::InvalidPieceIndex` - Invalid piece index
+    ///
+    /// - `TorrentError::TorrentNotFound` - If unknown info hash
+    /// - `TorrentError::InvalidPieceIndex` - If invalid piece index
     async fn piece_data(
         &self,
         info_hash: InfoHash,
@@ -147,7 +148,8 @@ impl PieceStore for InMemoryPieceStore {
     /// Returns total number of pieces for a torrent.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Unknown info hash
+    ///
+    /// - `TorrentError::TorrentNotFound` - If unknown info hash
     fn piece_count(&self, info_hash: InfoHash) -> Result<u32, TorrentError> {
         // For sync method, use try_read which is non-blocking
         let torrents = self

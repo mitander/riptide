@@ -49,6 +49,7 @@ impl DeterministicClock {
     /// Advances simulation time by specified duration.
     ///
     /// # Panics
+    ///
     /// Panics if duration exceeds 24 hours (MAX_TIME_ADVANCE).
     pub fn advance(&mut self, duration: Duration) {
         assert!(
@@ -61,7 +62,8 @@ impl DeterministicClock {
     /// Advances simulation time to specific instant.
     ///
     /// # Errors
-    /// Returns error if target time is in the past.
+    ///
+    /// - `SimulationError` - If target time is in the past
     pub fn advance_to(&mut self, target: Instant) -> Result<(), SimulationError> {
         if target < self.current_time {
             return Err(SimulationError::InvalidEventScheduling {

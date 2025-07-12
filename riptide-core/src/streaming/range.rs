@@ -230,8 +230,9 @@ impl Range {
     /// Validate that a range request is satisfiable.
     ///
     /// # Errors
-    /// - `RangeError::InvalidStart` - Start position exceeds total content size
-    /// - `RangeError::InvalidLength` - Range extends beyond total content size
+    ///
+    /// - `RangeError::InvalidStart` - If start position exceeds total content size
+    /// - `RangeError::InvalidLength` - If range extends beyond total content size
     pub fn validate_range(&self, start: u64, length: u64) -> Result<(), RangeError> {
         if start >= self.total_size {
             return Err(RangeError::InvalidStart {

@@ -70,7 +70,8 @@ pub enum Commands {
 /// This function serves as the composition root for dependency injection.
 ///
 /// # Errors
-/// - `RiptideError::Io` - Failed to scan movies directory in development mode
+///
+/// - `RiptideError::Io` - If failed to scan movies directory in development mode
 pub async fn create_server_components(
     config: RiptideConfig,
     mode: RuntimeMode,
@@ -109,7 +110,9 @@ pub async fn create_server_components(
 /// Handle the CLI command
 ///
 /// # Errors
-/// Returns appropriate error based on the command that fails
+///
+/// - `anyhow::Error` - If torrent engine spawn fails
+/// - `anyhow::Error` - If command execution fails
 pub async fn handle_command(command: Commands) -> Result<()> {
     let config = RiptideConfig::default();
     let peers = TcpPeers::new_default();
@@ -135,8 +138,9 @@ pub async fn handle_command(command: Commands) -> Result<()> {
 /// Add a torrent by magnet link or file
 ///
 /// # Errors
-/// - `RiptideError::Torrent` - Failed to parse or add torrent
-/// - `RiptideError::Io` - File system operation failed
+///
+/// - `RiptideError::Torrent` - If failed to parse or add torrent
+/// - `RiptideError::Io` - If file system operation failed
 pub async fn add_torrent(
     engine: TorrentEngineHandle,
     source: String,
@@ -182,7 +186,9 @@ pub async fn add_torrent(
 /// Start downloading a torrent
 ///
 /// # Errors
-/// - `RiptideError::Torrent` - Torrent not found or download failed to start
+///
+/// - `anyhow::Error` - If info hash parsing fails
+/// - `anyhow::Error` - If torrent start fails
 pub async fn start_torrent(engine: TorrentEngineHandle, torrent: String) -> Result<()> {
     let info_hash = parse_torrent_identifier(&torrent)?;
 
@@ -198,7 +204,9 @@ pub async fn start_torrent(engine: TorrentEngineHandle, torrent: String) -> Resu
 /// Stop downloading a torrent
 ///
 /// # Errors
-/// - `RiptideError::Torrent` - Torrent not found or stop failed
+///
+/// - `anyhow::Error` - If info hash parsing fails
+/// - `anyhow::Error` - If torrent stop fails
 pub async fn stop_torrent(engine: TorrentEngineHandle, torrent: String) -> Result<()> {
     let info_hash = parse_torrent_identifier(&torrent)?;
 
@@ -214,7 +222,10 @@ pub async fn stop_torrent(engine: TorrentEngineHandle, torrent: String) -> Resul
 /// Show status of torrents
 ///
 /// # Errors
-/// - `RiptideError::Torrent` - Failed to retrieve torrent status
+///
+/// - `anyhow::Error` - If info hash parsing fails
+/// - `TorrentError::TorrentNotFound` - If torrent is not in engine
+/// - `TorrentError::EngineShutdown` - If engine communication fails
 pub async fn show_status(engine: TorrentEngineHandle, torrent: Option<String>) -> Result<()> {
     match torrent {
         Some(t) => {
@@ -228,7 +239,8 @@ pub async fn show_status(engine: TorrentEngineHandle, torrent: Option<String>) -
 /// List all torrents
 ///
 /// # Errors
-/// - `RiptideError::Torrent` - Failed to retrieve torrent list
+///
+/// - `TorrentError::EngineShutdown` - If engine communication fails
 pub async fn list_torrents(engine: TorrentEngineHandle) -> Result<()> {
     println!("Torrent List");
     println!("{:-<60}", "");
@@ -274,15 +286,12 @@ pub async fn list_torrents(engine: TorrentEngineHandle) -> Result<()> {
     Ok(())
 }
 
-/// Run simulation environment
-///
-/// # Errors
-/// - Currently returns Ok but will add simulation errors in future implementation
-///
 /// Run simulation environment with runtime configuration
 ///
 /// # Errors
-/// - Currently returns Ok but will add simulation errors in future implementation
+///
+/// - `anyhow::Error` - If simulation setup fails
+/// - `anyhow::Error` - If torrent session creation fails
 pub async fn run_simulation(peers: usize, torrent: PathBuf) -> Result<()> {
     println!(
         "Running simulation with {} peers for torrent: {}",
@@ -391,7 +400,9 @@ async fn show_all_torrents_status(engine: &TorrentEngineHandle) -> Result<()> {
 /// Start the simplified web server
 ///
 /// # Errors
-/// - Server binding failures or configuration errors
+///
+/// - `anyhow::Error` - If server binding fails
+/// - `anyhow::Error` - If configuration is invalid
 #[allow(dead_code)]
 pub async fn start_simple_server() -> Result<()> {
     println!("Starting Riptide media server...");
@@ -413,7 +424,9 @@ pub async fn start_simple_server() -> Result<()> {
 /// Start the web server
 ///
 /// # Errors
-/// - `RiptideError::Io` - Failed to start server
+///
+/// - `anyhow::Error` - If info hash parsing fails
+/// - `anyhow::Error` - If server startup fails
 pub async fn start_server(
     _host: String,
     _port: u16,

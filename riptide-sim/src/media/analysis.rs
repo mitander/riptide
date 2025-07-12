@@ -14,8 +14,9 @@ impl MediaAnalyzer {
     /// Analyzes movie folder to extract media information.
     ///
     /// # Errors
-    /// - Returns error if folder cannot be read or accessed
-    /// - Returns error if file metadata cannot be retrieved
+    ///
+    /// - `Box<dyn std::error::Error>` - If folder cannot be read or accessed
+    /// - `Box<dyn std::error::Error>` - If file metadata cannot be retrieved
     pub async fn analyze_movie_folder(
         folder_path: &Path,
     ) -> Result<MovieFolder, Box<dyn std::error::Error>> {
@@ -69,7 +70,8 @@ impl MediaAnalyzer {
     /// Classifies a file based on extension and size.
     ///
     /// # Errors
-    /// - `Box<dyn std::error::Error>` - File system access or metadata parsing errors
+    ///
+    /// - `Box<dyn std::error::Error>` - If file system access or metadata parsing errors
     pub async fn classify_media_file(
         path: &Path,
         size: u64,

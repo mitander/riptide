@@ -113,6 +113,7 @@ pub async fn add_torrent(
 /// for better display names. Shows empty state when no torrents are active.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -194,6 +195,7 @@ pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
 /// when no torrents are available.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrent_details(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();

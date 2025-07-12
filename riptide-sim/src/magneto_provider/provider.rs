@@ -198,8 +198,8 @@ impl MockMagnetoProvider {
     /// Searches for torrents based on query with simulated network behavior.
     ///
     /// # Errors
-    /// - `ClientError::ResponseError` - Simulated network failure or invalid response
-    /// - `ClientError::RequestFailed` - Search request processing failed
+    /// - `ClientError::ResponseError` - If simulated network failure or invalid response
+    /// - `ClientError::RequestFailed` - If search request processing failed
     pub async fn search(
         &mut self,
         request: SearchRequest<'_>,

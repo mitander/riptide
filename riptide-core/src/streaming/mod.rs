@@ -121,7 +121,9 @@ impl HttpStreaming {
     /// Handle streaming request by delegating to appropriate strategy
     ///
     /// # Errors
-    /// Returns `StreamingError` if data source access fails or streaming strategy cannot handle the request
+    ///
+    /// - `StreamingError::DataSource` - If data source access fails
+    /// - `StreamingError::Strategy` - If streaming strategy cannot handle the request
     pub async fn handle_stream_request(
         &self,
         info_hash: crate::torrent::InfoHash,
@@ -166,7 +168,9 @@ impl HttpStreaming {
     /// Check if a stream is ready for serving
     ///
     /// # Errors
-    /// Returns `StreamingError` if readiness status cannot be determined or session access fails
+    ///
+    /// - `StreamingError::SessionNotFound` - If session access fails
+    /// - `StreamingError::ReadinessCheck` - If readiness status cannot be determined
     pub async fn check_stream_readiness(
         &self,
         info_hash: crate::torrent::InfoHash,
@@ -297,9 +301,12 @@ impl HttpStreaming {
     /// Handle HTTP streaming request with proper headers and status codes
     ///
     /// # Errors
-    /// Returns `StreamingError` if stream data cannot be retrieved or HTTP response cannot be constructed
+    ///
+    /// - `StreamingError::DataRetrieval` - If stream data cannot be retrieved
+    /// - `StreamingError::ResponseConstruction` - If HTTP response cannot be constructed
     ///
     /// # Panics
+    ///
     /// Panics if content length conversion to string fails (should never happen for valid u64)
     pub async fn handle_http_request(
         &self,

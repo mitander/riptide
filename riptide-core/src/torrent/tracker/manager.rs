@@ -95,7 +95,8 @@ impl Tracker {
     /// Used for monitoring swarm health across tracker networks.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - All trackers failed
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If all trackers failed
     pub async fn scrape_from_trackers(
         &mut self,
         tracker_urls: &[String],
@@ -165,7 +166,8 @@ pub trait TrackerManager: Send + Sync {
     /// Announces to best available tracker from list.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - All trackers failed
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If all trackers failed
     async fn announce_to_trackers(
         &mut self,
         tracker_urls: &[String],
@@ -175,7 +177,8 @@ pub trait TrackerManager: Send + Sync {
     /// Scrapes statistics from trackers.
     ///
     /// # Errors
-    /// - `TorrentError::TrackerConnectionFailed` - All trackers failed
+    ///
+    /// - `TorrentError::TrackerConnectionFailed` - If all trackers failed
     async fn scrape_from_trackers(
         &mut self,
         tracker_urls: &[String],

@@ -25,6 +25,7 @@ pub struct AddTorrentForm {
 /// download/upload speeds, total downloaded data, connected peers, and library size.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or download statistics are unavailable.
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     let stats = state.engine().download_statistics().await.unwrap();
@@ -93,6 +94,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
 /// Displays up to 5 recent activities or a default message if no torrents are active.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -151,6 +153,7 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
 /// Filters out completed downloads and displays a message if no downloads are active.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
@@ -203,6 +206,7 @@ pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> 
 /// and starts downloading immediately. Returns appropriate success or error HTML fragments.
 ///
 /// # Errors
+///
 /// Returns `StatusCode::BAD_REQUEST` if form processing fails
 pub async fn add_torrent_htmx(
     State(state): State<AppState>,
@@ -261,6 +265,7 @@ pub async fn add_torrent_htmx(
 /// when available for better display names.
 ///
 /// # Panics
+///
 /// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrents_list(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();

@@ -91,8 +91,9 @@ impl MediaSearch {
     /// Search for movies using query string.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Failed to query provider
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    ///
+    /// - `MediaSearchError::SearchFailed` - If failed to query provider
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
     pub async fn search_movies(
         &self,
         query: &str,
@@ -103,8 +104,9 @@ impl MediaSearch {
     /// Search for TV shows using query string.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Failed to query provider
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    ///
+    /// - `MediaSearchError::SearchFailed` - If failed to query provider
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
     pub async fn search_tv_shows(
         &self,
         query: &str,
@@ -115,8 +117,9 @@ impl MediaSearch {
     /// Search for any media type using query string.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Failed to query provider
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    ///
+    /// - `MediaSearchError::SearchFailed` - If failed to query provider
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
     pub async fn search_all(
         &self,
         query: &str,
@@ -130,8 +133,9 @@ impl MediaSearch {
     /// posters, ratings, plot summaries, and detailed metadata.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Failed to query provider
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    ///
+    /// - `MediaSearchError::SearchFailed` - If failed to query provider
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
     pub async fn search_with_metadata(
         &self,
         query: &str,
@@ -179,8 +183,9 @@ impl MediaSearch {
     /// and comprehensive IMDb metadata for streaming-optimized results.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Search operation failed
-    /// - `MediaSearchError::NetworkError` - Network connectivity issues
+    ///
+    /// - `MediaSearchError::SearchFailed` - If search operation failed
+    /// - `MediaSearchError::NetworkError` - If network connectivity issues
     pub async fn search_movies_enhanced(
         &self,
         query: &str,
@@ -203,7 +208,8 @@ impl MediaSearch {
     /// Get detailed torrent results for media.
     ///
     /// # Errors
-    /// - `MediaSearchError::SearchFailed` - Failed to retrieve torrent details
+    ///
+    /// - `MediaSearchError::SearchFailed` - If failed to retrieve torrent details
     pub async fn media_torrents(
         &self,
         media_title: &str,

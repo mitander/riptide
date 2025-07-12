@@ -61,6 +61,7 @@ enum ReadinessResult {
 /// ```
 ///
 /// # Errors
+///
 /// Returns `StatusCode::BAD_REQUEST` if the info hash format is invalid.
 pub async fn streaming_readiness_handler(
     State(state): State<AppState>,
