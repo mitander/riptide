@@ -29,6 +29,9 @@ pub struct StreamingQuery {
 /// Handles HTTP streaming requests for torrents with support for range requests,
 /// quality selection, and format negotiation. Delegates actual streaming to
 /// the core HttpStreaming service and converts responses to Axum format.
+///
+/// # Panics
+/// Panics if the HTTP response builder fails to construct a valid response.
 #[axum::debug_handler]
 pub async fn stream_torrent(
     State(state): State<AppState>,

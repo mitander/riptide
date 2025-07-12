@@ -21,18 +21,18 @@ pub enum StorageCacheError {
 
     /// Cache key is malformed or invalid
     #[error("Invalid cache key: {reason}")]
-    InvalidKey { 
+    InvalidKey {
         /// Description of why the key is invalid
-        reason: String 
+        reason: String,
     },
 
     /// Entry size exceeds the maximum allowed size
     #[error("Cache entry too large: {size} bytes exceeds limit {limit}")]
-    EntryTooLarge { 
+    EntryTooLarge {
         /// Actual size of the entry in bytes
-        size: usize, 
+        size: usize,
         /// Maximum allowed size in bytes
-        limit: usize 
+        limit: usize,
     },
 }
 

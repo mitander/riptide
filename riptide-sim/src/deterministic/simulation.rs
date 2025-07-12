@@ -26,25 +26,46 @@ const MAX_EVENT_HISTORY: usize = 10_000;
 /// Errors that can occur during simulation.
 #[derive(Debug, Error)]
 pub enum SimulationError {
+    /// Event queue exceeded maximum capacity
     #[error("Event queue overflow: {count} events scheduled")]
-    EventQueueOverflow { count: usize },
+    EventQueueOverflow {
+        /// Number of events that caused overflow
+        count: usize,
+    },
 
+    /// Simulation ran longer than allowed time limit
     #[error("Simulation time limit exceeded: {elapsed:?}")]
-    TimeLimitExceeded { elapsed: Duration },
+    TimeLimitExceeded {
+        /// Time that elapsed before timeout
+        elapsed: Duration,
+    },
 
+    /// Resource usage exceeded configured limit
     #[error("Resource limit exceeded: {resource:?} usage {current} > limit {limit}")]
     ResourceLimitExceeded {
+        /// Type of resource that exceeded limit
         resource: ResourceType,
+        /// Current usage amount
         current: u64,
+        /// Maximum allowed limit
         limit: u64,
     },
 
+    /// Too many invariant violations occurred
     #[error("Too many invariant violations: {count}")]
-    TooManyInvariantViolations { count: usize },
+    TooManyInvariantViolations {
+        /// Number of violations that occurred
+        count: usize,
+    },
 
+    /// Event could not be scheduled properly
     #[error("Invalid event scheduling: {reason}")]
-    InvalidEventScheduling { reason: String },
+    InvalidEventScheduling {
+        /// Reason why scheduling failed
+        reason: String,
+    },
 
+    /// Deterministic seed required but not provided
     #[error("No deterministic seed provided")]
     NoDeterministicSeed,
 }
@@ -392,6 +413,9 @@ impl DeterministicSimulation {
     /// Creates a simple streaming scenario with default parameters.
     ///
     /// This is a convenience method that uses sensible defaults for streaming tests.
+    ///
+    /// # Errors
+    /// - `SimulationError::InvalidEventScheduling` - Failed to schedule simulation events
     pub fn create_streaming_scenario(
         &mut self,
         total_pieces: u32,
@@ -405,6 +429,9 @@ impl DeterministicSimulation {
     }
 
     /// Creates a streaming scenario with full parameters.
+    ///
+    /// # Errors
+    /// - `SimulationError::InvalidEventScheduling` - Failed to schedule simulation events
     pub fn create_streaming_scenario_full(
         &mut self,
         info_hash: InfoHash,
@@ -464,6 +491,9 @@ impl DeterministicSimulation {
     }
 
     /// Adds a deterministic peer to the simulation.
+    ///
+    /// # Errors
+    /// - `SimulationError::InvalidEventScheduling` - Failed to schedule peer connection event
     pub fn add_deterministic_peer(
         &mut self,
         peer_id: String,
@@ -496,8 +526,11 @@ impl DeterministicSimulation {
 /// Peer behavior patterns for simulation.
 #[derive(Debug, Clone, Copy)]
 pub enum PeerBehavior {
+    /// Fast, reliable peer with high upload speeds
     Fast,
+    /// Slow peer with limited bandwidth
     Slow,
+    /// Unreliable peer that frequently disconnects
     Unreliable,
 }
 

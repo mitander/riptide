@@ -131,11 +131,16 @@ impl MockPeerBuilder {
 /// occur during mock peer communication.
 #[derive(Debug, thiserror::Error)]
 pub enum PeerError {
+    /// Connection to peer was lost unexpectedly
     #[error("Peer connection lost")]
     ConnectionLost,
 
+    /// Protocol-level error occurred during communication
     #[error("Peer protocol error: {message}")]
-    ProtocolError { message: String },
+    ProtocolError {
+        /// Detailed error message
+        message: String,
+    },
 }
 
 #[cfg(test)]

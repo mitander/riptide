@@ -16,9 +16,13 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Represents a piece request made to a peer
 #[derive(Debug, Clone)]
 pub struct PendingPieceRequest {
+    /// Index of piece being requested
     pub piece_index: PieceIndex,
+    /// Byte offset within piece
     pub offset: u32,
+    /// Number of bytes requested
     pub length: u32,
+    /// Timestamp when request was made
     pub requested_at: Instant,
 }
 

@@ -11,6 +11,7 @@ pub struct StreamingBufferInvariant {
 }
 
 impl StreamingBufferInvariant {
+    /// Creates new streaming buffer invariant checker
     pub fn new(min_buffer_pieces: usize) -> Self {
         Self { min_buffer_pieces }
     }
@@ -47,6 +48,7 @@ pub struct DataIntegrityInvariant {
 }
 
 impl DataIntegrityInvariant {
+    /// Creates new data integrity invariant checker
     pub fn new(max_failure_rate: f64) -> Self {
         Self { max_failure_rate }
     }
@@ -88,6 +90,7 @@ pub struct MaxPeersInvariant {
 }
 
 impl MaxPeersInvariant {
+    /// Creates new max peers invariant checker
     pub fn new(max_peers: usize) -> Self {
         Self { max_peers }
     }

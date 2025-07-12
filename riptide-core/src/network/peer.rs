@@ -65,6 +65,7 @@ pub struct ProductionPeerLayer {
 }
 
 impl ProductionPeerLayer {
+    /// Create new production peer layer with connection limit
     pub fn new(max_connections: usize) -> Self {
         Self {
             max_connections,
@@ -209,6 +210,7 @@ pub struct SimulationPeerLayer {
 }
 
 impl SimulationPeerLayer {
+    /// Create new simulation peer layer for testing
     pub fn new(max_connections: usize) -> Self {
         Self {
             max_connections,

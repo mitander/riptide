@@ -382,8 +382,11 @@ impl TorrentCreator {
 /// Stores actual piece data for simulation use
 #[derive(Debug, Clone)]
 pub struct TorrentPiece {
+    /// Piece index in torrent
     pub index: u32,
+    /// SHA-1 hash of piece data
     pub hash: [u8; 20],
+    /// Actual piece data bytes
     pub data: Vec<u8>,
 }
 

@@ -1,4 +1,4 @@
-//! Minimal test to isolate message passing issues in SimPeers
+//! Minimal test to isolate message passing issues in DeterministicPeers
 
 #![allow(clippy::uninlined_format_args)]
 
@@ -6,8 +6,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use riptide_core::torrent::{InfoHash, PeerId, PeerMessage, Peers, PieceIndex, TorrentPiece};
-use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeers};
+use riptide_core::torrent::{InfoHash, PeerId, PeerMessage, PieceIndex, TorrentPiece};
+use riptide_sim::{DeterministicConfig, DeterministicPeers, InMemoryPieceStore};
 use tokio::sync::RwLock;
 
 #[tokio::test]
@@ -24,15 +24,12 @@ async fn test_basic_message_send_receive() {
         hash: [1u8; 20],
         data: test_data.clone(),
     }];
-    piece_store
-        .add_torrent_pieces(info_hash, pieces)
-        .await
-        .unwrap();
+    piece_store.add_torrent_pieces(info_hash, pieces).await;
     println!("MSG_TEST: Added piece to store");
 
     // Create peer manager
-    let config = InMemoryPeerConfig::default();
-    let mut peers = SimPeers::new(config, piece_store.clone());
+    let config = DeterministicConfig::default();
+    let mut peers = DeterministicPeers::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let peer_id = PeerId::generate();
@@ -148,13 +145,10 @@ async fn test_message_queue_behavior() {
             data: vec![0xBB; 512],
         },
     ];
-    piece_store
-        .add_torrent_pieces(info_hash, pieces)
-        .await
-        .unwrap();
+    piece_store.add_torrent_pieces(info_hash, pieces).await;
 
-    let config = InMemoryPeerConfig::default();
-    let mut peers = SimPeers::new(config, piece_store);
+    let config = DeterministicConfig::default();
+    let mut peers = DeterministicPeers::new(config, piece_store);
 
     let peer1: SocketAddr = "127.0.0.1:8081".parse().unwrap();
     let peer2: SocketAddr = "127.0.0.1:8082".parse().unwrap();
@@ -248,10 +242,13 @@ async fn test_peers_in_isolation() {
 
     let info_hash = InfoHash::new([3u8; 20]);
     let piece_store = Arc::new(InMemoryPieceStore::new());
-    let config = InMemoryPeerConfig::default();
+    let config = DeterministicConfig::default();
 
     // Use Arc<RwLock> wrapper like PieceDownloader does
-    let peers = Arc::new(RwLock::new(SimPeers::new(config, piece_store.clone())));
+    let peers = Arc::new(RwLock::new(DeterministicPeers::new(
+        config,
+        piece_store.clone(),
+    )));
 
     let peer_addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
 

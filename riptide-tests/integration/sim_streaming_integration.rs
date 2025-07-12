@@ -5,7 +5,7 @@ use std::sync::Arc;
 use riptide_core::streaming::PieceBasedStreamReader;
 use riptide_core::torrent::InfoHash;
 use riptide_core::torrent::creation::TorrentPiece;
-use riptide_sim::piece_store::InMemoryPieceStore;
+use riptide_sim::InMemoryPieceStore;
 
 #[cfg(test)]
 mod tests {

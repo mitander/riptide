@@ -5,9 +5,13 @@ use std::fmt;
 /// Types of resources tracked in simulations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceType {
+    /// Memory usage in bytes
     Memory,
+    /// Number of active connections
     Connections,
+    /// Disk space usage in bytes
     DiskSpace,
+    /// CPU time usage in milliseconds
     CpuTime,
 }
 

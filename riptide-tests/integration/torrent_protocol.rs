@@ -10,8 +10,8 @@ use std::sync::Arc;
 use riptide_core::storage::FileStorage;
 use riptide_core::torrent::downloader::PieceDownloader;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
-use riptide_core::torrent::{InfoHash, PeerId, Peers, PieceIndex, PieceStore, TorrentPiece};
-use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeers};
+use riptide_core::torrent::{InfoHash, PeerId, PieceIndex, PieceStore, TorrentPiece};
+use riptide_sim::{DeterministicConfig, DeterministicPeers, InMemoryPieceStore};
 use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
 
@@ -72,10 +72,7 @@ async fn test_simple_piece_download() {
             data: piece_1_data.clone(),
         },
     ];
-    piece_store
-        .add_torrent_pieces(info_hash, pieces)
-        .await
-        .unwrap();
+    piece_store.add_torrent_pieces(info_hash, pieces).await;
 
     // Verify pieces were added
     let stored_piece_0 = piece_store
@@ -89,8 +86,8 @@ async fn test_simple_piece_download() {
     );
 
     // Create peer manager
-    let config = InMemoryPeerConfig::default();
-    let mut peers = SimPeers::new(config, piece_store.clone());
+    let config = DeterministicConfig::default();
+    let mut peers = DeterministicPeers::new(config, piece_store.clone());
 
     println!("SIMPLE_TEST: Created peer manager");
 
@@ -208,13 +205,10 @@ async fn test_peers_basic_functionality() {
         hash,
         data: test_data.clone(),
     }];
-    piece_store
-        .add_torrent_pieces(info_hash, pieces)
-        .await
-        .unwrap();
+    piece_store.add_torrent_pieces(info_hash, pieces).await;
 
-    let config = InMemoryPeerConfig::default();
-    let mut peers = SimPeers::new(config, piece_store.clone());
+    let config = DeterministicConfig::default();
+    let mut peers = DeterministicPeers::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
 

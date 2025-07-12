@@ -67,6 +67,9 @@ impl MediaAnalyzer {
     }
 
     /// Classifies a file based on extension and size.
+    ///
+    /// # Errors
+    /// - `Box<dyn std::error::Error>` - File system access or metadata parsing errors
     pub async fn classify_media_file(
         path: &Path,
         size: u64,

@@ -12,16 +12,27 @@ use tracing::{debug, error, info, warn};
 /// Debug information for a streaming session
 #[derive(Debug, Clone)]
 pub struct StreamingDebugInfo {
+    /// Torrent info hash
     pub info_hash: InfoHash,
+    /// Total number of streaming requests received
     pub request_count: u64,
+    /// Number of cache hits for this torrent
     pub cache_hits: u64,
+    /// Number of cache misses for this torrent
     pub cache_misses: u64,
+    /// Number of remux attempts for this torrent
     pub remux_attempts: u64,
+    /// Number of successful remux operations
     pub remux_successes: u64,
+    /// Number of failed remux operations
     pub remux_failures: u64,
+    /// Last error message if any
     pub last_error: Option<String>,
+    /// FFmpeg command output logs
     pub ffmpeg_logs: Vec<String>,
+    /// Total bytes served for this torrent
     pub total_bytes_served: u64,
+    /// Average response time in milliseconds
     pub average_response_time_ms: f64,
 }
 
@@ -78,6 +89,12 @@ impl DebugStreaming {
     }
 
     /// Handle streaming request with debug logging
+    ///
+    /// # Errors
+    /// - `String` - Streaming request failed or debug tracking error
+    ///
+    /// # Panics
+    /// Panics if debug info tracking fails to find the expected entry.
     pub async fn handle_http_request_debug(
         &self,
         info_hash: InfoHash,
@@ -265,36 +282,58 @@ impl DebugStreaming {
 /// Debug endpoint data for web UI
 #[derive(Debug, serde::Serialize)]
 pub struct StreamingDebugEndpoint {
+    /// Debug information for each active torrent
     pub torrents: Vec<TorrentDebugInfo>,
+    /// Cache directory path
     pub cache_directory: String,
+    /// Information about cached files
     pub cache_files: Vec<CacheFileInfo>,
+    /// System environment information
     pub system_info: SystemDebugInfo,
 }
 
+/// Debug information for a specific torrent
 #[derive(Debug, serde::Serialize)]
 pub struct TorrentDebugInfo {
+    /// Torrent info hash as hex string
     pub info_hash: String,
+    /// Total number of streaming requests
     pub request_count: u64,
+    /// Current cache status description
     pub cache_status: String,
+    /// Current remux status description
     pub remux_status: String,
+    /// Last error message if any
     pub last_error: Option<String>,
+    /// Total bytes served for this torrent
     pub bytes_served: u64,
+    /// Average response time in milliseconds
     pub average_response_ms: f64,
 }
 
+/// Information about a cached file
 #[derive(Debug, serde::Serialize)]
 pub struct CacheFileInfo {
+    /// Cache file name
     pub filename: String,
+    /// File size in bytes
     pub size_bytes: u64,
+    /// File creation timestamp
     pub created: String,
+    /// Whether the cache file is valid
     pub is_valid: bool,
 }
 
+/// System environment debug information
 #[derive(Debug, serde::Serialize)]
 pub struct SystemDebugInfo {
+    /// Whether FFmpeg is available in PATH
     pub ffmpeg_available: bool,
+    /// FFmpeg version string if available
     pub ffmpeg_version: Option<String>,
+    /// Whether cache directory is writable
     pub cache_dir_writable: bool,
+    /// Available temporary space in gigabytes
     pub temp_space_available_gb: f64,
 }
 

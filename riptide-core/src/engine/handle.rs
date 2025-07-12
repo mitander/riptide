@@ -27,9 +27,9 @@ impl TorrentEngineHandle {
     /// torrent list. The torrent can then be started for downloading.
     ///
     /// # Errors
-    /// - `TorrentError::InvalidMagnetLink` - Malformed magnet link
-    /// - `TorrentError::TrackerConnectionFailed` - Could not contact tracker
-    /// - `TorrentError::DuplicateTorrent` - Torrent already exists
+    /// - Returns `TorrentError::InvalidMagnetLink` if magnet link is malformed.
+    /// - Returns `TorrentError::TrackerConnectionFailed` if could not contact tracker.
+    /// - Returns `TorrentError::DuplicateTorrent` if torrent already exists.
     pub async fn add_magnet(&self, magnet_link: &str) -> Result<InfoHash, TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::AddMagnet {
@@ -52,9 +52,9 @@ impl TorrentEngineHandle {
     /// added to the engine via `add_magnet` or `add_torrent_metadata`.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    /// - `TorrentError::TrackerConnectionFailed` - Could not contact tracker
-    /// - `TorrentError::PeerConnectionError` - Could not connect to peers
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
+    /// - Returns `TorrentError::TrackerConnectionFailed` if could not contact tracker.
+    /// - Returns `TorrentError::PeerConnectionError` if could not connect to peers.
     pub async fn start_download(&self, info_hash: InfoHash) -> Result<(), TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::StartDownload {
@@ -76,7 +76,7 @@ impl TorrentEngineHandle {
     /// piece completion status, and session metadata.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     pub async fn session_details(
         &self,
         info_hash: InfoHash,
@@ -101,7 +101,7 @@ impl TorrentEngineHandle {
     /// Sessions are returned in no particular order.
     ///
     /// # Errors
-    /// Returns error if engine is shutdown or communication fails.
+    /// - Returns `TorrentError::EngineShutdown` if engine is shutdown or communication fails.
     pub async fn active_sessions(&self) -> Result<Vec<TorrentSession>, TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::GetActiveSessions { responder };
@@ -120,7 +120,7 @@ impl TorrentEngineHandle {
     /// connections, and data transfer metrics.
     ///
     /// # Errors
-    /// Returns error if engine is shutdown or communication fails.
+    /// - Returns `TorrentError::EngineShutdown` if engine is shutdown or communication fails.
     pub async fn download_statistics(&self) -> Result<EngineStats, TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::GetDownloadStats { responder };
@@ -140,7 +140,7 @@ impl TorrentEngineHandle {
     /// are successfully downloaded and verified.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     /// - `TorrentError::InvalidPieceIndex` - Piece index out of bounds
     pub async fn mark_pieces_completed(
         &self,
@@ -215,7 +215,7 @@ impl TorrentEngineHandle {
     /// The buffer size determines how many bytes around the position to prioritize.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     pub async fn seek_to_position(
         &self,
         info_hash: InfoHash,
@@ -245,7 +245,7 @@ impl TorrentEngineHandle {
     /// for different viewing conditions.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     pub async fn update_buffer_strategy(
         &self,
         info_hash: InfoHash,
@@ -274,7 +274,7 @@ impl TorrentEngineHandle {
     /// how much content is buffered ahead and behind the current position.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     pub async fn buffer_status(
         &self,
         info_hash: InfoHash,
@@ -300,7 +300,7 @@ impl TorrentEngineHandle {
     /// engine's list but is marked as not downloading.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     pub async fn stop_download(&self, info_hash: InfoHash) -> Result<(), TorrentError> {
         let (responder, rx) = oneshot::channel();
         let cmd = TorrentEngineCommand::StopDownload {
@@ -323,7 +323,7 @@ impl TorrentEngineHandle {
     /// that will be used for streaming.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     pub async fn configure_upload(
         &self,
         info_hash: InfoHash,
@@ -352,7 +352,7 @@ impl TorrentEngineHandle {
     /// can adjust upload priorities to favor pieces needed for streaming.
     ///
     /// # Errors
-    /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
+    /// - Returns `TorrentError::TorrentNotFound` if info hash not in active torrents.
     pub async fn update_streaming_position(
         &self,
         info_hash: InfoHash,

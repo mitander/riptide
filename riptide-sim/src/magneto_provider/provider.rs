@@ -12,20 +12,30 @@ use super::content_database::create_default_content_database;
 /// Mock torrent entry in the content database.
 #[derive(Debug, Clone)]
 pub struct MockTorrentEntry {
+    /// Torrent display name
     pub name: String,
+    /// Total size in bytes
     pub size_bytes: u64,
+    /// Number of seeders
     pub seeders: u32,
+    /// Number of leechers
     pub leechers: u32,
+    /// Magnet link template with placeholder for info hash
     pub magnet_template: String,
+    /// Content categories for filtering
     pub categories: Vec<String>,
 }
 
 /// Parameters for creating a new torrent entry.
 #[derive(Debug)]
 pub struct TorrentEntryParams {
+    /// Torrent display name
     pub name: String,
+    /// Total size in bytes
     pub size_bytes: u64,
+    /// Number of seeders
     pub seeders: u32,
+    /// Number of leechers
     pub leechers: u32,
 }
 
@@ -186,6 +196,10 @@ impl MockMagnetoProvider {
     }
 
     /// Searches for torrents based on query with simulated network behavior.
+    ///
+    /// # Errors
+    /// - `ClientError::ResponseError` - Simulated network failure or invalid response
+    /// - `ClientError::RequestFailed` - Search request processing failed
     pub async fn search(
         &mut self,
         request: SearchRequest<'_>,

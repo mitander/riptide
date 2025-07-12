@@ -295,7 +295,6 @@ impl HttpStreaming {
     }
 
     /// Handle HTTP streaming request with proper headers and status codes
-    /// Handle HTTP streaming request with range support
     ///
     /// # Errors
     /// Returns `StreamingError` if stream data cannot be retrieved or HTTP response cannot be constructed
@@ -418,7 +417,10 @@ impl HttpStreaming {
 /// Streaming service statistics
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct StreamingStats {
+    /// Number of currently active streaming sessions
     pub active_sessions: usize,
+    /// Total bytes streamed across all sessions
     pub total_bytes_streamed: u64,
+    /// Number of concurrent remux operations
     pub concurrent_remux_sessions: usize,
 }

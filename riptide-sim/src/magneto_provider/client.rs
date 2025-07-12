@@ -16,6 +16,10 @@ impl MockMagnetoClient {
     }
 
     /// Searches for torrents using the mock provider.
+    ///
+    /// # Errors
+    /// - `ClientError::RequestFailed` - Network or search request failed
+    /// - `ClientError::InvalidQuery` - Search query format invalid
     pub async fn search(
         &mut self,
         request: SearchRequest<'_>,

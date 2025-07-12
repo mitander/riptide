@@ -333,6 +333,9 @@ enum PeerMessage {
 }
 
 /// Spawns multiple peer servers for a torrent on different ports
+///
+/// # Errors
+/// - `Box<dyn std::error::Error + Send + Sync>` - Failed to bind socket or start server
 pub async fn spawn_peer_servers_for_torrent<P: PieceStore + Send + Sync + 'static>(
     info_hash: InfoHash,
     piece_store: Arc<P>,

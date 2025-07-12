@@ -520,6 +520,10 @@ pub async fn create_deterministic_development_components(
 
 /// Legacy function - now routes to fast development mode for backward compatibility.
 /// Use create_fast_development_components() or create_deterministic_development_components() directly.
+///
+/// # Errors
+/// - `SimulationError::Setup` - Failed to initialize simulation components
+/// - `SimulationError::FileSystem` - Failed to scan movies directory
 pub async fn create_development_components(
     config: riptide_core::config::RiptideConfig,
     movies_dir: Option<std::path::PathBuf>,

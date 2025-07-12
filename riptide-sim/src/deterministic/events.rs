@@ -11,16 +11,22 @@ use riptide_core::torrent::PieceIndex;
 /// occur at the same timestamp.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EventPriority {
-    Critical = 0, // Network failures, disconnects
-    High = 1,     // Protocol messages
-    Normal = 2,   // Regular operations
-    Low = 3,      // Background tasks
+    /// Network failures, disconnects
+    Critical = 0,
+    /// Protocol messages
+    High = 1,
+    /// Regular operations
+    Normal = 2,
+    /// Background tasks
+    Low = 3,
 }
 
 /// Direction of bandwidth throttling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThrottleDirection {
+    /// Upload bandwidth throttling
     Upload,
+    /// Download bandwidth throttling
     Download,
 }
 
@@ -28,49 +34,77 @@ pub enum ThrottleDirection {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventType {
     /// Peer connects to swarm
-    PeerConnect { peer_id: String },
+    PeerConnect {
+        /// Peer identifier string
+        peer_id: String,
+    },
     /// Peer disconnects from swarm
-    PeerDisconnect { peer_id: String },
+    PeerDisconnect {
+        /// Peer identifier string
+        peer_id: String,
+    },
     /// Piece download request initiated
     PieceRequest {
+        /// Peer identifier string
         peer_id: String,
+        /// Index of the piece being requested
         piece_index: PieceIndex,
     },
     /// Piece download completed successfully
     PieceComplete {
+        /// Peer identifier string
         peer_id: String,
+        /// Index of the completed piece
         piece_index: PieceIndex,
+        /// Time taken to download the piece
         download_time: Duration,
     },
     /// Piece download failed
     PieceFailed {
+        /// Peer identifier string
         peer_id: String,
+        /// Index of the failed piece
         piece_index: PieceIndex,
+        /// Failure reason description
         reason: String,
     },
     /// Tracker announce event
     TrackerAnnounce {
+        /// Torrent info hash
         info_hash: riptide_core::torrent::InfoHash,
+        /// Number of peers in response
         peer_count: usize,
     },
     /// Network conditions change
     NetworkChange {
+        /// Network latency in milliseconds
         latency_ms: u32,
+        /// Packet loss rate as fraction (0.0-1.0)
         packet_loss_rate: f64,
     },
     /// Bandwidth throttling applied
     BandwidthThrottle {
+        /// Direction of throttling (upload/download)
         direction: ThrottleDirection,
+        /// Throttle rate in bytes per second
         rate_bytes_per_sec: u64,
     },
     /// Resource limit reached
     ResourceLimit {
+        /// Type of resource that reached limit
         resource: crate::ResourceType,
+        /// Current usage amount
         current: u64,
+        /// Maximum allowed limit
         limit: u64,
     },
     /// Custom test event
-    Custom { name: String, data: String },
+    Custom {
+        /// Event name identifier
+        name: String,
+        /// Event data payload
+        data: String,
+    },
 }
 
 impl EventType {

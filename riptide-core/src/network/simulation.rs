@@ -21,6 +21,7 @@ pub struct SimulationNetworkLayer {
 }
 
 impl SimulationNetworkLayer {
+    /// Creates new simulation network layer with default settings
     pub fn new() -> Self {
         Self {
             timeout: Duration::from_secs(5),

@@ -117,6 +117,9 @@ impl AppState {
 ///
 /// # Errors
 /// Returns error if server fails to bind to address or start successfully.
+///
+/// # Panics
+/// Panics if the server components don't include a required piece store.
 pub async fn run_server(
     _config: RiptideConfig,
     components: ServerComponents,

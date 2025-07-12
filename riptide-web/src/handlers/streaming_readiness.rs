@@ -55,10 +55,13 @@ enum ReadinessResult {
 /// Always returns 200 OK with readiness information in the response body.
 ///
 /// # Examples
-/// ```ignore
+/// ```text
 /// // HTTP request: GET /stream/abc123def456.../ready
 /// // Response: { "ready": false, "progress": 0.45, "message": "Buffer: 1.8MB/2.0MB" }
 /// ```
+///
+/// # Errors
+/// Returns `StatusCode::BAD_REQUEST` if the info hash format is invalid.
 pub async fn streaming_readiness_handler(
     State(state): State<AppState>,
     Path(hash): Path<String>,

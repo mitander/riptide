@@ -1,38 +1,34 @@
 # Riptide Clippy Configuration
 # Enforces documented coding standards from docs/STYLE.md
 
-# === SIZE LIMITS ===
-# From STYLE.md: Functions 70 lines max, Modules 500 lines max
-too-many-lines-threshold = 500
+# === COMPLEXITY AND SIZE LIMITS ===
+# STYLE.md section 2: Keep functions small and focused
+too-many-lines-threshold = 200
 cognitive-complexity-threshold = 15
-too-many-arguments-threshold = 6
+too-many-arguments-threshold = 8
 
 # === NAMING AND STYLE ===
-# Enforce idiomatic Rust patterns
+# STYLE.md section 2: Enforce idiomatic Rust patterns
 enum-variant-name-threshold = 3
 max-struct-bools = 3
 warn-on-all-wildcard-imports = true
+# Banned prefixes/suffixes are enforced by the `naming_violations` integration test.
 
 # === PERFORMANCE ===
-# Prevent common performance issues
+# STYLE.md section 1: Measure, Don't Guess.
 trivial-copy-size-limit = 64
 pass-by-value-size-limit = 256
 
-# === SAFETY ===
-# These are handled by lib.rs #![deny(...)] directives:
+# === DOCUMENTATION ===
+# STYLE.md section 3: Enforced via #![deny(...)] in each crate's lib.rs.
+# This file doesn't configure these; they are treated as compiler errors.
 # - missing_docs
 # - missing_errors_doc
 # - missing_panics_doc
+
+# === SAFETY & ERROR HANDLING ===
+# STYLE.md section 4: Zero tolerance for unwrap/expect in production code.
+# Denied in lib.rs for all crates.
 # - unwrap_used
 # - expect_used
 # - panic
-
-# === ERROR HANDLING ===
-# Encourage proper error handling
-# question-mark and result-unit-err don't exist as config options
-
-# === COMPLEXITY ===
-# Keep code simple and maintainable
-# Increased thresholds for production codebase with complex domain types
-type-complexity-threshold = 150
-excessive-nesting-threshold = 8

@@ -9,8 +9,11 @@ use super::state::SimulationState;
 /// Violation of a simulation invariant.
 #[derive(Debug, Clone)]
 pub struct InvariantViolation {
+    /// Name of the violated invariant
     pub invariant: String,
+    /// Detailed description of the violation
     pub description: String,
+    /// When the violation occurred
     pub timestamp: Instant,
 }
 
@@ -29,6 +32,9 @@ pub trait Invariant: Send + Sync {
     /// Checks if invariant holds for current state.
     ///
     /// Returns error with violation details if invariant is violated.
+    ///
+    /// # Errors
+    /// Returns `InvariantViolation` if the invariant condition is not met.
     fn check(&self, state: &SimulationState) -> Result<(), InvariantViolation>;
 
     /// Returns name of this invariant.
