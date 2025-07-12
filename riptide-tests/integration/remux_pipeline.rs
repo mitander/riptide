@@ -147,12 +147,12 @@ fn create_test_config() -> riptide_core::streaming::remux::types::RemuxConfig {
 async fn test_remux_strategy_creation() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         data_source,
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     // Test basic properties
     assert!(strategy.can_handle(ContainerFormat::Avi));
@@ -169,12 +169,12 @@ async fn test_remux_insufficient_head_data() {
     data_source.add_file(info_hash, test_data.len() as u64, test_data);
 
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         Arc::new(data_source),
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     // Prepare stream handle
     let handle = strategy
@@ -208,12 +208,12 @@ async fn test_remux_with_head_data() {
     data_source.make_head_available(info_hash, 128 * 1024).await;
 
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         Arc::new(data_source),
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     // Prepare stream handle
     let handle = strategy
@@ -250,12 +250,12 @@ async fn test_remux_with_head_data() {
 async fn test_remux_container_format_output() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         data_source,
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     let info_hash = InfoHash::new([3u8; 20]);
 
@@ -281,12 +281,12 @@ async fn test_remux_file_size_estimation() {
     data_source.make_head_available(info_hash, 128 * 1024).await;
 
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         Arc::new(data_source),
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     // Prepare stream handle
     let handle = strategy
@@ -326,12 +326,12 @@ async fn test_remux_concurrent_sessions() {
 
     let mut config = create_test_config();
     config.max_concurrent_sessions = 3; // Limit to 3 concurrent sessions
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         Arc::new(data_source),
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     // Try to start many sessions - should hit the limit
     let mut results = Vec::new();
@@ -375,12 +375,12 @@ async fn test_remux_concurrent_sessions() {
 async fn test_remux_format_support() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         data_source,
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     // Should support all major video formats for remuxing
     assert!(strategy.can_handle(ContainerFormat::Avi));
@@ -395,12 +395,12 @@ async fn test_remux_format_support() {
 async fn test_remux_error_handling() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         data_source,
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     let nonexistent_hash = InfoHash::new([99u8; 20]);
 
@@ -430,12 +430,12 @@ async fn test_remux_range_requests() {
     data_source.make_head_available(info_hash, 128 * 1024).await;
 
     let config = create_test_config();
-    let session_manager = riptide_core::streaming::RemuxSessionManager::new(
+    let remuxer = riptide_core::streaming::Remuxer::new(
         config,
         Arc::new(data_source),
-        Arc::new(riptide_core::streaming::SimulationFfmpegProcessor::new()),
+        Arc::new(riptide_core::streaming::SimulationFfmpeg::new()),
     );
-    let strategy = RemuxStreamStrategy::new(session_manager);
+    let strategy = RemuxStreamStrategy::new(remuxer);
 
     // Prepare stream handle
     let handle = strategy

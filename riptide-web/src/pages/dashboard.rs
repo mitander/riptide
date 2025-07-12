@@ -19,7 +19,7 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let upload_speed = (engine_stats.bytes_uploaded as f64) / 1_048_576.0;
     let total_downloaded = (engine_stats.bytes_downloaded as f64) / 1_073_741_824.0;
 
-    let library_size = if let Ok(movie_manager) = state.file_manager() {
+    let library_size = if let Ok(movie_manager) = state.file_library() {
         let manager = movie_manager.read().await;
         manager.all_files().len()
     } else {

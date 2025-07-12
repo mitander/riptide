@@ -5,16 +5,27 @@ use super::stats::progress_bar;
 
 /// Parameters for rendering a torrent list item
 pub struct TorrentListItemParams<'a> {
+    /// Display name of the torrent
     pub name: &'a str,
+    /// Torrent info hash for identification
     pub info_hash: &'a str,
+    /// Download progress as percentage (0-100)
     pub progress: u32,
+    /// Human-readable file size (e.g., "1.5 GB")
     pub size: &'a str,
+    /// Current download speed if available
     pub speed: Option<&'a str>,
+    /// Current status (downloading, completed, etc.)
     pub status: &'a str,
+    /// Estimated time to completion if available
     pub eta: Option<&'a str>,
 }
 
-/// Renders a torrent list item with progress and actions
+/// Renders a torrent list item with progress and actions.
+///
+/// Creates a comprehensive torrent card with name, progress bar, statistics,
+/// and action buttons for pause, stream, and details. Includes hover effects
+/// and responsive layout.
 pub fn torrent_list_item(params: TorrentListItemParams) -> String {
     let TorrentListItemParams {
         name,
@@ -93,7 +104,10 @@ pub fn torrent_list_item(params: TorrentListItemParams) -> String {
     )
 }
 
-/// Renders a form for adding new torrents
+/// Renders a form for adding new torrents.
+///
+/// Creates HTMX-powered form with magnet link input and add button.
+/// Includes loading indicators and result display area for user feedback.
 pub fn torrent_form() -> String {
     format!(
         r#"<form hx-post="/api/torrents/add"
@@ -121,7 +135,10 @@ pub fn torrent_form() -> String {
     )
 }
 
-/// Renders a status badge for torrents
+/// Renders a status badge for torrents.
+///
+/// Creates colored status badges with icons and consistent styling.
+/// Supports downloading, completed, seeding, paused, error, and queued states.
 pub fn torrent_status_badge(status: &str) -> String {
     let (bg_class, text_class, icon) = match status {
         "downloading" => ("bg-riptide-500 bg-opacity-20", "text-riptide-400", "↓"),
@@ -141,7 +158,10 @@ pub fn torrent_status_badge(status: &str) -> String {
     )
 }
 
-/// Renders a quick actions panel for torrents
+/// Renders a quick actions panel for torrents.
+///
+/// Creates action button group with start, pause, delete, and stats controls.
+/// Uses HTMX for seamless interactions without page reloads.
 pub fn torrent_actions(info_hash: &str) -> String {
     format!(
         r#"<div class="flex items-center space-x-2">
@@ -179,17 +199,28 @@ pub fn torrent_actions(info_hash: &str) -> String {
 
 /// Parameters for rendering torrent details modal
 pub struct TorrentDetailsParams<'a> {
+    /// Display name of the torrent
     pub name: &'a str,
+    /// Torrent info hash
     pub info_hash: &'a str,
+    /// Total size in bytes
     pub total_size: u64,
+    /// Downloaded bytes
     pub downloaded: u64,
+    /// Uploaded bytes
     pub uploaded: u64,
+    /// Share ratio (uploaded/downloaded)
     pub ratio: f64,
+    /// Number of connected peers
     pub peers: u32,
+    /// Number of available seeders
     pub seeds: u32,
 }
 
-/// Renders a torrent details modal content
+/// Renders a torrent details modal content.
+///
+/// Creates detailed modal showing comprehensive torrent statistics including
+/// sizes, transfer ratios, peer information, and formatted display values.
 pub fn torrent_details(params: TorrentDetailsParams) -> String {
     let TorrentDetailsParams {
         name,
@@ -254,7 +285,10 @@ pub fn torrent_details(params: TorrentDetailsParams) -> String {
     )
 }
 
-/// Renders an empty state for when no torrents exist
+/// Renders an empty state for when no torrents exist.
+///
+/// Creates friendly empty state with icon, message, and call-to-action button
+/// to guide users toward adding their first torrent or browsing content.
 pub fn torrents_empty_state() -> String {
     format!(
         r#"<div class="text-center py-12">

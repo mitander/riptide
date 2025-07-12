@@ -1,6 +1,6 @@
 //! Riptide Core - BitTorrent and streaming functionality
 
-#![allow(missing_docs)]
+#![deny(missing_docs)]
 #![deny(clippy::missing_errors_doc)]
 #![deny(clippy::missing_panics_doc)]
 #![warn(clippy::too_many_lines)]
@@ -24,7 +24,7 @@ pub mod video;
 pub use config::RiptideConfig;
 pub use mode::RuntimeMode;
 pub use server_components::{ConversionProgress, ConversionStatus, ServerComponents};
-pub use storage::{FileLibraryManager, FileStorage, LibraryFile, StorageError};
+pub use storage::{FileLibrary, FileStorage, LibraryFile, StorageError};
 pub use streaming::{HttpStreaming, StreamingError};
 pub use torrent::{EngineStats, TorrentCreator, TorrentEngineHandle, TorrentError};
 pub use tracing_setup::{CliLogLevel, init_tracing};
@@ -34,23 +34,35 @@ pub use tracing_setup::{CliLogLevel, init_tracing};
 /// High-level error types representing failures in core functionality.
 #[derive(Debug, thiserror::Error)]
 pub enum RiptideError {
+    /// Torrent-related errors (downloading, parsing, peer communication)
     #[error("Torrent error: {0}")]
     Torrent(#[from] TorrentError),
 
+    /// Storage layer errors (file I/O, piece verification, disk space)
     #[error("Storage error: {0}")]
     Storage(#[from] StorageError),
 
+    /// Streaming service errors (remuxing, transcoding, protocol issues)
     #[error("Streaming error: {0}")]
     Streaming(#[from] StreamingError),
 
+    /// Configuration parsing or validation errors
     #[error("Configuration error: {reason}")]
-    Configuration { reason: String },
+    Configuration {
+        /// Human-readable description of the configuration error
+        reason: String,
+    },
 
+    /// Standard I/O errors from filesystem operations
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
+    /// Web interface errors (templating, routing, asset serving)
     #[error("Web UI error: {reason}")]
-    WebUI { reason: String },
+    WebUI {
+        /// Human-readable description of the web UI error
+        reason: String,
+    },
 }
 
 impl RiptideError {
@@ -88,6 +100,7 @@ impl RiptideError {
     }
 }
 
+/// Convenience Result type using RiptideError as the error type
 pub type Result<T> = std::result::Result<T, RiptideError>;
 
 /// Convert WebUIError to RiptideError

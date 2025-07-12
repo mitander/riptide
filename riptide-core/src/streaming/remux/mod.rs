@@ -18,7 +18,7 @@
 //! - `Completed`: Remuxing finished successfully
 //! - `Failed`: Remuxing failed, may be retryable
 
-pub mod session_manager;
+pub mod remuxer;
 pub mod state;
 pub mod strategy;
 pub mod types;
@@ -26,7 +26,7 @@ pub mod types;
 #[cfg(test)]
 pub mod readiness_tests;
 
-pub use session_manager::RemuxSessionManager;
+pub use remuxer::Remuxer;
 pub use state::{RemuxError, RemuxProgress, RemuxState};
 pub use strategy::{DirectStreamStrategy, RemuxStreamStrategy, StreamingStrategy};
 pub use types::{

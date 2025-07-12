@@ -361,13 +361,21 @@ impl EnhancedPeerConnection {
 /// Statistics about a peer connection
 #[derive(Debug)]
 pub struct PeerConnectionStats {
+    /// Network address of the peer
     pub address: SocketAddr,
+    /// When the connection was established
     pub connected_at: Option<Instant>,
+    /// Whether this peer has choked our connection
     pub is_choked_by_peer: bool,
+    /// Whether we are choking this peer
     pub is_choking_peer: bool,
+    /// Whether we are interested in this peer's pieces
     pub is_interested: bool,
+    /// Whether this peer is interested in our pieces
     pub is_peer_interested: bool,
+    /// Number of piece requests currently pending
     pub pending_requests: usize,
+    /// Number of pieces this peer has available
     pub peer_piece_count: u32,
 }
 

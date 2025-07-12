@@ -12,23 +12,27 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use super::session_manager::RemuxSessionManager;
+use super::remuxer::Remuxer;
 use super::types::{RemuxConfig, StreamReadiness};
 use crate::storage::data_source::{
     CacheStats, CacheableDataSource, DataError, DataResult, DataSource, RangeAvailability,
 };
 use crate::torrent::InfoHash;
 
+// Type aliases for complex types
+type MockFileMap = Arc<RwLock<HashMap<InfoHash, MockFile>>>;
+type ByteRanges = Vec<Range<u64>>;
+
 /// Mock data source for testing readiness scenarios
 #[derive(Clone)]
 struct MockDataSource {
-    files: Arc<RwLock<HashMap<InfoHash, MockFile>>>,
+    files: MockFileMap,
 }
 
 #[derive(Clone)]
 struct MockFile {
     size: u64,
-    available_ranges: Vec<Range<u64>>,
+    available_ranges: ByteRanges,
     data: Vec<u8>,
 }
 
@@ -202,19 +206,19 @@ mod tests {
             .mark_head_available(info_hash, 5 * 1024 * 1024)
             .await; // 5MB head
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // With head-only strategy, should now progress to Processing with sufficient head data
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
 
         // Status should show we're processing
-        let status = manager.status(info_hash).await.unwrap();
+        let status = remuxer.status(info_hash).await.unwrap();
         assert_eq!(status.readiness, StreamReadiness::Processing);
     }
 
@@ -234,15 +238,15 @@ mod tests {
             .mark_tail_available(info_hash, file_size, 3 * 1024 * 1024)
             .await; // 3MB tail
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // This should progress to Processing because we have both head and tail
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 
@@ -257,15 +261,15 @@ mod tests {
         data_source.add_file(info_hash, file_size).await;
         data_source.mark_full_file_available(info_hash).await;
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Small file should be ready immediately
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 
@@ -280,15 +284,15 @@ mod tests {
         data_source.add_file(info_hash, file_size).await;
         data_source.mark_full_file_available(info_hash).await;
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should be ready because file is smaller than head requirement
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 
@@ -302,15 +306,15 @@ mod tests {
         // Start with just the file registered
         data_source.add_file(info_hash, file_size).await;
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source.clone()),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Initially should be waiting for data
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
 
         // Add head data
@@ -319,7 +323,7 @@ mod tests {
             .await;
 
         // With head-only strategy, should progress to Processing once head is available
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
 
         // Add tail data
@@ -328,7 +332,7 @@ mod tests {
             .await;
 
         // Now should be processing
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 
@@ -348,15 +352,15 @@ mod tests {
             .mark_tail_available(info_hash, file_size, 3 * 1024 * 1024)
             .await; // 3MB tail
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should be waiting because head data is insufficient
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
     }
 
@@ -376,15 +380,15 @@ mod tests {
             .mark_tail_available(info_hash, file_size, 1024 * 1024)
             .await; // Only 1MB tail
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // With head-only strategy, should progress with sufficient head data regardless of tail
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 
@@ -398,16 +402,16 @@ mod tests {
         // Add file with no data
         data_source.add_file(info_hash, file_size).await;
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Both readiness and status should be consistent
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
-        let status = manager.status(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
+        let status = remuxer.status(info_hash).await.unwrap();
 
         assert_eq!(readiness, StreamReadiness::WaitingForData);
         assert_eq!(status.readiness, StreamReadiness::WaitingForData);
@@ -420,15 +424,15 @@ mod tests {
         let info_hash = InfoHash::new([9u8; 20]);
 
         // Don't add file to data source
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should fail because file doesn't exist
-        let result = manager.check_readiness(info_hash).await;
+        let result = remuxer.check_readiness(info_hash).await;
         assert!(result.is_err());
     }
 
@@ -455,17 +459,17 @@ mod tests {
             .mark_head_available(info_hash2, 5 * 1024 * 1024)
             .await;
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle1 = manager.find_or_create_session(info_hash1).await.unwrap();
-        let _handle2 = manager.find_or_create_session(info_hash2).await.unwrap();
+        let _handle1 = remuxer.find_or_create_session(info_hash1).await.unwrap();
+        let _handle2 = remuxer.find_or_create_session(info_hash2).await.unwrap();
 
         // Both should be processing with head-only strategy
-        let readiness1 = manager.check_readiness(info_hash1).await.unwrap();
-        let readiness2 = manager.check_readiness(info_hash2).await.unwrap();
+        let readiness1 = remuxer.check_readiness(info_hash1).await.unwrap();
+        let readiness2 = remuxer.check_readiness(info_hash2).await.unwrap();
 
         assert_eq!(readiness1, StreamReadiness::Processing);
         assert_eq!(readiness2, StreamReadiness::Processing);
@@ -486,20 +490,20 @@ mod tests {
             .add_range(info_hash, 0..(90 * 1024 * 1024))
             .await;
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Fixed: Now with head-only strategy, remux starts with sufficient head data
         // This prevents the UI from being stuck at "Preparing stream metadata"
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
 
         // Status should show we're processing, not stuck waiting
-        let status = manager.status(info_hash).await.unwrap();
+        let status = remuxer.status(info_hash).await.unwrap();
         assert_eq!(status.readiness, StreamReadiness::Processing);
 
         // Progress should be at some value (0.9 based on the original issue)
@@ -522,15 +526,15 @@ mod tests {
             .mark_tail_available(info_hash, file_size, 2 * 1024 * 1024)
             .await; // Exactly 2MB tail
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should be ready with exact requirements
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 
@@ -550,15 +554,15 @@ mod tests {
             .mark_tail_available(info_hash, file_size, 2 * 1024 * 1024)
             .await; // Exactly 2MB tail
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should be waiting because head is 1 byte short
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
     }
 
@@ -576,15 +580,15 @@ mod tests {
             .mark_head_available(info_hash, 5 * 1024 * 1024)
             .await; // 5MB head (more than 3MB minimum)
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should start processing with head-only data for streaming optimization
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 
@@ -602,15 +606,15 @@ mod tests {
             .mark_head_available(info_hash, 3 * 1024 * 1024)
             .await; // 3MB head
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should still be waiting because small files need full content
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
     }
 
@@ -638,17 +642,17 @@ mod tests {
             .mark_tail_available(info_hash2, file_size, 3 * 1024 * 1024)
             .await;
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle1 = manager.find_or_create_session(info_hash1).await.unwrap();
-        let _handle2 = manager.find_or_create_session(info_hash2).await.unwrap();
+        let _handle1 = remuxer.find_or_create_session(info_hash1).await.unwrap();
+        let _handle2 = remuxer.find_or_create_session(info_hash2).await.unwrap();
 
         // Both should be ready to process
-        let readiness1 = manager.check_readiness(info_hash1).await.unwrap();
-        let readiness2 = manager.check_readiness(info_hash2).await.unwrap();
+        let readiness1 = remuxer.check_readiness(info_hash1).await.unwrap();
+        let readiness2 = remuxer.check_readiness(info_hash2).await.unwrap();
 
         assert_eq!(readiness1, StreamReadiness::Processing);
         assert_eq!(readiness2, StreamReadiness::Processing);
@@ -668,15 +672,15 @@ mod tests {
             .mark_head_available(info_hash, 1024 * 1024)
             .await; // Only 1MB head (less than 3MB minimum)
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should still wait because head data is insufficient
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
     }
 
@@ -692,15 +696,15 @@ mod tests {
         data_source.add_file(info_hash, file_size).await;
         // Don't add any ranges - no data available
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
         // Should wait because no data is available
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
     }
 }

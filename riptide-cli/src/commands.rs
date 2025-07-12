@@ -5,10 +5,9 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::ServerComponents;
-use riptide_core::streaming::{FfmpegProcessor, ProductionFfmpegProcessor};
+use riptide_core::streaming::{Ffmpeg, ProductionFfmpeg};
 use riptide_core::torrent::{
-    InfoHash, TcpPeerManager, TorrentEngineHandle, TorrentError, TrackerManager,
-    spawn_torrent_engine,
+    InfoHash, TcpPeers, TorrentEngineHandle, TorrentError, Tracker, spawn_torrent_engine,
 };
 use riptide_core::{Result, RiptideError, RuntimeMode};
 use riptide_search::MediaSearch;
@@ -79,19 +78,19 @@ pub async fn create_server_components(
 ) -> Result<ServerComponents> {
     match mode {
         RuntimeMode::Production => {
-            let peer_manager = TcpPeerManager::new_default();
-            let tracker_manager = TrackerManager::new(config.network.clone());
-            let engine = spawn_torrent_engine(config, peer_manager, tracker_manager);
+            let peers = TcpPeers::new_default();
+            let tracker = Tracker::new(config.network.clone());
+            let engine = spawn_torrent_engine(config, peers, tracker);
 
-            let ffmpeg_processor: std::sync::Arc<dyn FfmpegProcessor> =
-                std::sync::Arc::new(ProductionFfmpegProcessor::new(None));
+            let ffmpeg: std::sync::Arc<dyn Ffmpeg> =
+                std::sync::Arc::new(ProductionFfmpeg::new(None));
 
             Ok(ServerComponents {
                 torrent_engine: engine,
-                movie_manager: None,
+                movie_library: None,
                 piece_store: None,
                 conversion_progress: None,
-                ffmpeg_processor,
+                ffmpeg,
             })
         }
         RuntimeMode::Simulation => {
@@ -113,9 +112,9 @@ pub async fn create_server_components(
 /// Returns appropriate error based on the command that fails
 pub async fn handle_command(command: Commands) -> Result<()> {
     let config = RiptideConfig::default();
-    let peer_manager = TcpPeerManager::new_default();
-    let tracker_manager = TrackerManager::new(config.network.clone());
-    let engine = spawn_torrent_engine(config, peer_manager, tracker_manager);
+    let peers = TcpPeers::new_default();
+    let tracker = Tracker::new(config.network.clone());
+    let engine = spawn_torrent_engine(config, peers, tracker);
 
     match command {
         Commands::Add { source, output } => add_torrent(engine, source, output).await,
@@ -458,9 +457,9 @@ mod tests {
 
     fn test_engine_handle_builder() -> TorrentEngineHandle {
         let config = RiptideConfig::default();
-        let peer_manager = TcpPeerManager::new_default();
-        let tracker_manager = TrackerManager::new(config.network.clone());
-        spawn_torrent_engine(config, peer_manager, tracker_manager)
+        let peers = TcpPeers::new_default();
+        let tracker = Tracker::new(config.network.clone());
+        spawn_torrent_engine(config, peers, tracker)
     }
 
     #[test]

@@ -6,6 +6,7 @@ use crate::{Invariant, InvariantViolation, SimulationState};
 
 /// Invariant ensuring minimum streaming buffer is maintained.
 pub struct StreamingBufferInvariant {
+    /// Minimum number of pieces required in download buffer
     min_buffer_pieces: usize,
 }
 
@@ -41,6 +42,7 @@ impl Invariant for StreamingBufferInvariant {
 
 /// Invariant ensuring data integrity thresholds.
 pub struct DataIntegrityInvariant {
+    /// Maximum acceptable failure rate (0.0 to 1.0)
     max_failure_rate: f64,
 }
 
@@ -81,6 +83,7 @@ impl Invariant for DataIntegrityInvariant {
 
 /// Custom invariant ensuring maximum peer count for edge case testing.
 pub struct MaxPeersInvariant {
+    /// Maximum number of peers allowed to be connected simultaneously
     max_peers: usize,
 }
 

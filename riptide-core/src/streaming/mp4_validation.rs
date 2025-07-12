@@ -10,11 +10,17 @@ use tracing::{debug, warn};
 /// MP4 box types as 4-byte identifiers
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mp4BoxType {
-    FileType,  // 'ftyp'
-    Movie,     // 'moov'
-    MediaData, // 'mdat'
-    Free,      // 'free'
-    Skip,      // 'skip'
+    /// File type box ('ftyp') - contains file format information
+    FileType,
+    /// Movie box ('moov') - contains metadata and track information
+    Movie,
+    /// Media data box ('mdat') - contains actual media data
+    MediaData,
+    /// Free space box ('free') - padding or unused space
+    Free,
+    /// Skip box ('skip') - padding that can be skipped
+    Skip,
+    /// Unknown box type with raw 4-byte identifier
     Unknown(u32),
 }
 
@@ -45,19 +51,28 @@ impl Mp4BoxType {
 /// MP4 box header information
 #[derive(Debug, Clone)]
 pub struct Mp4Box {
+    /// Type of the MP4 box
     pub box_type: Mp4BoxType,
+    /// Size of the box in bytes including header
     pub size: u64,
+    /// Byte offset of the box within the file
     pub offset: u64,
 }
 
 /// MP4 file structure analysis
 #[derive(Debug)]
 pub struct Mp4Structure {
+    /// List of all top-level boxes found in the file
     pub boxes: Vec<Mp4Box>,
+    /// Whether the file contains a file type box
     pub has_ftyp: bool,
+    /// Whether the file contains a movie metadata box
     pub has_moov: bool,
+    /// Whether the file contains a media data box
     pub has_mdat: bool,
+    /// Whether movie metadata appears before media data (required for streaming)
     pub moov_before_mdat: bool,
+    /// Total size of the analyzed file
     pub total_size: u64,
 }
 
@@ -280,26 +295,36 @@ fn find_box_position(data: &[u8], target_type: Mp4BoxType) -> Option<usize> {
 /// Analysis result for streaming compatibility
 #[derive(Debug, Default, Clone)]
 pub struct StreamingAnalysis {
+    /// Whether the file is optimized for progressive streaming
     pub is_streaming_ready: bool,
+    /// Position of the movie metadata box in the box list
     pub moov_position: Option<usize>,
+    /// Position of the media data box in the box list
     pub mdat_position: Option<usize>,
+    /// List of structural issues that prevent optimal streaming
     pub issues: Vec<String>,
 }
 
 /// Errors that can occur during MP4 validation
 #[derive(Debug, thiserror::Error)]
 pub enum Mp4ValidationError {
+    /// Underlying I/O operation failed
     #[error("I/O error: {0}")]
     IoError(#[from] std::io::Error),
 
+    /// MP4 file structure is invalid or corrupted
     #[error("Invalid MP4 structure: {0}")]
     InvalidStructure(String),
 
+    /// Failed to parse an MP4 box
     #[error("Box parsing error: {0}")]
     BoxParsingError(String),
 }
 
 /// Test utility to validate remuxed MP4 output
+///
+/// # Errors
+/// Returns error message if MP4 is not streaming-ready or has structural issues
 pub fn test_remuxed_mp4_validity(mp4_data: &[u8]) -> Result<(), String> {
     let analysis = analyze_mp4_for_streaming(mp4_data);
 

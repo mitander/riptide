@@ -20,6 +20,7 @@ impl Default for DevelopmentProvider {
 }
 
 impl DevelopmentProvider {
+    /// Creates a new development provider for testing.
     pub fn new() -> Self {
         Self
     }

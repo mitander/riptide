@@ -29,11 +29,16 @@ const PEER_BLACKLIST_DURATION: Duration = Duration::from_secs(300); // 5 minutes
 pub enum RetryStrategy {
     /// Retry with exponential backoff
     ExponentialBackoff {
+        /// Base delay before exponential scaling
         base_delay: Duration,
+        /// Maximum allowed delay to prevent excessive waits
         max_delay: Duration,
     },
     /// Retry with fixed delay
-    FixedDelay { delay: Duration },
+    FixedDelay {
+        /// Fixed delay between retry attempts
+        delay: Duration,
+    },
     /// Retry immediately
     Immediate,
     /// Do not retry
@@ -60,28 +65,41 @@ pub enum ErrorCategory {
 /// Tracks retry attempts and failure patterns for piece downloads
 #[derive(Debug, Clone)]
 pub struct PieceRetryTracker {
+    /// Index of the piece being tracked
     pub piece_index: PieceIndex,
+    /// Number of download attempts for this piece
     pub attempt_count: u32,
+    /// Timestamp of the first download attempt
     pub first_attempt: Instant,
+    /// Timestamp of the most recent download attempt
     pub last_attempt: Instant,
+    /// Map of peers that failed to provide this piece
     pub failed_peers: HashMap<SocketAddr, PeerFailureInfo>,
+    /// Current retry strategy for this piece
     pub retry_strategy: RetryStrategy,
 }
 
 /// Information about peer failures for blacklisting decisions
 #[derive(Debug, Clone)]
 pub struct PeerFailureInfo {
+    /// Number of consecutive failures without a success
     pub consecutive_failures: u32,
+    /// Timestamp of the most recent failure
     pub last_failure: Instant,
+    /// Categories of errors encountered from this peer
     pub error_categories: Vec<ErrorCategory>,
+    /// Total number of timeout errors from this peer
     pub total_timeouts: u32,
+    /// Timestamp until which this peer is blacklisted
     pub blacklisted_until: Option<Instant>,
 }
 
 /// Manages error recovery and retry logic for torrent downloads
 #[derive(Debug)]
 pub struct ErrorRecoveryManager {
+    /// Tracks retry attempts for each piece
     piece_retries: HashMap<PieceIndex, PieceRetryTracker>,
+    /// Tracks failure information for each peer
     peer_failures: HashMap<SocketAddr, PeerFailureInfo>,
 }
 
@@ -451,9 +469,13 @@ impl ErrorRecoveryManager {
 /// Statistics about error recovery operations
 #[derive(Debug, Clone)]
 pub struct ErrorRecoveryStats {
+    /// Number of pieces that have experienced download failures
     pub total_pieces_with_failures: usize,
+    /// Number of peers currently blacklisted
     pub total_blacklisted_peers: usize,
+    /// Total number of retry attempts across all pieces
     pub total_retry_attempts: u32,
+    /// Number of pieces currently being retried
     pub active_piece_retries: usize,
 }
 

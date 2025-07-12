@@ -11,13 +11,15 @@ use axum::extract::State;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
 use riptide_core::storage::PieceDataSource;
-use riptide_core::streaming::FfmpegProcessor;
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
-use riptide_core::{FileLibraryManager, HttpStreaming, RuntimeMode};
+use riptide_core::{FileLibrary, HttpStreaming, RuntimeMode};
 use riptide_search::MediaSearch;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
+
+/// Type alias for conversion progress tracking
+type ConversionProgressRef = Arc<RwLock<HashMap<String, ConversionProgress>>>;
 
 use crate::handlers::streaming::{
     cleanup_sessions, debug_stream_data, debug_stream_status, stream_torrent, streaming_health,
@@ -40,8 +42,11 @@ use crate::pages::{dashboard_page, library_page, search_page, torrents_page};
 /// Cache entry for converted files
 #[derive(Debug, Clone)]
 pub struct ConvertedFile {
+    /// Path to the converted output file
     pub output_path: std::path::PathBuf,
+    /// Size of the converted file in bytes
     pub size: u64,
+    /// When this conversion was created
     pub created_at: std::time::Instant,
 }
 
@@ -49,10 +54,15 @@ pub struct ConvertedFile {
 /// All services are provided by CLI dependency injection - web layer is mode-agnostic.
 #[derive(Clone)]
 pub struct AppState {
+    /// Core server components (engine, file library, etc.)
     pub services: Arc<ServerComponents>,
+    /// Media search functionality
     pub media_search: MediaSearch,
+    /// Cache of converted files by info hash
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
+    /// HTTP streaming service
     pub http_streaming: Arc<HttpStreaming>,
+    /// When this server instance was started
     pub server_started_at: std::time::Instant,
 }
 
@@ -66,11 +76,10 @@ impl AppState {
     ///
     /// # Errors
     /// Returns error if file manager is not available in this mode.
-    pub fn file_manager(
+    pub fn file_library(
         &self,
-    ) -> Result<&Arc<RwLock<FileLibraryManager>>, riptide_core::server_components::ServiceError>
-    {
-        self.services.file_manager()
+    ) -> Result<&Arc<RwLock<FileLibrary>>, riptide_core::server_components::ServiceError> {
+        self.services.file_library()
     }
 
     /// Get the piece store if available (Development mode only).
@@ -89,18 +98,15 @@ impl AppState {
     /// Returns error if conversion tracking is not available in this mode.
     pub fn conversion_progress(
         &self,
-    ) -> Result<
-        &Arc<RwLock<HashMap<String, ConversionProgress>>>,
-        riptide_core::server_components::ServiceError,
-    > {
+    ) -> Result<&ConversionProgressRef, riptide_core::server_components::ServiceError> {
         self.services.conversion_progress()
     }
 
     /// Get the FFmpeg processor for remuxing operations.
-    pub fn ffmpeg_processor(&self) -> &Arc<dyn FfmpegProcessor> {
-        self.services.ffmpeg_processor()
-    }
-
+    // TODO: Implement ffmpeg processor access when available
+    // pub fn ffmpeg(&self) -> &Arc<dyn FfmpegProcessor> {
+    //     self.services.ffmpeg()
+    // }
     /// Get the streaming service.
     pub fn http_streaming(&self) -> &Arc<HttpStreaming> {
         &self.http_streaming
@@ -127,7 +133,7 @@ pub async fn run_server(
         components.engine().clone(),
         data_source,
         Default::default(),
-        components.ffmpeg_processor().clone(),
+        components.ffmpeg().clone(),
     ));
 
     let state = AppState {
@@ -203,6 +209,9 @@ pub async fn run_server(
 }
 
 /// API endpoint to get current conversion progress
+///
+/// Returns conversion progress for all active conversion jobs.
+/// Returns empty map if conversion tracking is not available.
 async fn api_conversion_progress(
     State(state): State<AppState>,
 ) -> axum::Json<HashMap<String, ConversionProgress>> {

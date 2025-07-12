@@ -9,47 +9,50 @@ pub mod mp4_validation;
 pub mod performance_tests;
 
 pub mod piece_reader;
-pub mod range_handler;
+pub mod range;
 pub mod remux;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-pub use ffmpeg::{
-    FfmpegProcessor, ProductionFfmpegProcessor, RemuxingOptions, RemuxingResult,
-    SimulationFfmpegProcessor,
-};
+pub use ffmpeg::{Ffmpeg, ProductionFfmpeg, RemuxingOptions, RemuxingResult, SimulationFfmpeg};
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
-pub use range_handler::{ContentInfo, RangeHandler, RangeRequest, RangeResponse};
+pub use range::{ContentInfo, Range, RangeRequest, RangeResponse};
 // Legacy aliases for backward compatibility
 pub use remux::RemuxStreamStrategy as RemuxStreamingStrategy;
 pub use remux::types::RemuxConfig as RemuxStreamingConfig;
 pub use remux::{
-    ContainerFormat, DirectStreamStrategy, RemuxError, RemuxProgress, RemuxSessionManager,
-    RemuxState, RemuxStreamStrategy, StrategyError, StreamData, StreamHandle, StreamReadiness,
+    ContainerFormat, DirectStreamStrategy, RemuxError, RemuxProgress, RemuxState,
+    RemuxStreamStrategy, Remuxer, StrategyError, StreamData, StreamHandle, StreamReadiness,
     StreamingError, StreamingResult, StreamingStatus, StreamingStrategy,
 };
 
 use crate::config::RiptideConfig;
+use crate::engine::TorrentEngineHandle;
 use crate::storage::DataSource;
-use crate::torrent::TorrentEngineHandle;
 
 /// HTTP streaming response with headers and status
 #[derive(Debug, Clone)]
 pub struct HttpStreamingResponse {
+    /// Response body data
     pub body: Vec<u8>,
+    /// HTTP status code for the response
     pub status: StatusCode,
+    /// HTTP headers to include in the response
     pub headers: HeaderMap,
+    /// MIME type of the content being streamed
     pub content_type: String,
 }
 
 /// HTTP range request
 #[derive(Debug, Clone)]
 pub struct HttpRangeRequest {
+    /// Starting byte position of the range
     pub start: u64,
+    /// Ending byte position of the range (exclusive, None for end of file)
     pub end: Option<u64>,
 }
 
@@ -58,9 +61,13 @@ pub struct HttpRangeRequest {
 /// Acts as a lightweight coordinator that delegates to appropriate streaming
 /// strategies based on container format detection and handles HTTP protocol concerns.
 pub struct HttpStreaming {
+    /// Map of container formats to their streaming strategies
     strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>>,
-    session_manager: Arc<RemuxSessionManager>,
+    /// Remuxer for converting between media formats
+    remuxer: Arc<Remuxer>,
+    /// Handle to the torrent engine for piece management
     torrent_engine: TorrentEngineHandle,
+    /// Data source for reading torrent piece data
     data_source: Arc<dyn DataSource>,
 }
 
@@ -68,7 +75,7 @@ impl Clone for HttpStreaming {
     fn clone(&self) -> Self {
         Self {
             strategies: self.strategies.clone(),
-            session_manager: self.session_manager.clone(),
+            remuxer: self.remuxer.clone(),
             torrent_engine: self.torrent_engine.clone(),
             data_source: self.data_source.clone(),
         }
@@ -81,13 +88,9 @@ impl HttpStreaming {
         torrent_engine: TorrentEngineHandle,
         data_source: Arc<dyn DataSource>,
         _config: RiptideConfig,
-        ffmpeg_processor: Arc<dyn FfmpegProcessor>,
+        ffmpeg: Arc<dyn Ffmpeg>,
     ) -> Self {
-        let session_manager = RemuxSessionManager::new(
-            Default::default(),
-            Arc::clone(&data_source),
-            ffmpeg_processor,
-        );
+        let remuxer = Remuxer::new(Default::default(), Arc::clone(&data_source), ffmpeg);
 
         let mut strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>> = HashMap::new();
 
@@ -102,20 +105,23 @@ impl HttpStreaming {
         );
 
         // Remux streaming strategies
-        let remux_strategy = RemuxStreamStrategy::new(session_manager.clone());
+        let remux_strategy = RemuxStreamStrategy::new(remuxer.clone());
         strategies.insert(ContainerFormat::Avi, Arc::new(remux_strategy.clone()));
         strategies.insert(ContainerFormat::Mkv, Arc::new(remux_strategy.clone()));
         strategies.insert(ContainerFormat::Mov, Arc::new(remux_strategy));
 
         Self {
             strategies,
-            session_manager: Arc::new(session_manager),
+            remuxer: Arc::new(remuxer),
             torrent_engine,
             data_source,
         }
     }
 
     /// Handle streaming request by delegating to appropriate strategy
+    ///
+    /// # Errors
+    /// Returns `StreamingError` if data source access fails or streaming strategy cannot handle the request
     pub async fn handle_stream_request(
         &self,
         info_hash: crate::torrent::InfoHash,
@@ -123,7 +129,7 @@ impl HttpStreaming {
     ) -> StreamingResult<StreamData> {
         // Check if there's a completed remux session first
         let is_remuxed = self
-            .session_manager
+            .remuxer
             .check_readiness(info_hash)
             .await
             .map(|readiness| readiness == StreamReadiness::Ready)
@@ -157,13 +163,17 @@ impl HttpStreaming {
     }
 
     /// Check if stream is ready for the given range
+    /// Check if a stream is ready for serving
+    ///
+    /// # Errors
+    /// Returns `StreamingError` if readiness status cannot be determined or session access fails
     pub async fn check_stream_readiness(
         &self,
         info_hash: crate::torrent::InfoHash,
     ) -> StreamingResult<StreamingStatus> {
         // Check if there's a completed remux session first
         let is_remuxed = self
-            .session_manager
+            .remuxer
             .check_readiness(info_hash)
             .await
             .map(|readiness| readiness == StreamReadiness::Ready)
@@ -207,7 +217,7 @@ impl HttpStreaming {
     ) -> StreamingResult<ContainerFormat> {
         // Check if there's a completed remux session first
         // If remuxing is complete, the output is always MP4
-        if let Ok(readiness) = self.session_manager.check_readiness(info_hash).await
+        if let Ok(readiness) = self.remuxer.check_readiness(info_hash).await
             && readiness == StreamReadiness::Ready
         {
             tracing::debug!("Remux session completed for {}, serving as MP4", info_hash);
@@ -285,6 +295,13 @@ impl HttpStreaming {
     }
 
     /// Handle HTTP streaming request with proper headers and status codes
+    /// Handle HTTP streaming request with range support
+    ///
+    /// # Errors
+    /// Returns `StreamingError` if stream data cannot be retrieved or HTTP response cannot be constructed
+    ///
+    /// # Panics
+    /// Panics if content length conversion to string fails (should never happen for valid u64)
     pub async fn handle_http_request(
         &self,
         info_hash: crate::torrent::InfoHash,
@@ -292,7 +309,7 @@ impl HttpStreaming {
     ) -> StreamingResult<HttpStreamingResponse> {
         // Check if there's a completed remux session first
         let is_remuxed = self
-            .session_manager
+            .remuxer
             .check_readiness(info_hash)
             .await
             .map(|readiness| readiness == StreamReadiness::Ready)
@@ -389,8 +406,8 @@ impl HttpStreaming {
     }
 
     /// Get streaming statistics
-    pub async fn statistics(&self) -> StreamingServiceStats {
-        StreamingServiceStats {
+    pub async fn statistics(&self) -> StreamingStats {
+        StreamingStats {
             active_sessions: 0,
             total_bytes_streamed: 0,
             concurrent_remux_sessions: 0,
@@ -400,7 +417,7 @@ impl HttpStreaming {
 
 /// Streaming service statistics
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct StreamingServiceStats {
+pub struct StreamingStats {
     pub active_sessions: usize,
     pub total_bytes_streamed: u64,
     pub concurrent_remux_sessions: usize,

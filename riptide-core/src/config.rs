@@ -13,10 +13,15 @@ use crate::RuntimeMode;
 /// Supports environment variable overrides for runtime customization.
 #[derive(Debug, Clone, Default)]
 pub struct RiptideConfig {
+    /// BitTorrent protocol settings (timeouts, peer limits, piece verification)
     pub torrent: TorrentConfig,
+    /// Network configuration (bind addresses, connection limits, timeouts)
     pub network: NetworkConfig,
+    /// Storage configuration (cache sizes, file paths, cleanup policies)
     pub storage: StorageConfig,
+    /// Simulation parameters for testing and development
     pub simulation: SimulationConfig,
+    /// Runtime operation mode (production, development, testing)
     pub runtime_mode: RuntimeMode,
 }
 

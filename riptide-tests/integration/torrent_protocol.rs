@@ -10,8 +10,8 @@ use std::sync::Arc;
 use riptide_core::storage::FileStorage;
 use riptide_core::torrent::downloader::PieceDownloader;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
-use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PieceIndex, PieceStore, TorrentPiece};
-use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeerManager};
+use riptide_core::torrent::{InfoHash, PeerId, Peers, PieceIndex, PieceStore, TorrentPiece};
+use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeers};
 use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
 
@@ -90,7 +90,7 @@ async fn test_simple_piece_download() {
 
     // Create peer manager
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = SimPeerManager::new(config, piece_store.clone());
+    let mut peers = SimPeers::new(config, piece_store.clone());
 
     println!("SIMPLE_TEST: Created peer manager");
 
@@ -99,7 +99,7 @@ async fn test_simple_piece_download() {
 
     // Inject single peer with all pieces available
     let available_pieces = vec![true; piece_count as usize];
-    peer_manager
+    peers
         .inject_peer_with_pieces(
             peer_addr,
             info_hash,
@@ -121,9 +121,8 @@ async fn test_simple_piece_download() {
 
     // Create piece downloader
     let peer_id = PeerId::generate();
-    let peer_manager_arc = Arc::new(RwLock::new(peer_manager));
-    let mut piece_downloader =
-        PieceDownloader::new(metadata, storage, peer_manager_arc, peer_id).unwrap();
+    let peers_arc = Arc::new(RwLock::new(peers));
+    let mut piece_downloader = PieceDownloader::new(metadata, storage, peers_arc, peer_id).unwrap();
 
     println!("SIMPLE_TEST: Created piece downloader");
 
@@ -190,7 +189,7 @@ async fn test_simple_piece_download() {
 }
 
 #[tokio::test]
-async fn test_peer_manager_basic_functionality() {
+async fn test_peers_basic_functionality() {
     println!("BASIC_TEST: Testing peer manager basic functionality");
 
     let info_hash = InfoHash::new([1u8; 20]);
@@ -215,12 +214,12 @@ async fn test_peer_manager_basic_functionality() {
         .unwrap();
 
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = SimPeerManager::new(config, piece_store.clone());
+    let mut peers = SimPeers::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
 
     // Test peer injection
-    peer_manager
+    peers
         .inject_peer_with_pieces(
             peer_addr,
             info_hash,
@@ -233,9 +232,7 @@ async fn test_peer_manager_basic_functionality() {
 
     // Test connection
     let peer_id = PeerId::generate();
-    let result = peer_manager
-        .connect_peer(peer_addr, info_hash, peer_id)
-        .await;
+    let result = peers.connect_peer(peer_addr, info_hash, peer_id).await;
 
     match result {
         Ok(()) => println!("BASIC_TEST: Successfully connected to peer"),
@@ -243,9 +240,7 @@ async fn test_peer_manager_basic_functionality() {
     }
 
     // Test piece availability
-    let has_piece = peer_manager
-        .peer_has_piece(peer_addr, PieceIndex::new(0))
-        .await;
+    let has_piece = peers.peer_has_piece(peer_addr, PieceIndex::new(0)).await;
     println!("BASIC_TEST: Peer has piece 0: {has_piece}");
     assert!(has_piece);
 

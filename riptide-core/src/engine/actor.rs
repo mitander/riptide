@@ -6,7 +6,7 @@ use super::commands::TorrentEngineCommand;
 use super::core::TorrentEngine;
 use super::handle::TorrentEngineHandle;
 use crate::config::RiptideConfig;
-use crate::torrent::{PeerManager, TorrentError, TrackerManagement};
+use crate::torrent::{PeerManager, TorrentError, TrackerManager};
 
 /// Spawns the torrent engine actor and returns its handle.
 ///
@@ -20,26 +20,26 @@ use crate::torrent::{PeerManager, TorrentError, TrackerManagement};
 /// # async fn main() {
 /// use riptide_core::engine::spawn_torrent_engine;
 /// use riptide_core::config::RiptideConfig;
-/// use riptide_core::torrent::{TcpPeerManager, TrackerManager};
+/// use riptide_core::torrent::{TcpPeers, Tracker};
 ///
 /// let config = RiptideConfig::default();
-/// let peer_manager = TcpPeerManager::new_default();
-/// let tracker_manager = TrackerManager::new(config.network.clone());
-/// let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+/// let peers = TcpPeers::new_default();
+/// let tracker = Tracker::new(config.network.clone());
+/// let handle = spawn_torrent_engine(config, peers, tracker);
 /// # }
 /// ```
 pub fn spawn_torrent_engine<P, T>(
     config: RiptideConfig,
-    peer_manager: P,
-    tracker_manager: T,
+    peers: P,
+    tracker: T,
 ) -> TorrentEngineHandle
 where
     P: PeerManager + Send + 'static,
-    T: TrackerManagement + Send + 'static,
+    T: TrackerManager + Send + 'static,
 {
     let (sender, receiver) = mpsc::channel(100);
     let (piece_sender, piece_receiver) = mpsc::unbounded_channel();
-    let engine = TorrentEngine::new(config, peer_manager, tracker_manager, piece_sender);
+    let engine = TorrentEngine::new(config, peers, tracker, piece_sender);
 
     tokio::spawn(async move {
         run_actor_loop(engine, receiver, piece_receiver).await;
@@ -60,7 +60,7 @@ async fn run_actor_loop<P, T>(
     mut piece_receiver: mpsc::UnboundedReceiver<TorrentEngineCommand>,
 ) where
     P: PeerManager + Send + 'static,
-    T: TrackerManagement + Send + 'static,
+    T: TrackerManager + Send + 'static,
 {
     tracing::debug!("Torrent engine actor started");
 
@@ -90,7 +90,7 @@ async fn handle_command<P, T>(
 ) -> bool
 where
     P: PeerManager + Send + 'static,
-    T: TrackerManagement + Send + 'static,
+    T: TrackerManager + Send + 'static,
 {
     match command {
         TorrentEngineCommand::AddMagnet {
@@ -209,7 +209,7 @@ where
             responder,
         } => {
             engine
-                .configure_upload_manager_for_streaming(info_hash, piece_size)
+                .configure_upload_for_streaming(info_hash, piece_size)
                 .await;
             let _ = responder.send(Ok(()));
         }
@@ -235,7 +235,7 @@ mod tests {
     use super::*;
     use crate::config::RiptideConfig;
     use crate::torrent::parsing::types::{TorrentFile, TorrentMetadata};
-    use crate::torrent::{InfoHash, MockPeerManager, MockTrackerManager, TorrentError};
+    use crate::torrent::{InfoHash, MockPeers, MockTracker, TorrentError};
 
     /// Generates proper SHA1 hashes for test torrent metadata.
     fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {
@@ -254,10 +254,10 @@ mod tests {
     #[tokio::test]
     async fn test_actor_spawn_and_basic_operations() {
         let config = RiptideConfig::default();
-        let peer_manager = MockPeerManager::new();
-        let tracker_manager = MockTrackerManager::new();
+        let peers = MockPeers::new();
+        let tracker = MockTracker::new();
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Test basic functionality
         assert!(handle.is_running());
@@ -282,10 +282,10 @@ mod tests {
     #[tokio::test]
     async fn test_actor_add_magnet_invalid() {
         let config = RiptideConfig::default();
-        let peer_manager = MockPeerManager::new();
-        let tracker_manager = MockTrackerManager::new();
+        let peers = MockPeers::new();
+        let tracker = MockTracker::new();
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Test invalid magnet link
         let result = handle.add_magnet("invalid-magnet").await;
@@ -297,10 +297,10 @@ mod tests {
     #[tokio::test]
     async fn test_actor_get_nonexistent_session() {
         let config = RiptideConfig::default();
-        let peer_manager = MockPeerManager::new();
-        let tracker_manager = MockTrackerManager::new();
+        let peers = MockPeers::new();
+        let tracker = MockTracker::new();
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Test getting session for non-existent torrent
         let fake_hash = InfoHash::new([0u8; 20]);
@@ -313,18 +313,18 @@ mod tests {
     #[tokio::test]
     async fn test_real_download_basic_flow() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
 
         // Set up mock peers for the tracker manager
         let mock_peers = vec![
             "127.0.0.1:8080".parse().unwrap(),
             "127.0.0.1:8081".parse().unwrap(),
         ];
-        tracker_manager.configure_mock_peers(mock_peers);
+        tracker.configure_mock_peers(mock_peers);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create test torrent metadata
         let piece_count = 3;
@@ -366,10 +366,10 @@ mod tests {
         let config = RiptideConfig::default();
 
         // Create tracker manager that fails announces
-        let peer_manager = MockPeerManager::new();
-        let tracker_manager = MockTrackerManager::new_with_announce_failure();
+        let peers = MockPeers::new();
+        let tracker = MockTracker::new_with_announce_failure();
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create test torrent metadata
         let piece_count = 3;
@@ -411,12 +411,12 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_torrent_management() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
-        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
+        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Add multiple torrents
         let info_hash1 = handle
@@ -469,9 +469,9 @@ mod tests {
     #[tokio::test]
     async fn test_magnet_link_display_name_parsing() {
         let config = RiptideConfig::default();
-        let peer_manager = MockPeerManager::new();
-        let tracker_manager = MockTrackerManager::new();
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let peers = MockPeers::new();
+        let tracker = MockTracker::new();
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Test magnet link with display name
         let magnet_with_name = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Wallace+And+Gromit+Vengeance+Most+Fowl+2024+720p+WEB-DL+x264+BONE&tr=http://tracker.example.com/announce";

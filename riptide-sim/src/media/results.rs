@@ -7,14 +7,23 @@ use super::types::{MediaFileType, MovieFolder};
 /// Results from media streaming simulation.
 #[derive(Debug, Clone)]
 pub struct StreamingResult {
+    /// Total simulation duration
     pub duration: Duration,
+    /// Total number of simulation events processed
     pub total_events: usize,
+    /// Number of piece download requests issued
     pub piece_requests: usize,
+    /// Number of successful piece downloads
     pub piece_completions: usize,
+    /// Number of video pieces successfully downloaded
     pub video_pieces_completed: usize,
+    /// Number of subtitle pieces successfully downloaded
     pub subtitle_pieces_completed: usize,
+    /// Number of playback buffer underrun events
     pub buffering_events: usize,
+    /// Overall streaming efficiency (0.0 to 1.0)
     pub streaming_efficiency: f64,
+    /// Number of subtitle timing synchronization issues
     pub subtitle_sync_issues: usize,
 }
 

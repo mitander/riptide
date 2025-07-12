@@ -13,25 +13,25 @@ use tracing::{debug, error, info, warn};
 use super::state::{RemuxError, RemuxState};
 use super::types::{RemuxConfig, RemuxSession, StreamHandle, StreamReadiness, StreamingStatus};
 use crate::storage::DataSource;
-use crate::streaming::{FfmpegProcessor, RemuxingOptions, StrategyError, StreamingResult};
+use crate::streaming::{Ffmpeg, RemuxingOptions, StrategyError, StreamingResult};
 use crate::torrent::InfoHash;
 
 /// Manages remuxing sessions with state machine and concurrency control
-pub struct RemuxSessionManager {
+pub struct Remuxer {
     sessions: Arc<RwLock<HashMap<InfoHash, RemuxSession>>>,
     semaphore: Arc<Semaphore>,
     config: RemuxConfig,
     session_counter: AtomicU64,
     data_source: Arc<dyn DataSource>,
-    ffmpeg_processor: Arc<dyn FfmpegProcessor>,
+    ffmpeg: Arc<dyn Ffmpeg>,
 }
 
-impl RemuxSessionManager {
+impl Remuxer {
     /// Create a new remux session manager
     pub fn new(
         config: RemuxConfig,
         data_source: Arc<dyn DataSource>,
-        ffmpeg_processor: Arc<dyn FfmpegProcessor>,
+        ffmpeg: Arc<dyn Ffmpeg>,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_sessions));
 
@@ -46,11 +46,14 @@ impl RemuxSessionManager {
             config,
             session_counter: AtomicU64::new(1),
             data_source,
-            ffmpeg_processor,
+            ffmpeg,
         }
     }
 
     /// Find or create a session handle for the given info hash
+    ///
+    /// # Errors
+    /// Returns `StreamingError` if session creation fails or transcoding cannot be initialized
     pub async fn find_or_create_session(
         &self,
         info_hash: InfoHash,
@@ -82,6 +85,9 @@ impl RemuxSessionManager {
     }
 
     /// Check the readiness of a stream for serving
+    ///
+    /// # Errors
+    /// Returns `StreamingError` if session is not found or readiness status cannot be determined
     pub async fn check_readiness(&self, info_hash: InfoHash) -> StreamingResult<StreamReadiness> {
         let sessions = self.sessions.read().await;
         let session = sessions
@@ -136,6 +142,9 @@ impl RemuxSessionManager {
     }
 
     /// Get the current status of a streaming session
+    ///
+    /// # Errors
+    /// Returns `StreamingError` if session is not found or status cannot be retrieved
     pub async fn status(&self, info_hash: InfoHash) -> StreamingResult<StreamingStatus> {
         debug!("Getting status for remux session: {}", info_hash);
 
@@ -182,6 +191,9 @@ impl RemuxSessionManager {
     }
 
     /// Get the output file path for a completed session
+    ///
+    /// # Errors
+    /// Returns `StreamingError` if session is not found or output path is not available
     pub async fn output_path(&self, info_hash: InfoHash) -> StreamingResult<PathBuf> {
         let sessions = self.sessions.read().await;
         let session = sessions
@@ -277,12 +289,12 @@ impl RemuxSessionManager {
         );
 
         // Spawn task to feed data to FFmpeg and monitor progress
-        let session_manager = self.clone();
+        let remuxer = self.clone();
         let info_hash_copy = info_hash;
         tokio::spawn(async move {
-            if let Err(e) = session_manager.feed_ffmpeg_data(info_hash_copy).await {
+            if let Err(e) = remuxer.feed_ffmpeg_data(info_hash_copy).await {
                 error!("Failed to feed FFmpeg data for {}: {}", info_hash_copy, e);
-                session_manager
+                remuxer
                     .mark_failed(
                         info_hash_copy,
                         RemuxError::FfmpegFailed {
@@ -364,7 +376,7 @@ impl RemuxSessionManager {
 
         // Run FFmpeg remuxing
         let result = self
-            .ffmpeg_processor
+            .ffmpeg
             .remux_to_mp4(&temp_input, &output_path, &remux_options)
             .await;
 
@@ -638,7 +650,7 @@ impl RemuxSessionManager {
     }
 }
 
-impl Clone for RemuxSessionManager {
+impl Clone for Remuxer {
     fn clone(&self) -> Self {
         Self {
             sessions: Arc::clone(&self.sessions),
@@ -646,7 +658,7 @@ impl Clone for RemuxSessionManager {
             config: self.config.clone(),
             session_counter: AtomicU64::new(self.session_counter.load(Ordering::SeqCst)),
             data_source: Arc::clone(&self.data_source),
-            ffmpeg_processor: Arc::clone(&self.ffmpeg_processor),
+            ffmpeg: Arc::clone(&self.ffmpeg),
         }
     }
 }
@@ -660,9 +672,13 @@ mod tests {
     use super::*;
     use crate::storage::{DataError, DataResult, RangeAvailability};
 
+    // Type aliases for complex types
+    type FileSizeMap = StdHashMap<InfoHash, u64>;
+    type RangeMap = StdHashMap<InfoHash, Vec<std::ops::Range<u64>>>;
+
     struct MockDataSource {
-        files: StdHashMap<InfoHash, u64>,
-        available_ranges: StdHashMap<InfoHash, Vec<std::ops::Range<u64>>>,
+        files: FileSizeMap,
+        available_ranges: RangeMap,
     }
 
     impl MockDataSource {
@@ -738,13 +754,13 @@ mod tests {
         let info_hash = InfoHash::new([1u8; 20]);
         data_source.add_file(info_hash, 10 * 1024 * 1024);
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
 
-        let handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let handle = remuxer.find_or_create_session(info_hash).await.unwrap();
         assert_eq!(handle.info_hash, info_hash);
         assert_eq!(handle.session_id, 1);
     }
@@ -756,14 +772,14 @@ mod tests {
         let info_hash = InfoHash::new([1u8; 20]);
         data_source.add_file(info_hash, 10 * 1024 * 1024);
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
     }
 
@@ -779,14 +795,14 @@ mod tests {
         data_source.make_range_available(info_hash, 0..config.min_head_size);
         data_source.make_range_available(info_hash, (file_size - config.min_tail_size)..file_size);
 
-        let manager = RemuxSessionManager::new(
+        let remuxer = Remuxer::new(
             config,
             Arc::new(data_source),
-            Arc::new(crate::streaming::SimulationFfmpegProcessor::new()),
+            Arc::new(crate::streaming::SimulationFfmpeg::new()),
         );
-        let _handle = manager.find_or_create_session(info_hash).await.unwrap();
+        let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
-        let readiness = manager.check_readiness(info_hash).await.unwrap();
+        let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::Processing);
     }
 }

@@ -4,42 +4,42 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::session_manager::RemuxSessionManager;
+use super::remuxer::Remuxer;
 use super::types::{StreamHandle, StreamReadiness, StreamingStatus};
 use crate::storage::DataSource;
 use crate::streaming::{
-    ContainerFormat, SimulationFfmpegProcessor, StrategyError, StreamData, StreamingResult,
+    ContainerFormat, SimulationFfmpeg, StrategyError, StreamData, StreamingResult,
 };
 use crate::torrent::InfoHash;
 
 /// Streaming strategy for formats that require remuxing to MP4
 pub struct RemuxStreamStrategy {
-    session_manager: RemuxSessionManager,
+    remuxer: Remuxer,
 }
 
 impl RemuxStreamStrategy {
     /// Create a new remux streaming strategy
-    pub fn new(session_manager: RemuxSessionManager) -> Self {
-        Self { session_manager }
+    pub fn new(remuxer: Remuxer) -> Self {
+        Self { remuxer }
     }
 
     /// Create a new remux streaming strategy with data source
     pub fn with_data_source(data_source: Arc<dyn DataSource>) -> Self {
         let config = super::types::RemuxConfig::default();
-        let ffmpeg_processor = Arc::new(SimulationFfmpegProcessor::new());
-        let session_manager = RemuxSessionManager::new(config, data_source, ffmpeg_processor);
-        Self::new(session_manager)
+        let ffmpeg = Arc::new(SimulationFfmpeg::new());
+        let remuxer = Remuxer::new(config, data_source, ffmpeg);
+        Self::new(remuxer)
     }
 
     /// Access the session manager for cloning
-    pub fn session_manager(&self) -> &RemuxSessionManager {
-        &self.session_manager
+    pub fn remuxer(&self) -> &Remuxer {
+        &self.remuxer
     }
 }
 
 impl Clone for RemuxStreamStrategy {
     fn clone(&self) -> Self {
-        Self::new(self.session_manager.clone())
+        Self::new(self.remuxer.clone())
     }
 }
 
@@ -89,7 +89,7 @@ impl StreamingStrategy for RemuxStreamStrategy {
         info_hash: InfoHash,
         _format: ContainerFormat,
     ) -> StreamingResult<StreamHandle> {
-        self.session_manager.find_or_create_session(info_hash).await
+        self.remuxer.find_or_create_session(info_hash).await
     }
 
     async fn serve_range(
@@ -105,15 +105,12 @@ impl StreamingStrategy for RemuxStreamStrategy {
         }
 
         // Check if remuxing is complete
-        let readiness = self
-            .session_manager
-            .check_readiness(handle.info_hash)
-            .await?;
+        let readiness = self.remuxer.check_readiness(handle.info_hash).await?;
 
         match readiness {
             StreamReadiness::Ready => {
                 // Get the output file path and serve from it
-                let output_path = self.session_manager.output_path(handle.info_hash).await?;
+                let output_path = self.remuxer.output_path(handle.info_hash).await?;
 
                 // For progressive streaming, check if we're requesting beyond available data
                 let file_size = tokio::fs::metadata(&output_path)
@@ -181,11 +178,11 @@ impl StreamingStrategy for RemuxStreamStrategy {
         handle: &StreamHandle,
         _range: std::ops::Range<u64>,
     ) -> StreamingResult<StreamReadiness> {
-        self.session_manager.check_readiness(handle.info_hash).await
+        self.remuxer.check_readiness(handle.info_hash).await
     }
 
     async fn status(&self, handle: &StreamHandle) -> StreamingResult<StreamingStatus> {
-        self.session_manager.status(handle.info_hash).await
+        self.remuxer.status(handle.info_hash).await
     }
 }
 
@@ -311,9 +308,13 @@ mod tests {
     use super::*;
     use crate::storage::{DataError, DataResult, RangeAvailability};
 
+    // Type aliases for complex types
+    type FileDataMap = HashMap<InfoHash, Vec<u8>>;
+    type RangeMap = HashMap<InfoHash, Vec<std::ops::Range<u64>>>;
+
     struct MockDataSource {
-        files: HashMap<InfoHash, Vec<u8>>,
-        available_ranges: HashMap<InfoHash, Vec<std::ops::Range<u64>>>,
+        files: FileDataMap,
+        available_ranges: RangeMap,
     }
 
     impl MockDataSource {

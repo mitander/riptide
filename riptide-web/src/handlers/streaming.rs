@@ -24,7 +24,11 @@ pub struct StreamingQuery {
     pub format: Option<String>,
 }
 
-/// Main streaming handler using core DirectStreamingService
+/// Main streaming handler using core DirectStreamingService.
+///
+/// Handles HTTP streaming requests for torrents with support for range requests,
+/// quality selection, and format negotiation. Delegates actual streaming to
+/// the core HttpStreaming service and converts responses to Axum format.
 #[axum::debug_handler]
 pub async fn stream_torrent(
     State(state): State<AppState>,
@@ -86,13 +90,20 @@ pub async fn stream_torrent(
 /// Client capabilities for browser compatibility
 #[derive(Debug, Clone)]
 pub struct ClientCapabilities {
+    /// Whether client supports MP4 format
     pub supports_mp4: bool,
+    /// Whether client supports WebM format
     pub supports_webm: bool,
+    /// Whether client supports HLS streaming
     pub supports_hls: bool,
+    /// User agent string for capability detection
     pub user_agent: String,
 }
 
-/// Health check endpoint for HTTP streaming
+/// Health check endpoint for HTTP streaming.
+///
+/// Returns current streaming service health status and key metrics including
+/// active sessions, total bytes served, and concurrent remux operations.
 pub async fn streaming_health(State(state): State<AppState>) -> impl IntoResponse {
     let http_streaming = state.http_streaming();
     let stats = http_streaming.statistics().await;
@@ -107,7 +118,10 @@ pub async fn streaming_health(State(state): State<AppState>) -> impl IntoRespons
     (StatusCode::OK, axum::Json(health_info))
 }
 
-/// Get streaming statistics
+/// Get streaming statistics.
+///
+/// Returns detailed streaming service statistics in JSON format for monitoring
+/// and performance analysis.
 pub async fn streaming_stats(State(state): State<AppState>) -> impl IntoResponse {
     let http_streaming = state.http_streaming();
     let stats = http_streaming.statistics().await;
@@ -115,14 +129,19 @@ pub async fn streaming_stats(State(state): State<AppState>) -> impl IntoResponse
     axum::Json(stats)
 }
 
-/// Force cleanup of inactive sessions
+/// Force cleanup of inactive sessions.
+///
+/// Triggers cleanup of inactive streaming sessions. The core service manages
+/// automatic cleanup, so this endpoint provides manual control when needed.
 pub async fn cleanup_sessions(State(_state): State<AppState>) -> impl IntoResponse {
     // Core service manages cleanup automatically
     (StatusCode::OK, "Session cleanup completed")
 }
 
-/// Debug endpoint to inspect stream status and diagnose issues
-/// Debug endpoint to test streaming service health and basic functionality
+/// Debug endpoint to test streaming service health and basic functionality.
+///
+/// Performs a test streaming request with a small range to validate service
+/// health and returns diagnostic information including service statistics.
 #[axum::debug_handler]
 pub async fn debug_stream_status(
     State(state): State<AppState>,
@@ -178,7 +197,10 @@ pub async fn debug_stream_status(
     }
 }
 
-/// Debug endpoint to test actual video data and validate MP4 structure
+/// Debug endpoint to test actual video data and validate MP4 structure.
+///
+/// Retrieves the first 1KB of video data to validate file format and analyze
+/// response characteristics. Useful for debugging streaming issues.
 #[axum::debug_handler]
 pub async fn debug_stream_data(
     State(state): State<AppState>,

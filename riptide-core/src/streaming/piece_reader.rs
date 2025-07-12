@@ -11,23 +11,38 @@ use crate::torrent::{InfoHash, PieceIndex, PieceStore, TorrentError};
 /// Error types for piece-based streaming operations
 #[derive(Debug, thiserror::Error)]
 pub enum PieceReaderError {
+    /// Torrent operation failed during piece reading.
     #[error("Torrent error: {0}")]
     Torrent(#[from] TorrentError),
 
+    /// Range start position is greater than or equal to end position.
     #[error("Invalid range: start {start} >= end {end}")]
-    InvalidRange { start: u64, end: u64 },
+    InvalidRange {
+        /// Starting byte position of the invalid range.
+        start: u64,
+        /// Ending byte position of the invalid range.
+        end: u64,
+    },
 
+    /// Requested range extends beyond the actual file size.
     #[error("Range {start}-{end} exceeds file size {file_size}")]
     RangeExceedsFile {
+        /// Starting byte position of the range.
         start: u64,
+        /// Ending byte position of the range.
         end: u64,
+        /// Actual size of the file in bytes.
         file_size: u64,
     },
 
+    /// Piece data is smaller than required for the requested operation.
     #[error("Piece {piece_index} is smaller than expected: got {actual}, need {minimum}")]
     PieceTooSmall {
+        /// Index of the piece that is too small.
         piece_index: u32,
+        /// Actual size of the piece in bytes.
         actual: usize,
+        /// Minimum required size in bytes.
         minimum: usize,
     },
 }
@@ -204,9 +219,12 @@ mod tests {
 
     use super::*;
 
+    // Type alias for complex piece collection map
+    type PieceCollectionMap = HashMap<InfoHash, HashMap<u32, Vec<u8>>>;
+
     // Mock piece store for testing
     struct MockPieceStore {
-        pieces: HashMap<InfoHash, HashMap<u32, Vec<u8>>>,
+        pieces: PieceCollectionMap,
     }
 
     impl MockPieceStore {

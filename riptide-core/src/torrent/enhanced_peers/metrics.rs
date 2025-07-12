@@ -7,35 +7,55 @@ use std::time::Instant;
 /// Connection performance metrics
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionMetrics {
+    /// Bytes uploaded in current session
     pub bytes_uploaded: u64,
+    /// Bytes downloaded in current session
     pub bytes_downloaded: u64,
+    /// Total bytes uploaded across all sessions
     pub total_uploaded: u64,
+    /// Total bytes downloaded across all sessions
     pub total_downloaded: u64,
+    /// Current upload rate in bytes per second
     pub upload_rate_bytes_per_sec: u32,
+    /// Current download rate in bytes per second
     pub download_rate_bytes_per_sec: u32,
+    /// Number of pieces successfully completed
     pub pieces_completed: u32,
+    /// Number of pieces that failed verification
     pub pieces_failed: u32,
+    /// Average time to complete a piece in milliseconds
     pub average_piece_time_ms: u32,
 }
 
 /// Connection health monitoring
 #[derive(Debug, Clone)]
 pub struct ConnectionHealth {
+    /// Whether the peer is currently responsive
     pub is_responsive: bool,
+    /// Number of consecutive failures detected
     pub consecutive_failures: u32,
+    /// Timestamp of last successful response
     pub last_response_time: Option<Instant>,
+    /// Average round-trip latency in milliseconds
     pub average_latency_ms: u32,
+    /// Packet loss rate as a fraction (0.0 to 1.0)
     pub packet_loss_rate: f32,
+    /// Connection stability metric (0.0 to 1.0)
     pub connection_stability: f32,
 }
 
 /// Behavioral pattern flags for peer assessment
 #[derive(Debug, Clone)]
 pub struct BehavioralFlags {
+    /// Whether the peer has all pieces (is a seeder)
     pub is_seed: bool,
+    /// Whether the peer exhibits suspicious behavior
     pub appears_malicious: bool,
+    /// Whether the peer respects choking protocol
     pub honors_choking: bool,
+    /// Whether the peer supports BitTorrent fast extension
     pub supports_fast_extension: bool,
+    /// Whether the peer prefers encrypted connections
     pub prefers_encryption: bool,
 }
 
@@ -49,18 +69,26 @@ pub struct PeerQualityTracker {
 /// Individual peer performance ranking
 #[derive(Debug, Clone)]
 pub struct PeerRanking {
+    /// Overall quality score (0.0 to 1.0)
     pub quality_score: f64,
+    /// Reliability score based on connection stability
     pub reliability_score: f64,
+    /// Speed score based on download performance
     pub speed_score: f64,
+    /// When this ranking was last updated
     pub last_updated: Instant,
 }
 
 /// Global peer statistics
 #[derive(Debug, Default)]
 pub struct GlobalPeerStats {
+    /// Total number of unique peers encountered
     pub total_peers_seen: u64,
+    /// Average download speed across all peers
     pub average_download_speed: f64,
+    /// Highest recorded download speed from any peer
     pub best_peer_speed: f64,
+    /// Rate at which peers connect and disconnect
     pub peer_churn_rate: f64,
 }
 

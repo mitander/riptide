@@ -24,40 +24,58 @@ use tokio::time::sleep;
 /// - Reliable piece serving without network failures
 /// - Performance statistics for development insights
 pub struct DevelopmentPeers<P: PieceStore> {
+    /// Storage backend for piece data
     piece_store: Arc<P>,
+    /// Currently connected mock peers
     connected_peers: HashMap<SocketAddr, MockPeer>,
+    /// Channel for sending peer message events
     message_sender: mpsc::UnboundedSender<PeerMessageEvent>,
+    /// Channel for receiving peer message events
     message_receiver: mpsc::UnboundedReceiver<PeerMessageEvent>,
+    /// Performance tracking and metrics
     stats: PerformanceStats,
+    /// Rate limiting for realistic streaming speeds
     rate_limiter: StreamingRateLimiter,
+    /// Current playback position for each torrent
     current_streaming_position: HashMap<InfoHash, u64>,
 }
 
 /// Mock peer for development simulation.
 #[derive(Clone, Debug)]
 struct MockPeer {
+    /// Network address of this mock peer
     address: SocketAddr,
+    /// Info hash of the torrent being served
     info_hash: InfoHash,
-    peer_id: PeerId,
+    /// Timestamp when peer connected
     connected_at: Instant,
+    /// Total bytes served to this peer
     bytes_served: u64,
+    /// Total pieces served to this peer
     pieces_served: u64,
 }
 
 /// Performance statistics for development peer tracking.
 #[derive(Clone, Debug)]
 pub struct DevelopmentStats {
+    /// Total number of pieces served
     pub pieces_served: u64,
+    /// Total bytes served to all peers
     pub bytes_served: u64,
+    /// Current throughput in megabits per second
     pub throughput_mbps: f64,
+    /// Total runtime in seconds
     pub uptime_seconds: u64,
 }
 
 /// Performance tracking for development peers.
 #[derive(Debug)]
 struct PerformanceStats {
+    /// Total pieces served across all peers
     pieces_served: u64,
+    /// Total bytes served across all peers
     bytes_served: u64,
+    /// Time when peer manager started
     startup_time: Instant,
 }
 
@@ -67,8 +85,11 @@ struct PerformanceStats {
 /// while maintaining fast iteration speeds.
 #[derive(Debug)]
 struct StreamingRateLimiter {
+    /// Target transfer rate in bytes per second
     target_bytes_per_second: u64,
+    /// Timestamp of last data transfer
     last_transfer_time: Instant,
+    /// Bytes transferred in the current second
     bytes_this_second: u64,
 }
 
@@ -106,11 +127,10 @@ impl StreamingRateLimiter {
 }
 
 impl MockPeer {
-    fn new(address: SocketAddr, info_hash: InfoHash, peer_id: PeerId) -> Self {
-        Self {
+    fn new_mock_peer(address: SocketAddr, info_hash: InfoHash, _peer_id: PeerId) -> MockPeer {
+        MockPeer {
             address,
             info_hash,
-            peer_id,
             connected_at: Instant::now(),
             bytes_served: 0,
             pieces_served: 0,
@@ -246,7 +266,7 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DevelopmentPeers<P> 
             info_hash
         );
 
-        let mock_peer = MockPeer::new(peer_address, info_hash, peer_id);
+        let mock_peer = MockPeer::new_mock_peer(peer_address, info_hash, peer_id);
         self.connected_peers.insert(peer_address, mock_peer);
 
         tracing::debug!(
@@ -353,7 +373,7 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DevelopmentPeers<P> 
     }
 
     /// Configures upload management for development scenarios.
-    async fn configure_upload_manager(
+    async fn configure_upload(
         &mut self,
         info_hash: InfoHash,
         piece_size: u64,

@@ -8,7 +8,10 @@ use axum::response::Html;
 use crate::components::{activity, stats};
 use crate::server::AppState;
 
-/// Formats elapsed time from start instant into human-readable string
+/// Formats elapsed time from start instant into human-readable string.
+///
+/// Converts elapsed duration into concise format: seconds, minutes, hours, or days.
+/// Used for displaying torrent start times and system uptime in activity feeds.
 fn format_elapsed_time(started_at: Instant) -> String {
     let elapsed = started_at.elapsed();
     let total_seconds = elapsed.as_secs();
@@ -27,7 +30,10 @@ fn format_elapsed_time(started_at: Instant) -> String {
     }
 }
 
-/// Real-time dashboard statistics fragment
+/// Real-time dashboard statistics fragment.
+///
+/// Generates live statistics cards for dashboard including active torrents,
+/// download/upload speeds, library size, and connected peers with real-time updates.
 ///
 /// # Panics
 /// Panics if engine communication fails or statistics are unavailable.
@@ -53,7 +59,7 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     };
     let total_downloaded = (engine_stats.bytes_downloaded as f64) / 1_073_741_824.0;
 
-    let library_size = if let Ok(movie_manager) = state.file_manager() {
+    let library_size = if let Ok(movie_manager) = state.file_library() {
         let manager = movie_manager.read().await;
         manager.all_files().len()
     } else {
@@ -127,7 +133,10 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     Html(stats::stats_grid(&stat_cards))
 }
 
-/// Recent activity feed fragment
+/// Recent activity feed fragment.
+///
+/// Displays recent torrent activity with status icons, progress updates, and timestamps.
+/// Shows up to 8 recent activities or default system status when no torrents are active.
 ///
 /// # Panics
 /// Panics if engine communication fails or active sessions are unavailable.
@@ -194,7 +203,10 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
     Html(activity::activity_feed(&activities))
 }
 
-/// Active downloads preview fragment
+/// Active downloads preview fragment.
+///
+/// Shows up to 3 currently downloading torrents with progress bars and statistics.
+/// Displays empty state when no active downloads are in progress.
 ///
 /// # Panics
 /// Panics if engine communication fails or active sessions are unavailable.
@@ -253,7 +265,11 @@ pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> 
     Html(downloads_html)
 }
 
-/// Get basic system information without external dependencies
+/// Get basic system information without external dependencies.
+///
+/// Collects CPU, memory, disk, and network metrics where available without
+/// requiring external system monitoring crates. Returns placeholder values
+/// when platform-specific information is unavailable.
 fn collect_system_metrics() -> [(&'static str, String, &'static str); 4] {
     // For CPU usage, we'll show a placeholder since accurate CPU monitoring
     // requires external crates like sysinfo. This is a good compromise.
@@ -276,7 +292,10 @@ fn collect_system_metrics() -> [(&'static str, String, &'static str); 4] {
     ]
 }
 
-/// Get memory usage information
+/// Get memory usage information.
+///
+/// Reads memory statistics from /proc/meminfo on Linux systems.
+/// Returns placeholder value on non-Linux platforms or when reading fails.
 fn memory_usage() -> String {
     #[cfg(target_os = "linux")]
     {
@@ -309,7 +328,10 @@ fn memory_usage() -> String {
     "~".to_string()
 }
 
-/// Get available disk space using basic filesystem info
+/// Get available disk space using basic filesystem info.
+///
+/// Returns placeholder value as reliable cross-platform disk space monitoring
+/// requires external dependencies. Could be enhanced with platform-specific code.
 fn disk_free() -> String {
     // For now, just show a placeholder since getting disk space
     // reliably across platforms requires external dependencies
@@ -317,7 +339,10 @@ fn disk_free() -> String {
     "~".to_string()
 }
 
-/// System performance metrics fragment
+/// System performance metrics fragment.
+///
+/// Displays basic system metrics including CPU, memory, disk, and network status.
+/// Uses platform-specific code where available, placeholders otherwise.
 pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
     let metrics = collect_system_metrics();
 
@@ -333,7 +358,10 @@ pub async fn system_metrics(State(_state): State<AppState>) -> Html<String> {
     ))
 }
 
-/// Network status and peer information
+/// Network status and peer information.
+///
+/// Shows current network connectivity status including DHT connection,
+/// peer counts, and tracker availability with status indicators.
 ///
 /// # Panics
 /// Panics if engine communication fails or active sessions are unavailable.

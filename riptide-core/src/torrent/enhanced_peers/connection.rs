@@ -8,33 +8,51 @@ use super::metrics::{BehavioralFlags, ConnectionHealth, ConnectionMetrics};
 /// Enhanced peer connection with detailed state tracking
 #[derive(Debug)]
 pub struct EnhancedPeerConnection {
+    /// Network address of the peer
     pub peer_address: SocketAddr,
+    /// Current connection state with detailed status
     pub state: EnhancedConnectionState,
+    /// Performance and transfer metrics
     pub metrics: ConnectionMetrics,
+    /// Connection health indicators
     pub health: ConnectionHealth,
+    /// Behavioral analysis flags
     pub behavioral_flags: BehavioralFlags,
+    /// When the connection was established
     pub connected_at: Option<Instant>,
+    /// When the last message was received
     pub last_message_at: Option<Instant>,
 }
 
 /// Enhanced connection state with detailed status
 #[derive(Debug, PartialEq, Eq)]
 pub enum EnhancedConnectionState {
+    /// Peer is not connected
     Disconnected,
+    /// Attempting to establish connection
     Connecting,
+    /// Performing BitTorrent handshake
     Handshaking,
+    /// Fully connected and operational
     Connected,
+    /// Connection is choked for specified reason
     Choked(ChokingReason),
+    /// Connection failed with error details
     Error(String),
 }
 
 /// Reason for connection being choked
 #[derive(Debug, PartialEq, Eq)]
 pub enum ChokingReason {
+    /// Remote peer has choked this connection
     PeerChoked,
+    /// Local client has choked this peer
     LocalChoked,
+    /// Connection exceeds bandwidth limits
     BandwidthLimit,
+    /// Connection quality below threshold
     QualityThreshold,
+    /// Connection timed out
     Timeout,
 }
 

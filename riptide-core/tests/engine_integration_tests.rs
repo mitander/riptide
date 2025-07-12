@@ -7,9 +7,7 @@
 use std::time::Duration;
 
 use riptide_core::config::RiptideConfig;
-use riptide_core::engine::{
-    MockPeerManager, MockTrackerManager, TorrentEngineHandle, spawn_torrent_engine,
-};
+use riptide_core::engine::{MockPeers, MockTracker, TorrentEngineHandle, spawn_torrent_engine};
 use riptide_core::torrent::parsing::types::TorrentMetadata;
 use riptide_core::torrent::{InfoHash, TorrentError};
 use tokio::time::timeout;
@@ -23,10 +21,10 @@ impl EngineTestFixture {
     /// Creates a new test fixture with configured mock dependencies.
     fn new() -> Self {
         let config = RiptideConfig::default();
-        let peer_manager = MockPeerManager::new();
-        let tracker_manager = MockTrackerManager::new();
+        let peers = MockPeers::new();
+        let tracker = MockTracker::new();
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         Self { handle }
     }
@@ -34,10 +32,10 @@ impl EngineTestFixture {
     /// Creates a fixture with failing mock dependencies for error testing.
     fn new_with_failures() -> Self {
         let config = RiptideConfig::default();
-        let peer_manager = MockPeerManager::new_with_connection_failure();
-        let tracker_manager = MockTrackerManager::new_with_announce_failure();
+        let peers = MockPeers::new_with_connection_failure();
+        let tracker = MockTracker::new_with_announce_failure();
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         Self { handle }
     }

@@ -44,33 +44,56 @@ impl PeerId {
 /// Handles keep-alive, choke/unchoke, piece requests, and data transfer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PeerMessage {
+    /// Keep-alive message to maintain connection
     KeepAlive,
+    /// Inform peer that we are choking them
     Choke,
+    /// Inform peer that we are no longer choking them
     Unchoke,
+    /// Inform peer that we are interested in their pieces
     Interested,
+    /// Inform peer that we are not interested in their pieces
     NotInterested,
+    /// Inform peer that we have acquired a specific piece
     Have {
+        /// Index of the piece we now have
         piece_index: PieceIndex,
     },
+    /// Send our complete piece availability bitmap
     Bitfield {
+        /// Bitmap indicating which pieces we have
         bitfield: Bytes,
     },
+    /// Request a block of data from a piece
     Request {
+        /// Index of the piece to request from
         piece_index: PieceIndex,
+        /// Byte offset within the piece
         offset: u32,
+        /// Number of bytes to request
         length: u32,
     },
+    /// Send a block of piece data
     Piece {
+        /// Index of the piece this data belongs to
         piece_index: PieceIndex,
+        /// Byte offset within the piece
         offset: u32,
+        /// The actual piece data
         data: Bytes,
     },
+    /// Cancel a previously sent request
     Cancel {
+        /// Index of the piece to cancel
         piece_index: PieceIndex,
+        /// Byte offset within the piece
         offset: u32,
+        /// Number of bytes that were requested
         length: u32,
     },
+    /// Inform peer of our DHT port
     Port {
+        /// UDP port for DHT communication
         port: u16,
     },
 }
@@ -81,9 +104,13 @@ pub enum PeerMessage {
 /// and verify info hash matching for torrent verification.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerHandshake {
+    /// Protocol identifier string ("BitTorrent protocol")
     pub protocol: String,
+    /// Reserved bytes for protocol extensions
     pub reserved: [u8; 8],
+    /// Info hash of the torrent being shared
     pub info_hash: InfoHash,
+    /// Unique identifier for the peer
     pub peer_id: PeerId,
 }
 
@@ -105,12 +132,18 @@ impl PeerHandshake {
 /// to active downloading. Used for connection management and protocol flow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PeerState {
+    /// No connection established
     #[default]
     Disconnected,
+    /// TCP connection in progress
     Connecting,
+    /// Performing BitTorrent handshake
     Handshaking,
+    /// Connected but not transferring data
     Connected,
+    /// Connected but being choked by peer
     Choking,
+    /// Actively downloading pieces
     Downloading,
 }
 

@@ -1,6 +1,9 @@
 //! Activity feed and notification components
 
-/// Renders an activity feed with real-time updates
+/// Renders an activity feed with real-time updates.
+///
+/// Creates scrollable activity list with timeline-style items showing recent events.
+/// Displays empty state message when no activities are available.
 pub fn activity_feed(activities: &[ActivityItem]) -> String {
     let items_html: String = activities
         .iter()
@@ -29,7 +32,10 @@ pub fn activity_feed(activities: &[ActivityItem]) -> String {
     }
 }
 
-/// Renders a single activity item
+/// Renders a single activity item.
+///
+/// Creates individual activity entry with icon, title, optional description, and timestamp.
+/// Includes hover effects and consistent spacing for timeline display.
 pub fn activity_item(icon: &str, title: &str, time: &str, description: Option<&str>) -> String {
     let desc_html = description
         .map(|d| format!(r#"<p class="text-gray-500 text-sm">{d}</p>"#))
@@ -49,7 +55,10 @@ pub fn activity_item(icon: &str, title: &str, time: &str, description: Option<&s
     )
 }
 
-/// Renders a notification toast
+/// Renders a notification toast.
+///
+/// Creates styled notification messages with type-specific colors and icons.
+/// Supports success, error, warning, info types with optional dismiss functionality.
 pub fn notification_toast(message: &str, toast_type: &str, dismissible: bool) -> String {
     let (bg_class, border_class, icon) = match toast_type {
         "success" => ("bg-green-800", "border-green-600", "✓"),
@@ -78,7 +87,10 @@ pub fn notification_toast(message: &str, toast_type: &str, dismissible: bool) ->
     )
 }
 
-/// Renders a live stats ticker
+/// Renders a live stats ticker.
+///
+/// Creates horizontal scrolling ticker with real-time statistics updating every 2 seconds.
+/// Uses HTMX for automatic refresh without page reloads.
 pub fn live_ticker(stats: &[TickerStat]) -> String {
     let stats_html: String = stats
         .iter()
@@ -103,7 +115,10 @@ pub fn live_ticker(stats: &[TickerStat]) -> String {
     )
 }
 
-/// Renders a status banner
+/// Renders a status banner.
+///
+/// Creates full-width status banners for important system messages.
+/// Supports different status types with appropriate styling and optional dismiss button.
 pub fn status_banner(message: &str, status: &str, dismissible: bool) -> String {
     let (bg_class, text_class) = match status {
         "success" => ("bg-green-600", "text-green-100"),
@@ -136,16 +151,23 @@ pub fn status_banner(message: &str, status: &str, dismissible: bool) -> String {
 /// Activity item displayed in the activity feed
 #[derive(Debug)]
 pub struct ActivityItem {
+    /// Icon or emoji representing the activity type
     pub icon: String,
+    /// Main title or action description
     pub title: String,
+    /// Optional detailed description
     pub description: Option<String>,
+    /// Timestamp or time elapsed string
     pub time: String,
 }
 
 /// Statistic displayed in the ticker component
 #[derive(Debug)]
 pub struct TickerStat {
+    /// Icon or emoji for the statistic
     pub icon: String,
+    /// Formatted value (e.g., "1.5 GB", "45%")
     pub value: String,
+    /// Descriptive label for the statistic
     pub label: String,
 }

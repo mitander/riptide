@@ -21,6 +21,10 @@ use super::{
 };
 use crate::torrent::{InfoHash, PieceIndex, PieceStore};
 
+// Type aliases for complex types
+type RangeCache = Arc<RwLock<LruCache<RangeKey, Vec<u8>>>>;
+type TorrentMetadataCache = Arc<RwLock<HashMap<InfoHash, TorrentMetadata>>>;
+
 /// Cached metadata for torrents to avoid repeated calculations
 #[derive(Debug, Clone)]
 struct TorrentMetadata {
@@ -31,8 +35,8 @@ struct TorrentMetadata {
 /// DataSource implementation for BitTorrent pieces with intelligent caching
 pub struct PieceDataSource {
     piece_store: Arc<dyn PieceStore>,
-    range_cache: Arc<RwLock<LruCache<RangeKey, Vec<u8>>>>,
-    metadata_cache: Arc<RwLock<HashMap<InfoHash, TorrentMetadata>>>,
+    range_cache: RangeCache,
+    metadata_cache: TorrentMetadataCache,
     cache_hits: Arc<AtomicUsize>,
     cache_misses: Arc<AtomicUsize>,
     cache_evictions: Arc<AtomicUsize>,
@@ -40,6 +44,9 @@ pub struct PieceDataSource {
 
 impl PieceDataSource {
     /// Create new piece data source with specified cache size
+    ///
+    /// # Panics
+    /// Panics if cache size is zero. This is acceptable as zero cache size is invalid.
     pub fn new(piece_store: Arc<dyn PieceStore>, max_cache_entries: Option<usize>) -> Self {
         let cache_size = max_cache_entries.unwrap_or(100);
 
@@ -381,8 +388,11 @@ mod tests {
     use super::*;
     use crate::torrent::{PieceIndex, PieceStore, TorrentError};
 
+    // Type alias for complex piece map
+    type PieceMap = HashMap<(InfoHash, u32), Vec<u8>>;
+
     struct MockPieceStore {
-        pieces: HashMap<(InfoHash, u32), Vec<u8>>,
+        pieces: PieceMap,
         piece_counts: HashMap<InfoHash, u32>,
     }
 

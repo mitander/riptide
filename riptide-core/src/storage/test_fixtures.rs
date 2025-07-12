@@ -3,8 +3,15 @@
 //! Provides standardized storage setup and teardown for consistent
 //! testing across storage-related modules.
 
+// Type alias for complex return type
+type TempStorageDirs = (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf);
+
 /// Creates temporary directory structure for test storage operations.
-pub fn create_temp_storage_dirs() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+///
+/// # Panics
+/// Panics if temporary directory creation fails or if subdirectories cannot be created.
+/// This is acceptable in test fixtures where failures indicate environment issues.
+pub fn create_temp_storage_dirs() -> TempStorageDirs {
     let temp_dir = tempfile::tempdir().unwrap();
     let downloads_dir = temp_dir.path().join("downloads");
     let library_dir = temp_dir.path().join("library");

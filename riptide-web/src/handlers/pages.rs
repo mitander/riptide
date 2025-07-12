@@ -11,15 +11,28 @@ use crate::templates::video_player;
 /// Engine statistics for dashboard display.
 #[derive(Serialize, Deserialize)]
 pub struct DownloadStats {
+    /// Number of active torrents
     pub active_torrents: u32,
+    /// Number of torrents currently downloading
     pub active_downloads: u32,
+    /// Total size of all torrents in bytes
     pub total_size: u64,
+    /// Total downloaded size in bytes
     pub downloaded_size: u64,
+    /// Current upload speed in bytes per second
     pub upload_speed: f64,
+    /// Current download speed in bytes per second
     pub download_speed: f64,
 }
 
-/// Renders the main dashboard page
+/// Renders the main dashboard page.
+///
+/// Displays torrent engine statistics, activity feed, and active downloads
+/// with real-time updates powered by HTMX. Includes statistical summary cards
+/// showing current download/upload activity.
+///
+/// # Panics
+/// Panics if engine communication fails or download statistics are unavailable.
 pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     let stats = state.engine().download_statistics().await.unwrap();
 
@@ -88,7 +101,14 @@ pub async fn dashboard_page(State(state): State<AppState>) -> Html<String> {
     render_page("Dashboard", "dashboard", &content)
 }
 
-/// Renders the torrents management page
+/// Renders the torrents management page.
+///
+/// Provides torrent management interface with add torrent form, live torrent list,
+/// and summary statistics. Features real-time updates and interactive controls
+/// for torrent operations.
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
 
@@ -198,19 +218,32 @@ pub async fn torrents_page(State(state): State<AppState>) -> Html<String> {
     render_page("Torrents", "torrents", &content)
 }
 
-/// Renders the library page
+/// Renders the library page.
+///
+/// Displays the user's media library with browsing and search capabilities.
+/// Currently shows basic page structure - full library features to be implemented.
 pub async fn library_page(State(_state): State<AppState>) -> Html<String> {
     let content = layout::page_header("Library", Some("Browse your media collection"), None);
     render_page("Library", "library", &content)
 }
 
-/// Renders the search page
+/// Renders the search page.
+///
+/// Provides torrent and media search interface for discovering new content.
+/// Currently shows basic page structure - full search features to be implemented.
 pub async fn search_page(State(_state): State<AppState>) -> Html<String> {
     let content = layout::page_header("Search", Some("Discover new content"), None);
     render_page("Search", "search", &content)
 }
 
-/// Renders the video player page for streaming torrents
+/// Renders the video player page for streaming torrents.
+///
+/// Creates a full-page video player interface for streaming torrents or local media.
+/// Supports both BitTorrent streaming and local file playback with adaptive controls.
+/// Includes navigation and player controls optimized for streaming.
+///
+/// # Errors
+/// Returns error HTML page if the info hash is invalid or torrent not found
 pub async fn video_player_page(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
@@ -229,7 +262,7 @@ pub async fn video_player_page(
     };
 
     // Check if this is a torrent or local movie
-    let is_local = if let Ok(movie_manager) = state.file_manager() {
+    let is_local = if let Ok(movie_manager) = state.file_library() {
         let manager = movie_manager.read().await;
         manager.file_by_hash(info_hash).is_some()
     } else {
@@ -240,7 +273,7 @@ pub async fn video_player_page(
     let title = match state.engine().session_details(info_hash).await {
         Ok(session) => session.filename.clone(),
         Err(_) => {
-            if let Ok(movie_manager) = state.file_manager() {
+            if let Ok(movie_manager) = state.file_library() {
                 let manager = movie_manager.read().await;
                 manager
                     .file_by_hash(info_hash)
@@ -290,7 +323,10 @@ pub async fn video_player_page(
     ))
 }
 
-/// Common page template wrapper
+/// Common page template wrapper.
+///
+/// Generates complete HTML pages with consistent styling, navigation, and HTMX integration.
+/// Includes Tailwind CSS configuration and custom color scheme for Riptide branding.
 fn render_page(title: &str, _active_page: &str, content: &str) -> Html<String> {
     Html(format!(
         r#"<!DOCTYPE html>

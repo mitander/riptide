@@ -11,16 +11,22 @@ use crate::handlers::streaming::ClientCapabilities;
 /// Browser types detected from User-Agent strings
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BrowserType {
+    /// Google Chrome browser
     Chrome,
+    /// Mozilla Firefox browser
     Firefox,
+    /// Apple Safari browser
     Safari,
+    /// Microsoft Edge browser
     Edge,
+    /// Unknown or unrecognized browser
     Unknown,
 }
 
 /// Video format support matrix for different browsers
 #[derive(Debug, Clone)]
 pub struct BrowserCapabilityMatrix {
+    /// Mapping of browser types to their video format capabilities
     support_matrix: HashMap<BrowserType, ClientCapabilities>,
 }
 
@@ -90,7 +96,10 @@ impl Default for BrowserCapabilityMatrix {
 }
 
 impl BrowserCapabilityMatrix {
-    /// Detect browser type and capabilities from User-Agent header
+    /// Detect browser type and capabilities from User-Agent header.
+    ///
+    /// Parses the User-Agent header to identify browser type and returns
+    /// corresponding format capabilities for optimal streaming compatibility.
     pub fn detect_browser_capabilities(&self, headers: &HeaderMap) -> ClientCapabilities {
         let user_agent = headers
             .get("user-agent")
@@ -116,7 +125,10 @@ impl BrowserCapabilityMatrix {
         capabilities
     }
 
-    /// Detect browser type from user agent string
+    /// Detect browser type from user agent string.
+    ///
+    /// Uses pattern matching on common browser signatures in User-Agent strings.
+    /// Handles edge cases like distinguishing Chrome from Edge.
     fn detect_browser_type(&self, user_agent: &str) -> BrowserType {
         if user_agent.contains("chrome") && !user_agent.contains("edg") {
             BrowserType::Chrome
@@ -131,7 +143,10 @@ impl BrowserCapabilityMatrix {
         }
     }
 
-    /// Recommended video format for a specific browser
+    /// Recommended video format for a specific browser.
+    ///
+    /// Returns the optimal MIME type for video streaming based on browser
+    /// capabilities and performance characteristics.
     pub fn preferred_format(&self, browser_type: &BrowserType) -> String {
         match browser_type {
             BrowserType::Chrome | BrowserType::Edge => {
@@ -149,7 +164,10 @@ impl BrowserCapabilityMatrix {
         }
     }
 
-    /// Test if a browser supports a specific MIME type
+    /// Test if a browser supports a specific MIME type.
+    ///
+    /// Checks compatibility matrix to determine if a browser can handle
+    /// a specific video format and codec combination.
     pub fn supports_mime_type(&self, browser_type: &BrowserType, mime_type: &str) -> bool {
         let capabilities = &self.support_matrix[browser_type];
 
@@ -168,6 +186,7 @@ impl BrowserCapabilityMatrix {
 
 /// Browser compatibility test suite
 pub struct BrowserCompatibilityTester {
+    /// Matrix of browser capabilities for testing
     capability_matrix: BrowserCapabilityMatrix,
 }
 
@@ -178,13 +197,17 @@ impl Default for BrowserCompatibilityTester {
 }
 
 impl BrowserCompatibilityTester {
+    /// Create new browser compatibility tester with default capability matrix.
     pub fn new() -> Self {
         Self {
             capability_matrix: BrowserCapabilityMatrix::default(),
         }
     }
 
-    /// Test browser detection with various User-Agent strings
+    /// Test browser detection with various User-Agent strings.
+    ///
+    /// Runs comprehensive test suite against known User-Agent strings to verify
+    /// detection accuracy across all supported browser types.
     pub fn test_browser_detection(&self) -> BrowserCompatibilityTestResults {
         let test_cases = vec![
             // Chrome
@@ -235,7 +258,10 @@ impl BrowserCompatibilityTester {
         }
     }
 
-    /// Test format support matrix
+    /// Test format support matrix.
+    ///
+    /// Validates that each browser type correctly reports support for
+    /// different video formats based on the capability matrix.
     pub fn test_format_support_matrix(&self) -> Vec<FormatSupportTest> {
         let browsers = vec![
             BrowserType::Chrome,
@@ -371,17 +397,24 @@ impl BrowserCompatibilityTester {
 /// Results of browser compatibility testing
 #[derive(Debug)]
 pub struct BrowserCompatibilityTestResults {
+    /// Percentage of correctly detected browsers (0.0-100.0)
     pub detection_accuracy: f64,
+    /// Total number of test cases run
     pub total_tests: usize,
+    /// Number of correct browser detections
     pub correct_detections: usize,
+    /// Failed test cases with (user_agent, expected, actual) browser types
     pub failed_cases: Vec<(String, BrowserType, BrowserType)>,
 }
 
 /// Individual format support test result
 #[derive(Debug)]
 pub struct FormatSupportTest {
+    /// Browser type being tested
     pub browser: BrowserType,
+    /// Video format MIME type (e.g., "video/mp4")
     pub format: String,
+    /// Whether this browser supports this format
     pub supports: bool,
 }
 

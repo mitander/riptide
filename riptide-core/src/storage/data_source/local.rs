@@ -1,6 +1,6 @@
 //! LocalDataSource implementation for local file access
 //!
-//! Provides unified data access for files managed by FileLibraryManager,
+//! Provides unified data access for files managed by FileLibrary,
 //! enabling streaming of local files through the same interface as torrent pieces.
 //! Consolidates functionality from LocalFileAssembler into the new DataSource architecture.
 
@@ -15,7 +15,7 @@ use super::{
     CacheStats, CacheableDataSource, DataError, DataResult, DataSource, RangeAvailability,
     validate_range_bounds,
 };
-use crate::storage::FileLibraryManager;
+use crate::storage::FileLibrary;
 use crate::torrent::InfoHash;
 
 /// Simple cache statistics for local data source
@@ -45,36 +45,36 @@ impl LocalCacheMetrics {
     }
 }
 
-/// DataSource implementation for local files managed by FileLibraryManager
+/// DataSource implementation for local files managed by FileLibrary
 ///
 /// This implementation provides access to local media files through the unified
 /// DataSource interface, enabling consistent streaming behavior regardless of
 /// whether content comes from torrents or local storage.
 pub struct LocalDataSource {
-    file_manager: Arc<RwLock<FileLibraryManager>>,
+    file_library: Arc<RwLock<FileLibrary>>,
     metrics: Arc<RwLock<LocalCacheMetrics>>,
 }
 
 impl LocalDataSource {
     /// Create new local data source with file manager
-    pub fn new(file_manager: Arc<RwLock<FileLibraryManager>>) -> Self {
+    pub fn new(file_library: Arc<RwLock<FileLibrary>>) -> Self {
         Self {
-            file_manager,
+            file_library,
             metrics: Arc::new(RwLock::new(LocalCacheMetrics::new())),
         }
     }
 
     /// Check if file exists in the library
     async fn file_exists(&self, info_hash: InfoHash) -> bool {
-        let file_manager = self.file_manager.read().await;
-        file_manager.file_by_hash(info_hash).is_some()
+        let file_library = self.file_library.read().await;
+        file_library.file_by_hash(info_hash).is_some()
     }
 
     /// Get file metadata from library
     async fn file_info(&self, info_hash: InfoHash) -> DataResult<(String, u64)> {
-        let file_manager = self.file_manager.read().await;
+        let file_library = self.file_library.read().await;
 
-        match file_manager.file_by_hash(info_hash) {
+        match file_library.file_by_hash(info_hash) {
             Some(file) => {
                 debug!(
                     "Found local file for {}: {} ({} bytes)",
@@ -127,8 +127,8 @@ impl DataSource for LocalDataSource {
         let length = range.end - range.start;
 
         // Read data from file manager
-        let file_manager = self.file_manager.read().await;
-        match file_manager
+        let file_library = self.file_library.read().await;
+        match file_library
             .read_file_segment(info_hash, range.start, length)
             .await
         {
@@ -264,9 +264,9 @@ impl CacheableDataSource for LocalDataSource {
     }
 }
 
-/// Create a new LocalDataSource from a FileLibraryManager
-pub fn create_local_data_source(file_manager: Arc<RwLock<FileLibraryManager>>) -> LocalDataSource {
-    LocalDataSource::new(file_manager)
+/// Create a new LocalDataSource from a FileLibrary
+pub fn create_local_data_source(file_library: Arc<RwLock<FileLibrary>>) -> LocalDataSource {
+    LocalDataSource::new(file_library)
 }
 
 #[cfg(test)]
@@ -276,9 +276,9 @@ mod tests {
 
     use super::*;
 
-    async fn create_test_file_manager() -> (Arc<RwLock<FileLibraryManager>>, TempDir, InfoHash) {
+    async fn create_test_file_library() -> (Arc<RwLock<FileLibrary>>, TempDir, InfoHash) {
         let temp_dir = TempDir::new().unwrap();
-        let file_manager = Arc::new(RwLock::new(FileLibraryManager::new()));
+        let file_library = Arc::new(RwLock::new(FileLibrary::new()));
 
         // Create a test file
         let test_file_path = temp_dir.path().join("test.mp4");
@@ -289,28 +289,28 @@ mod tests {
 
         // Scan the directory to add the file to the library
         let info_hash = {
-            let mut manager = file_manager.write().await;
+            let mut manager = file_library.write().await;
             manager.scan_directory(temp_dir.path()).await.unwrap();
 
             // Get the actual info_hash from the scanned files
             manager.all_files()[0].info_hash
         };
 
-        (file_manager, temp_dir, info_hash)
+        (file_library, temp_dir, info_hash)
     }
 
     #[tokio::test]
     async fn test_source_type() {
-        let (file_manager, _temp_dir, _) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, _) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         assert_eq!(source.source_type(), "local_data_source");
     }
 
     #[tokio::test]
     async fn test_file_existence_check() {
-        let (file_manager, _temp_dir, info_hash) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, info_hash) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         // Test existing file
         assert!(source.can_handle(info_hash).await);
@@ -322,8 +322,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_size() {
-        let (file_manager, _temp_dir, info_hash) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, info_hash) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         let size = source.file_size(info_hash).await.unwrap();
         assert_eq!(size, 1024);
@@ -331,8 +331,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_range_availability() {
-        let (file_manager, _temp_dir, info_hash) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, info_hash) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         // Valid range
         let availability = source
@@ -350,8 +350,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_ranges() {
-        let (file_manager, _temp_dir, info_hash) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, info_hash) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         // Invalid range (start >= end)
         let start = 500;
@@ -367,8 +367,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_stats() {
-        let (file_manager, _temp_dir, _) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, _) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         let stats = source.cache_stats().await;
         assert_eq!(stats.hits, 0);
@@ -380,8 +380,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_clearing() {
-        let (file_manager, _temp_dir, info_hash) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, info_hash) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         // Clear cache should not error
         assert!(source.clear_cache(info_hash).await.is_ok());
@@ -390,8 +390,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_not_found() {
-        let (file_manager, _temp_dir, _) = create_test_file_manager().await;
-        let source = LocalDataSource::new(file_manager);
+        let (file_library, _temp_dir, _) = create_test_file_library().await;
+        let source = LocalDataSource::new(file_library);
 
         let unknown_hash = InfoHash::new([2u8; 20]);
 

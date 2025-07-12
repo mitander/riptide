@@ -28,7 +28,7 @@ use crate::config::RiptideConfig;
 use crate::torrent::{InfoHash, PieceIndex, TorrentError};
 
 /// Enhanced peer manager with bandwidth control and performance-based peer selection
-pub struct EnhancedPeerManager {
+pub struct EnhancedPeers {
     torrents: HashMap<InfoHash, TorrentPeerPool>,
     _bandwidth_manager: GlobalBandwidthManager,
     _config: RiptideConfig,
@@ -46,41 +46,64 @@ pub struct TorrentPeerPool {
 /// Parameters for requesting a piece with priority
 #[derive(Debug, Clone)]
 pub struct PieceRequestParams {
+    /// Info hash of the torrent containing the piece
     pub info_hash: InfoHash,
+    /// Index of the piece to request
     pub piece_index: PieceIndex,
+    /// Size of the piece in bytes
     pub piece_size: u32,
+    /// Priority level for this request
     pub priority: Priority,
+    /// Optional deadline for completing the request
     pub deadline: Option<Instant>,
 }
 
 /// Result of a piece download request
 #[derive(Debug)]
 pub enum PieceResult {
-    Success { data: Vec<u8> },
-    Failed { reason: String },
+    /// Piece was downloaded successfully
+    Success {
+        /// The downloaded piece data
+        data: Vec<u8>,
+    },
+    /// Download failed with an error
+    Failed {
+        /// Reason for the failure
+        reason: String,
+    },
+    /// Request timed out before completion
     Timeout,
 }
 
 /// Statistics for the enhanced peer manager
 #[derive(Debug, Default)]
-pub struct EnhancedPeerManagerStats {
+pub struct EnhancedPeersStats {
+    /// Total number of peer connections ever made
     pub total_connections: usize,
+    /// Number of currently active connections
     pub active_connections: usize,
+    /// Total bytes uploaded across all sessions
     pub total_uploaded: u64,
+    /// Total bytes downloaded across all sessions
     pub total_downloaded: u64,
+    /// Current bandwidth utilization metrics
     pub bandwidth_utilization: BandwidthUtilizationStats,
 }
 
 /// Bandwidth utilization statistics
 #[derive(Debug, Default)]
 pub struct BandwidthUtilizationStats {
+    /// Current upload rate in megabits per second
     pub upload_rate_mbps: f64,
+    /// Current download rate in megabits per second
     pub download_rate_mbps: f64,
+    /// Peak upload rate achieved in megabits per second
     pub peak_upload_rate_mbps: f64,
+    /// Peak download rate achieved in megabits per second
     pub peak_download_rate_mbps: f64,
 }
 
-impl EnhancedPeerManager {
+impl EnhancedPeers {
     /// Create a new enhanced peer manager
     pub fn new(config: RiptideConfig) -> Self {
         Self {
@@ -91,6 +114,9 @@ impl EnhancedPeerManager {
     }
 
     /// Add a peer to a torrent's peer pool
+    ///
+    /// # Errors
+    /// Returns `TorrentError` if peer cannot be added to the pool or connection fails
     pub fn add_peer(
         &mut self,
         info_hash: InfoHash,
@@ -115,6 +141,10 @@ impl EnhancedPeerManager {
     }
 
     /// Request a piece with priority from the best available peer
+    /// Request a piece with priority handling and quality-based peer selection
+    ///
+    /// # Errors
+    /// Returns `TorrentError` if no peers are available or piece request fails
     pub async fn request_piece_prioritized(
         &self,
         params: PieceRequestParams,
@@ -164,7 +194,7 @@ impl EnhancedPeerManager {
     }
 
     /// Statistics for the peer manager
-    pub fn statistics(&self) -> EnhancedPeerManagerStats {
+    pub fn statistics(&self) -> EnhancedPeersStats {
         let total_connections = self.torrents.values().map(|pool| pool.peers.len()).sum();
 
         let active_connections = self
@@ -174,7 +204,7 @@ impl EnhancedPeerManager {
             .filter(|conn| matches!(conn.state, EnhancedConnectionState::Connected))
             .count();
 
-        EnhancedPeerManagerStats {
+        EnhancedPeersStats {
             total_connections,
             active_connections,
             total_uploaded: 0,

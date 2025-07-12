@@ -11,7 +11,7 @@
 //!
 //! ## Development Mode
 //! ```rust,no_run
-//! use riptide_sim::peer_manager::{DevelopmentPeers, InMemoryPieceStore};
+//! use riptide_sim::peers::{DevelopmentPeers, InMemoryPieceStore};
 //! use std::sync::Arc;
 //!
 //! let piece_store = Arc::new(InMemoryPieceStore::new());
@@ -20,7 +20,7 @@
 //!
 //! ## Deterministic Simulation
 //! ```rust,no_run
-//! use riptide_sim::peer_manager::{DeterministicPeers, DeterministicConfig, InMemoryPieceStore};
+//! use riptide_sim::peers::{DeterministicPeers, DeterministicConfig, InMemoryPieceStore};
 //! use std::sync::Arc;
 //!
 //! let piece_store = Arc::new(InMemoryPieceStore::new());
@@ -42,7 +42,7 @@ use riptide_core::torrent::PieceStore;
 
 /// Unified peer manager mode for easy configuration.
 #[derive(Debug, Clone)]
-pub enum PeerManagerMode {
+pub enum PeersMode {
     /// Fast development mode with realistic streaming performance.
     Development,
     /// Deterministic simulation with ideal network conditions.
@@ -54,9 +54,9 @@ pub enum PeerManagerMode {
 }
 
 /// Factory for creating peer managers in different modes.
-pub struct PeerManagerFactory;
+pub struct PeersBuilder;
 
-impl PeerManagerFactory {
+impl PeersBuilder {
     /// Creates a development peer manager for fast iteration.
     pub fn development<P: PieceStore>(piece_store: Arc<P>) -> DevelopmentPeers<P> {
         DevelopmentPeers::new(piece_store)
@@ -81,18 +81,18 @@ impl PeerManagerFactory {
     }
 
     /// Creates a peer manager based on the specified mode.
-    pub fn create_development_mode<P: PieceStore>(
-        mode: PeerManagerMode,
+    pub fn create_development_mode<P>(
+        mode: PeersMode,
         piece_store: Arc<P>,
     ) -> Box<dyn riptide_core::torrent::PeerManager + Send + Sync>
     where
-        P: Send + Sync + 'static,
+        P: PieceStore + Send + Sync + 'static,
     {
         match mode {
-            PeerManagerMode::Development => Box::new(Self::development(piece_store)),
-            PeerManagerMode::DeterministicIdeal => Box::new(Self::deterministic_ideal(piece_store)),
-            PeerManagerMode::DeterministicPoor => Box::new(Self::deterministic_poor(piece_store)),
-            PeerManagerMode::DeterministicCustom(config) => {
+            PeersMode::Development => Box::new(Self::development(piece_store)),
+            PeersMode::DeterministicIdeal => Box::new(Self::deterministic_ideal(piece_store)),
+            PeersMode::DeterministicPoor => Box::new(Self::deterministic_poor(piece_store)),
+            PeersMode::DeterministicCustom(config) => {
                 Box::new(Self::deterministic_custom(config, piece_store))
             }
         }
@@ -100,14 +100,14 @@ impl PeerManagerFactory {
 }
 
 /// Convenience functions for common peer manager setups.
-impl PeerManagerMode {
+impl PeersMode {
     /// Creates a complete setup with in-memory piece store and development peers.
     pub fn setup_development() -> (
         Arc<InMemoryPieceStore>,
         DevelopmentPeers<InMemoryPieceStore>,
     ) {
         let piece_store = Arc::new(InMemoryPieceStore::new());
-        let peers = PeerManagerFactory::development(piece_store.clone());
+        let peers = PeersBuilder::development(piece_store.clone());
         (piece_store, peers)
     }
 
@@ -117,7 +117,7 @@ impl PeerManagerMode {
         DeterministicPeers<InMemoryPieceStore>,
     ) {
         let piece_store = Arc::new(InMemoryPieceStore::new());
-        let peers = PeerManagerFactory::deterministic_ideal(piece_store.clone());
+        let peers = PeersBuilder::deterministic_ideal(piece_store.clone());
         (piece_store, peers)
     }
 
@@ -127,7 +127,7 @@ impl PeerManagerMode {
         DeterministicPeers<InMemoryPieceStore>,
     ) {
         let piece_store = Arc::new(InMemoryPieceStore::new());
-        let peers = PeerManagerFactory::deterministic_poor(piece_store.clone());
+        let peers = PeersBuilder::deterministic_poor(piece_store.clone());
         (piece_store, peers)
     }
 
@@ -139,7 +139,7 @@ impl PeerManagerMode {
         DeterministicPeers<InMemoryPieceStore>,
     ) {
         let piece_store = Arc::new(InMemoryPieceStore::new());
-        let peers = PeerManagerFactory::deterministic_custom(config, piece_store.clone());
+        let peers = PeersBuilder::deterministic_custom(config, piece_store.clone());
         (piece_store, peers)
     }
 }
@@ -149,33 +149,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_peer_manager_factory() {
+    fn test_peers_factory() {
         let piece_store = Arc::new(InMemoryPieceStore::new());
 
         // Test development mode
-        let _dev_peers = PeerManagerFactory::development(piece_store.clone());
+        let _dev_peers = PeersBuilder::development(piece_store.clone());
 
         // Test deterministic modes
-        let _ideal_peers = PeerManagerFactory::deterministic_ideal(piece_store.clone());
-        let _poor_peers = PeerManagerFactory::deterministic_poor(piece_store.clone());
+        let _ideal_peers = PeersBuilder::deterministic_ideal(piece_store.clone());
+        let _poor_peers = PeersBuilder::deterministic_poor(piece_store.clone());
 
         // Test custom configuration
         let config = DeterministicConfig::with_seed(42);
-        let _custom_peers = PeerManagerFactory::deterministic_custom(config, piece_store.clone());
+        let _custom_peers = PeersBuilder::deterministic_custom(config, piece_store.clone());
     }
 
     #[test]
     fn test_convenience_setups() {
         // Test development setup
-        let (_store, _peers) = PeerManagerMode::setup_development();
+        let (_store, _peers) = PeersMode::setup_development();
 
         // Test deterministic setups
-        let (_store, _peers) = PeerManagerMode::setup_deterministic_ideal();
-        let (_store, _peers) = PeerManagerMode::setup_deterministic_poor();
+        let (_store, _peers) = PeersMode::setup_deterministic_ideal();
+        let (_store, _peers) = PeersMode::setup_deterministic_poor();
 
         // Test custom setup
         let config = DeterministicConfig::with_seed(123);
-        let (_store, _peers) = PeerManagerMode::setup_deterministic_custom(config);
+        let (_store, _peers) = PeersMode::setup_deterministic_custom(config);
     }
 
     #[tokio::test]
@@ -184,15 +184,14 @@ mod tests {
 
         // Test all modes
         let modes = vec![
-            PeerManagerMode::Development,
-            PeerManagerMode::DeterministicIdeal,
-            PeerManagerMode::DeterministicPoor,
-            PeerManagerMode::DeterministicCustom(DeterministicConfig::default()),
+            PeersMode::Development,
+            PeersMode::DeterministicIdeal,
+            PeersMode::DeterministicPoor,
+            PeersMode::DeterministicCustom(DeterministicConfig::default()),
         ];
 
         for mode in modes {
-            let _peer_manager =
-                PeerManagerFactory::create_development_mode(mode, piece_store.clone());
+            let _peers = PeersBuilder::create_development_mode(mode, piece_store.clone());
         }
     }
 }

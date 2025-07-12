@@ -68,30 +68,38 @@ Naming must describe the action and intent clearly.
 
 ### Types (Structs, Enums, Traits)
 
-**Name what it IS, not its architectural role.**
+**Principle: "Clear at the point of use" trumps "shorter names"**
 
-| Category      | Suffix       | Example                           |
-| :------------ | :----------- | :-------------------------------- |
-| Errors        | `...Error`   | `DownloadError`, `StorageError`   |
-| Configuration | `...Config`  | `RiptideConfig`, `NetworkConfig`  |
-| Handles       | `...Handle`  | `TorrentEngineHandle`             |
-| Builders      | `...Builder` | `ConfigBuilder`, `RequestBuilder` |
+| Category      | Suffix       | Example                                    |
+| :------------ | :----------- | :----------------------------------------- |
+| Errors        | `...Error`   | `DownloadError`, `StorageError`            |
+| Configuration | `...Config`  | `RiptideConfig`, `NetworkConfig`           |
+| Handles       | `...Handle`  | `TorrentEngineHandle`, `FileLibraryHandle` |
+| Builders      | `...Builder` | `ConfigBuilder`, `RequestBuilder`          |
 
-**Preferred Naming:**
+**Naming Guidelines:**
 
-| Instead of              | Use                                              |
-| :---------------------- | :----------------------------------------------- |
-| `HttpStreamingService`  | `HttpStreaming`                                  |
-| `MediaSearchService`    | `MediaSearch`                                    |
-| `FileLibraryManager`    | `FileLibrary`                                    |
-| `PeerConnectionManager` | `PeerConnection`                                 |
-| `TrackerClientFactory`  | `TrackerClient::new()` or `TrackerClientBuilder` |
+**Good simplifications:**
+| Instead of | Use | Reason |
+| :---------------------- | :----------------------------------------------- | :------------------- |
+| `HttpStreamingService` | `HttpStreaming` | Service adds no value |
+| `MediaSearchService` | `MediaSearch` | Service adds no value |
+| `FileLibraryManager` | `FileLibrary` | Clear what it is |
+| `TrackerClientFactory` | `TrackerClient::new()` or `TrackerClientBuilder` | Factory pattern better |
+
+**Keep descriptive names when they add clarity:**
+| Descriptive Name | Why Keep It |
+| :------------------ | :------------------------------------ |
+| `PeerManager` | Trait that manages peers - clear role |
+| `TrackerManager` | Trait that manages trackers - clear role |
+| `TorrentEngineHandle` | Distinguishes from internal engine |
 
 **Banned Suffixes:**
 
 | Forbidden    | Reason                                           |
 | :----------- | :----------------------------------------------- |
 | `...Factory` | Use `Builder` pattern or simple `new()` function |
+| `...Service` | Usually adds no semantic value                   |
 
 ## Documentation Standards
 
@@ -297,6 +305,8 @@ cargo doc --workspace --no-deps
 | `HttpStreamingService`          | `HttpStreaming`                            |
 | `MediaSearchService`            | `MediaSearch`                              |
 | `FileLibraryManager`            | `FileLibrary`                              |
+| `TorrentEngine` (two meanings)  | `TorrentEngine` + `TorrentEngineHandle`    |
+| `Peers` trait (unclear)         | `PeerManager` trait (clear role)           |
 | `.unwrap()` / `.expect()`       | `?` operator or `match`                    |
 | `println!` for debugging        | `tracing::debug!`, `tracing::info!`        |
 | Monolithic functions            | Small, single-responsibility functions     |

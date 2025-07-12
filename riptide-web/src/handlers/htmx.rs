@@ -15,15 +15,22 @@ use crate::server::AppState;
 /// Form data for adding torrents via HTMX
 #[derive(Deserialize)]
 pub struct AddTorrentForm {
+    /// Magnet link URL from the form
     pub magnet: String,
 }
 
-/// Renders the dashboard stats section as HTML fragment
+/// Renders the dashboard stats section as HTML fragment.
+///
+/// Returns HTML containing current engine statistics including active torrents,
+/// download/upload speeds, total downloaded data, connected peers, and library size.
+///
+/// # Panics
+/// Panics if engine communication fails or download statistics are unavailable.
 pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     let stats = state.engine().download_statistics().await.unwrap();
 
     // Get library size
-    let library_size = if let Ok(movie_manager) = state.file_manager() {
+    let library_size = if let Ok(movie_manager) = state.file_library() {
         let manager = movie_manager.read().await;
         manager.all_files().len()
     } else {
@@ -80,7 +87,10 @@ pub async fn dashboard_stats(State(state): State<AppState>) -> Html<String> {
     Html(html)
 }
 
-/// Renders recent activity feed as HTML fragment
+/// Renders recent activity feed as HTML fragment.
+///
+/// Shows the most recent torrent activities with status icons and progress information.
+/// Displays up to 5 recent activities or a default message if no torrents are active.
 ///
 /// # Panics
 /// Panics if engine communication fails or active sessions are unavailable.
@@ -135,7 +145,10 @@ pub async fn dashboard_activity(State(state): State<AppState>) -> Html<String> {
     Html(html)
 }
 
-/// Renders active downloads preview as HTML fragment
+/// Renders active downloads preview as HTML fragment.
+///
+/// Shows up to 3 currently downloading torrents with progress bars and statistics.
+/// Filters out completed downloads and displays a message if no downloads are active.
 ///
 /// # Panics
 /// Panics if engine communication fails or active sessions are unavailable.
@@ -184,7 +197,13 @@ pub async fn dashboard_downloads(State(state): State<AppState>) -> Html<String> 
     Html(html)
 }
 
-/// Handles adding torrents via HTMX form submission
+/// Handles adding torrents via HTMX form submission.
+///
+/// Processes magnet link submission from HTMX forms, adds the torrent to the engine,
+/// and starts downloading immediately. Returns appropriate success or error HTML fragments.
+///
+/// # Errors
+/// Returns `StatusCode::BAD_REQUEST` if form processing fails
 pub async fn add_torrent_htmx(
     State(state): State<AppState>,
     Form(form): Form<AddTorrentForm>,
@@ -235,13 +254,20 @@ pub async fn add_torrent_htmx(
     }
 }
 
-/// Renders torrent list for the torrents page with real-time updates
+/// Renders torrent list for the torrents page with real-time updates.
+///
+/// Generates HTML table rows for all active torrents with detailed information including
+/// progress bars, file sizes, piece counts, and action buttons. Uses movie metadata
+/// when available for better display names.
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrents_list(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
 
     // Get movie manager data for better naming
     let movie_titles: std::collections::HashMap<_, _> =
-        if let Ok(movie_manager) = state.file_manager() {
+        if let Ok(movie_manager) = state.file_library() {
             let manager = movie_manager.read().await;
             manager
                 .all_files()

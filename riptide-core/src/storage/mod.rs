@@ -6,7 +6,7 @@
 pub mod data_source;
 pub mod file_library;
 pub mod file_storage;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_fixtures;
 
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ pub use data_source::{
     create_data_source_from_trait_object, create_local_data_source, validate_range,
     validate_range_bounds,
 };
-pub use file_library::{FileLibraryManager, LibraryFile};
+pub use file_library::{FileLibrary, LibraryFile};
 pub use file_storage::FileStorage;
 
 // Range calculator is now part of data_source module
@@ -77,15 +77,30 @@ pub trait Storage: Send + Sync {
 /// during piece storage and retrieval operations.
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
+    /// Requested piece has not been downloaded yet
     #[error("Piece {index} not found")]
-    PieceNotFound { index: PieceIndex },
+    PieceNotFound {
+        /// Index of the piece that was not found
+        index: PieceIndex,
+    },
 
+    /// Not enough disk space available for the operation
     #[error("Insufficient disk space: need {needed} bytes, have {available}")]
-    InsufficientSpace { needed: u64, available: u64 },
+    InsufficientSpace {
+        /// Number of bytes required for the operation
+        needed: u64,
+        /// Number of bytes currently available
+        available: u64,
+    },
 
+    /// File system specific error occurred
     #[error("File system error: {message}")]
-    FilesystemError { message: String },
+    FilesystemError {
+        /// Description of the file system error
+        message: String,
+    },
 
+    /// Standard I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }

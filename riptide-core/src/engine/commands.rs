@@ -5,6 +5,17 @@ use tokio::sync::oneshot;
 use crate::torrent::parsing::types::TorrentMetadata;
 use crate::torrent::{InfoHash, TorrentError};
 
+// Type aliases for complex types
+type InfoHashResult = Result<InfoHash, TorrentError>;
+type InfoHashResponder = oneshot::Sender<InfoHashResult>;
+type UnitResult = Result<(), TorrentError>;
+type UnitResponder = oneshot::Sender<UnitResult>;
+type SessionResult = Result<TorrentSession, TorrentError>;
+type SessionResponder = oneshot::Sender<SessionResult>;
+type SessionListResponder = oneshot::Sender<Vec<TorrentSession>>;
+type BufferStatusResult = Result<crate::torrent::BufferStatus, TorrentError>;
+type BufferStatusResponder = oneshot::Sender<BufferStatusResult>;
+
 /// Commands that can be sent to the torrent engine actor.
 ///
 /// Each command encapsulates an operation request along with a response channel
@@ -14,22 +25,20 @@ pub enum TorrentEngineCommand {
     /// Add a torrent from a magnet link.
     AddMagnet {
         magnet_link: String,
-        responder: oneshot::Sender<Result<InfoHash, TorrentError>>,
+        responder: InfoHashResponder,
     },
     /// Start downloading a torrent by its info hash.
     StartDownload {
         info_hash: InfoHash,
-        responder: oneshot::Sender<Result<(), TorrentError>>,
+        responder: UnitResponder,
     },
     /// Get the session information for a specific torrent.
     GetSession {
         info_hash: InfoHash,
-        responder: oneshot::Sender<Result<TorrentSession, TorrentError>>,
+        responder: SessionResponder,
     },
     /// Get all active torrent sessions.
-    GetActiveSessions {
-        responder: oneshot::Sender<Vec<TorrentSession>>,
-    },
+    GetActiveSessions { responder: SessionListResponder },
     /// Get download statistics for the engine.
     GetDownloadStats {
         responder: oneshot::Sender<EngineStats>,
@@ -38,12 +47,12 @@ pub enum TorrentEngineCommand {
     MarkPiecesCompleted {
         info_hash: InfoHash,
         piece_indices: Vec<u32>,
-        responder: oneshot::Sender<Result<(), TorrentError>>,
+        responder: UnitResponder,
     },
     /// Add torrent metadata directly to the engine.
     AddTorrentMetadata {
         metadata: TorrentMetadata,
-        responder: oneshot::Sender<Result<InfoHash, TorrentError>>,
+        responder: InfoHashResponder,
     },
     /// Shutdown the engine actor gracefully.
     Shutdown { responder: oneshot::Sender<()> },
@@ -62,37 +71,37 @@ pub enum TorrentEngineCommand {
         info_hash: InfoHash,
         byte_position: u64,
         buffer_size: u64,
-        responder: oneshot::Sender<Result<(), TorrentError>>,
+        responder: UnitResponder,
     },
     /// Update buffer strategy for adaptive piece picking.
     UpdateBufferStrategy {
         info_hash: InfoHash,
         playback_speed: f64,
         available_bandwidth: u64,
-        responder: oneshot::Sender<Result<(), TorrentError>>,
+        responder: UnitResponder,
     },
     /// Get current buffer status for a torrent.
     GetBufferStatus {
         info_hash: InfoHash,
-        responder: oneshot::Sender<Result<crate::torrent::BufferStatus, TorrentError>>,
+        responder: BufferStatusResponder,
     },
     /// Stop downloading a torrent by its info hash.
     StopDownload {
         info_hash: InfoHash,
-        responder: oneshot::Sender<Result<(), TorrentError>>,
+        responder: UnitResponder,
     },
     /// Configure upload manager for streaming optimization.
     ConfigureUploadManager {
         info_hash: InfoHash,
         piece_size: u64,
         total_bandwidth: u64,
-        responder: oneshot::Sender<Result<(), TorrentError>>,
+        responder: UnitResponder,
     },
     /// Update streaming position for upload throttling.
     UpdateStreamingPosition {
         info_hash: InfoHash,
         byte_position: u64,
-        responder: oneshot::Sender<Result<(), TorrentError>>,
+        responder: UnitResponder,
     },
 }
 
@@ -124,7 +133,7 @@ pub struct TorrentSession {
     pub tracker_urls: Vec<String>,
     /// Current download speed in bytes per second
     pub download_speed_bps: u64,
-    /// Current upload speed in bytes per second  
+    /// Current upload speed in bytes per second
     pub upload_speed_bps: u64,
     /// Total bytes downloaded for this torrent
     pub bytes_downloaded: u64,
@@ -212,11 +221,17 @@ pub struct EngineStats {
 /// Parameters for creating a new torrent session.
 #[derive(Debug, Clone)]
 pub struct TorrentSessionParams {
+    /// Unique identifier for the torrent content
     pub info_hash: InfoHash,
+    /// Total number of pieces in the torrent
     pub piece_count: u32,
+    /// Size of each piece in bytes
     pub piece_size: u32,
+    /// Total size of all files in bytes
     pub total_size: u64,
+    /// Display name for the torrent content
     pub filename: String,
+    /// List of tracker URLs for peer discovery
     pub tracker_urls: Vec<String>,
 }
 

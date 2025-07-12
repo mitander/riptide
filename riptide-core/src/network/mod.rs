@@ -17,11 +17,14 @@ use crate::torrent::TorrentError;
 /// HTTP response abstraction
 #[derive(Debug, Clone)]
 pub struct HttpResponse {
+    /// HTTP status code (200, 404, 500, etc.)
     pub status_code: u16,
+    /// Response body bytes
     pub body: Vec<u8>,
 }
 
 impl HttpResponse {
+    /// Create new HTTP response with status code and body
     pub fn new(status_code: u16, body: Vec<u8>) -> Self {
         Self { status_code, body }
     }
@@ -64,6 +67,11 @@ pub struct ProductionNetworkLayer {
 }
 
 impl ProductionNetworkLayer {
+    /// Creates a new production network layer with the specified timeout.
+    ///
+    /// # Panics
+    /// Panics if HTTP client creation fails due to invalid configuration.
+    /// This should never happen with valid timeout and user agent values.
     pub fn new(timeout: Duration) -> Self {
         let client = reqwest::Client::builder()
             .timeout(timeout)

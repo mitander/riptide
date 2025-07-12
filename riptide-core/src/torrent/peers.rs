@@ -10,32 +10,48 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::task::JoinHandle;
 
+/// Type alias for peer connection storage
+type PeerConnections = Arc<RwLock<HashMap<SocketAddr, Arc<Mutex<PeerConnection>>>>>;
+/// Type alias for active task storage  
+type ActiveTasks = Arc<Mutex<HashMap<SocketAddr, JoinHandle<()>>>>;
+
 use super::peer_connection::PeerConnection;
 use super::protocol::types::PeerMessage;
-use super::streaming_upload_manager::{StreamingUploadConfig, StreamingUploadManager};
+use super::streaming_upload::{StreamingUpload, StreamingUploadConfig};
 use super::{InfoHash, PeerId, TorrentError};
 
 /// Connection status for peer tracking
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionStatus {
+    /// Establishing TCP connection
     Connecting,
+    /// Successfully connected and handshaken
     Connected,
+    /// Cleanly disconnected
     Disconnected,
+    /// Connection failed or was terminated due to error
     Failed,
 }
 
 /// Peer connection information
 #[derive(Debug, Clone)]
 pub struct PeerInfo {
+    /// Socket address of the peer
     pub address: SocketAddr,
+    /// Current connection status
     pub status: ConnectionStatus,
+    /// When the connection was established (if connected)
     pub connected_at: Option<Instant>,
+    /// Timestamp of last activity on this connection
     pub last_activity: Instant,
+    /// Total bytes downloaded from this peer
     pub bytes_downloaded: u64,
+    /// Total bytes uploaded to this peer
     pub bytes_uploaded: u64,
 }
 
 impl PeerInfo {
+    /// Creates new peer info for the given address.
     pub fn new(address: SocketAddr) -> Self {
         Self {
             address,
@@ -51,8 +67,11 @@ impl PeerInfo {
 /// Message sent from peer to manager
 #[derive(Debug)]
 pub struct PeerMessageEvent {
+    /// Address of the peer that sent the message
     pub peer_address: SocketAddr,
+    /// The BitTorrent protocol message received
     pub message: PeerMessage,
+    /// When this message was received
     pub received_at: Instant,
 }
 
@@ -136,7 +155,7 @@ pub trait PeerManager: Send + Sync {
     ///
     /// # Errors
     /// - `TorrentError::PeerConnectionError` - Configuration failed
-    async fn configure_upload_manager(
+    async fn configure_upload(
         &mut self,
         info_hash: InfoHash,
         piece_size: u64,
@@ -163,19 +182,19 @@ pub trait PeerManager: Send + Sync {
 /// Manages multiple BitTorrent peer connections with concurrent message handling.
 /// Provides connection pooling, automatic reconnection, and message routing.
 /// Uses streaming-optimized upload throttling to prioritize download bandwidth.
-pub struct TcpPeerManager {
+pub struct TcpPeers {
     _peer_id: PeerId,
-    connections: Arc<RwLock<HashMap<SocketAddr, Arc<Mutex<PeerConnection>>>>>,
+    connections: PeerConnections,
     peer_info: Arc<RwLock<HashMap<SocketAddr, PeerInfo>>>,
     message_receiver: Arc<Mutex<mpsc::Receiver<PeerMessageEvent>>>,
     message_sender: mpsc::Sender<PeerMessageEvent>,
-    active_tasks: Arc<Mutex<HashMap<SocketAddr, JoinHandle<()>>>>,
+    active_tasks: ActiveTasks,
     _next_connection_id: AtomicU32,
     max_connections: usize,
-    upload_manager: Arc<Mutex<StreamingUploadManager>>,
+    upload: Arc<Mutex<StreamingUpload>>,
 }
 
-impl TcpPeerManager {
+impl TcpPeers {
     /// Creates new network peer manager with specified peer ID and connection limit.
     ///
     /// Initializes connection pool and message routing infrastructure.
@@ -192,7 +211,7 @@ impl TcpPeerManager {
             active_tasks: Arc::new(Mutex::new(HashMap::new())),
             _next_connection_id: AtomicU32::new(1),
             max_connections,
-            upload_manager: Arc::new(Mutex::new(StreamingUploadManager::new())),
+            upload: Arc::new(Mutex::new(StreamingUpload::new())),
         }
     }
 
@@ -218,9 +237,7 @@ impl TcpPeerManager {
             active_tasks: Arc::new(Mutex::new(HashMap::new())),
             _next_connection_id: AtomicU32::new(1),
             max_connections,
-            upload_manager: Arc::new(Mutex::new(StreamingUploadManager::with_config(
-                upload_config,
-            ))),
+            upload: Arc::new(Mutex::new(StreamingUpload::with_config(upload_config))),
         }
     }
 
@@ -228,8 +245,8 @@ impl TcpPeerManager {
     ///
     /// Allows components to interact with upload throttling logic directly
     /// without unnecessary wrapper methods in the peer manager.
-    pub fn upload_manager(&self) -> Arc<Mutex<StreamingUploadManager>> {
-        Arc::clone(&self.upload_manager)
+    pub fn upload(&self) -> Arc<Mutex<StreamingUpload>> {
+        Arc::clone(&self.upload)
     }
 
     /// Starts background task to handle peer connection lifecycle.
@@ -240,7 +257,7 @@ impl TcpPeerManager {
         connection: Arc<Mutex<PeerConnection>>,
         message_sender: mpsc::Sender<PeerMessageEvent>,
         peer_info: Arc<RwLock<HashMap<SocketAddr, PeerInfo>>>,
-        upload_manager: Arc<Mutex<StreamingUploadManager>>,
+        upload: Arc<Mutex<StreamingUpload>>,
     ) -> JoinHandle<()> {
         let peer_info_clone = peer_info.clone();
 
@@ -255,7 +272,7 @@ impl TcpPeerManager {
                     Ok(message) => {
                         // Track download activity for reciprocity
                         if let PeerMessage::Piece { data, .. } = &message {
-                            let mut upload_mgr = upload_manager.lock().await;
+                            let mut upload_mgr = upload.lock().await;
                             upload_mgr.record_download_from_peer(address, data.len() as u64);
                         }
 
@@ -295,7 +312,7 @@ impl TcpPeerManager {
 
                         // Remove peer from upload manager
                         {
-                            let mut upload_mgr = upload_manager.lock().await;
+                            let mut upload_mgr = upload.lock().await;
                             upload_mgr.remove_peer(address);
                         }
                         break;
@@ -334,7 +351,7 @@ impl TcpPeerManager {
 }
 
 #[async_trait]
-impl PeerManager for TcpPeerManager {
+impl PeerManager for TcpPeers {
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -394,7 +411,7 @@ impl PeerManager for TcpPeerManager {
                 connection.clone(),
                 self.message_sender.clone(),
                 self.peer_info.clone(),
-                self.upload_manager.clone(),
+                self.upload.clone(),
             )
             .await;
 
@@ -434,8 +451,8 @@ impl PeerManager for TcpPeerManager {
 
         // Remove peer from upload manager
         {
-            let mut upload_manager = self.upload_manager.lock().await;
-            upload_manager.remove_peer(address);
+            let mut upload = self.upload.lock().await;
+            upload.remove_peer(address);
         }
 
         // Update peer info
@@ -486,8 +503,8 @@ impl PeerManager for TcpPeerManager {
 
                     // Record upload in upload manager and peer info
                     {
-                        let mut upload_manager = self.upload_manager.lock().await;
-                        upload_manager.record_upload_to_peer(peer_address, upload_bytes);
+                        let mut upload = self.upload.lock().await;
+                        upload.record_upload_to_peer(peer_address, upload_bytes);
                     }
                     {
                         let mut info_map = self.peer_info.write().await;
@@ -545,8 +562,8 @@ impl PeerManager for TcpPeerManager {
 
     async fn upload_stats(&self) -> (u64, u64) {
         // Use streaming upload manager for accurate throttled upload statistics
-        let upload_manager = self.upload_manager.lock().await;
-        upload_manager.upload_stats()
+        let upload = self.upload.lock().await;
+        upload.upload_stats()
     }
 
     async fn shutdown(&mut self) -> Result<(), TorrentError> {
@@ -571,14 +588,14 @@ impl PeerManager for TcpPeerManager {
         Ok(())
     }
 
-    async fn configure_upload_manager(
+    async fn configure_upload(
         &mut self,
         info_hash: InfoHash,
         piece_size: u64,
         total_bandwidth: u64,
     ) -> Result<(), TorrentError> {
-        let upload_manager = self.upload_manager();
-        let mut upload_mgr = upload_manager.lock().await;
+        let upload = self.upload();
+        let mut upload_mgr = upload.lock().await;
 
         upload_mgr.update_available_bandwidth(total_bandwidth);
         upload_mgr.update_streaming_position(info_hash, 0); // Start at beginning
@@ -597,37 +614,37 @@ impl PeerManager for TcpPeerManager {
         info_hash: InfoHash,
         byte_position: u64,
     ) -> Result<(), TorrentError> {
-        let upload_manager = self.upload_manager();
-        let mut upload_mgr = upload_manager.lock().await;
+        let upload = self.upload();
+        let mut upload_mgr = upload.lock().await;
         upload_mgr.update_streaming_position(info_hash, byte_position);
         Ok(())
     }
 }
 
 #[cfg(test)]
-mod peer_manager_tests {
+mod peers_tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     use super::*;
 
     #[tokio::test]
-    async fn test_network_peer_manager_creation() {
+    async fn test_network_peers_creation() {
         let peer_id = PeerId::generate();
-        let manager = TcpPeerManager::new(peer_id, 25);
+        let manager = TcpPeers::new(peer_id, 25);
 
         assert_eq!(manager.connection_count().await, 0);
         assert!(manager.connected_peers().await.is_empty());
     }
 
     #[tokio::test]
-    async fn test_network_peer_manager_default() {
-        let manager = TcpPeerManager::new_default();
+    async fn test_network_peers_default() {
+        let manager = TcpPeers::new_default();
         assert_eq!(manager.connection_count().await, 0);
     }
 
     #[tokio::test]
     async fn test_connect_to_nonexistent_peer() {
-        let mut manager = TcpPeerManager::new_default();
+        let mut manager = TcpPeers::new_default();
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0); // Port 0 should fail
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_id = PeerId::generate();
@@ -639,7 +656,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_connection_limit() {
-        let mut manager = TcpPeerManager::new(PeerId::generate(), 1); // Limit to 1 connection
+        let mut manager = TcpPeers::new(PeerId::generate(), 1); // Limit to 1 connection
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6882);
         let info_hash = InfoHash::new([1u8; 20]);
@@ -656,7 +673,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_disconnect_nonexistent_peer() {
-        let mut manager = TcpPeerManager::new_default();
+        let mut manager = TcpPeers::new_default();
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
 
         // Should not error when disconnecting non-existent peer
@@ -666,7 +683,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_send_message_to_nonexistent_peer() {
-        let mut manager = TcpPeerManager::new_default();
+        let mut manager = TcpPeers::new_default();
         let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let message = PeerMessage::Choke;
 
@@ -692,7 +709,7 @@ mod peer_manager_tests {
 
     #[tokio::test]
     async fn test_shutdown() {
-        let mut manager = TcpPeerManager::new_default();
+        let mut manager = TcpPeers::new_default();
 
         // Should succeed even with no connections
         let result = manager.shutdown().await;

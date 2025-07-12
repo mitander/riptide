@@ -13,21 +13,27 @@ use crate::server::AppState;
 /// Engine statistics for JSON API responses.
 #[derive(Serialize)]
 pub struct Stats {
+    /// Total number of torrents being managed
     pub total_torrents: u32,
+    /// Number of torrents currently downloading
     pub active_downloads: u32,
+    /// Current upload speed in MB/s
     pub upload_speed: f64,
+    /// Current download speed in MB/s
     pub download_speed: f64,
 }
 
 /// Query parameters for adding a torrent via magnet link.
 #[derive(Deserialize)]
 pub struct AddTorrentQuery {
+    /// Magnet link URL to add
     pub magnet: String,
 }
 
 /// Request body for initiating a torrent download.
 #[derive(Deserialize)]
 pub struct DownloadRequest {
+    /// Magnet link for the torrent to download
     pub magnet_link: String,
 }
 
@@ -62,11 +68,14 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 ///
 /// Provides detailed information about each torrent including progress,
 /// download status, and metadata.
+///
+/// # Panics
+/// Panics if engine active sessions cannot be retrieved
 pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
     let sessions = state.engine().active_sessions().await.unwrap();
 
     // Get movie manager data once outside the loop
-    let movie_titles: HashMap<_, _> = if let Ok(movie_manager) = state.file_manager() {
+    let movie_titles: HashMap<_, _> = if let Ok(movie_manager) = state.file_library() {
         let manager = movie_manager.read().await;
         manager
             .all_files()
@@ -135,6 +144,9 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
 ///
 /// Accepts a magnet link and adds the torrent to the engine for downloading.
 /// Returns the torrent's info hash on success.
+///
+/// # Errors
+/// Returns `StatusCode::BAD_REQUEST` if magnet link is empty
 pub async fn api_add_torrent(
     State(state): State<AppState>,
     Query(params): Query<AddTorrentQuery>,
@@ -218,7 +230,11 @@ pub async fn api_search(
     }
 }
 
-/// Enhanced movie search API with fuzzy matching and rich metadata
+/// Enhanced movie search API with fuzzy matching and rich metadata.
+///
+/// Provides advanced search capabilities with fuzzy string matching,
+/// configurable similarity thresholds, and rich movie metadata including
+/// IMDB information, ratings, and multiple torrent options per movie.
 pub async fn api_search_movies(
     State(state): State<AppState>,
     Query(params): Query<MovieSearchQuery>,
@@ -321,7 +337,7 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
     let mut local_info_hashes = HashSet::new();
 
     // Add local movies to library first (they have better metadata)
-    if let Ok(movie_manager) = state.file_manager() {
+    if let Ok(movie_manager) = state.file_library() {
         let manager = movie_manager.read().await;
         for movie in manager.all_files() {
             local_info_hashes.insert(movie.info_hash);
@@ -561,6 +577,7 @@ pub async fn api_seek_torrent(
 /// Estimates video duration based on filename and file size.
 ///
 /// This is a rough heuristic - in production you'd want proper metadata extraction.
+/// Uses common video quality indicators to estimate bitrate and calculate duration.
 fn estimate_video_duration(filename: &str, size_bytes: u64) -> f64 {
     // Default assumptions for video bitrates and duration
     let size_gb = size_bytes as f64 / 1_073_741_824.0;
@@ -582,6 +599,9 @@ fn estimate_video_duration(filename: &str, size_bytes: u64) -> f64 {
 }
 
 /// Calculates estimated time to completion for a download.
+///
+/// Returns a human-readable ETA string (e.g. "5m", "2h", "1d") based on
+/// current download progress and speed. Returns None if download is complete.
 fn calculate_eta(progress: f32, download_speed_bps: u64, total_size: u64) -> Option<String> {
     if progress >= 1.0 || download_speed_bps == 0 {
         return None;

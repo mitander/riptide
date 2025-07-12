@@ -6,19 +6,25 @@ use async_trait::async_trait;
 
 use crate::torrent::{InfoHash, TorrentError};
 
-/// Torrent file metadata
 #[derive(Debug, Clone, PartialEq)]
 /// Complete metadata extracted from a torrent file.
 ///
 /// Contains all information needed to download a torrent including
 /// piece hashes, file structure, and tracker URLs.
 pub struct TorrentMetadata {
+    /// Unique identifier derived from the info dictionary hash
     pub info_hash: InfoHash,
+    /// Display name of the torrent content
     pub name: String,
+    /// Size of each piece in bytes (typically power of 2)
     pub piece_length: u32,
+    /// SHA-1 hashes for each piece in the torrent
     pub piece_hashes: Vec<[u8; 20]>,
+    /// Total size of all files in bytes
     pub total_length: u64,
+    /// List of files contained in the torrent
     pub files: Vec<TorrentFile>,
+    /// List of tracker announce URLs
     pub announce_urls: Vec<String>,
 }
 
@@ -28,7 +34,9 @@ pub struct TorrentMetadata {
 /// relative path components and byte length.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TorrentFile {
+    /// Path components forming the relative file path
     pub path: Vec<String>,
+    /// Size of the file in bytes
     pub length: u64,
 }
 
@@ -38,8 +46,11 @@ pub struct TorrentFile {
 /// Contains info hash and optional display name and tracker URLs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MagnetLink {
+    /// Unique identifier for the torrent content
     pub info_hash: InfoHash,
+    /// Optional human-readable name for the torrent
     pub display_name: Option<String>,
+    /// List of tracker URLs for peer discovery
     pub trackers: Vec<String>,
 }
 

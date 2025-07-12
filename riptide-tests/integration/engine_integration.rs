@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use riptide_core::config::RiptideConfig;
-    use riptide_core::engine::{MockPeerManager, MockTrackerManager, spawn_torrent_engine};
+    use riptide_core::engine::{MockPeers, MockTracker, spawn_torrent_engine};
     use riptide_core::torrent::{InfoHash, TorrentError};
     use sha1::{Digest, Sha1};
 
@@ -24,18 +24,18 @@ mod tests {
     #[tokio::test]
     async fn test_end_to_end_seeking_functionality() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
 
         // Set up mock peers for the tracker manager
         let mock_peers = vec![
             "127.0.0.1:8080".parse().unwrap(),
             "127.0.0.1:8081".parse().unwrap(),
         ];
-        tracker_manager.configure_mock_peers(mock_peers);
+        tracker.configure_mock_peers(mock_peers);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create test torrent metadata with enough pieces for meaningful seeking
         let piece_count = 20;
@@ -116,12 +116,12 @@ mod tests {
     #[tokio::test]
     async fn test_adaptive_buffering_under_different_conditions() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
-        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
+        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create test torrent
         let piece_count = 50;
@@ -182,12 +182,12 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_concurrent_streams() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
-        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
+        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create multiple test torrents
         let torrents = vec![

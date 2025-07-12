@@ -8,9 +8,12 @@ use std::time::Duration;
 /// Provides controllable network latency, packet loss, and bandwidth limits
 /// for testing BitTorrent behavior under different network conditions.
 pub struct NetworkSimulator {
+    /// Range of latency values in milliseconds
     latency: Range<u64>,
+    /// Packet loss probability (0.0 to 1.0)
     packet_loss: f32,
-    bandwidth_limit: u64, // bytes per second
+    /// Bandwidth limit in bytes per second
+    bandwidth_limit: u64,
 }
 
 impl Default for NetworkSimulator {
@@ -62,8 +65,11 @@ impl NetworkSimulator {
 /// Allows fine-tuning of latency ranges, packet loss rates, and bandwidth
 /// limits before creating the network simulator.
 pub struct NetworkSimulatorBuilder {
+    /// Range of latency values in milliseconds
     latency: Range<u64>,
+    /// Packet loss probability (0.0 to 1.0)
     packet_loss: f32,
+    /// Bandwidth limit in bytes per second
     bandwidth_limit: u64,
 }
 

@@ -132,30 +132,45 @@ impl NamingChecker {
 
     /// Check for banned type suffixes and verbose naming
     fn check_type_naming(&mut self, file_path: &Path, content: &str) {
-        let banned_suffixes = [("Factory", "Use Builder pattern or simple new() function")];
+        let banned_suffixes = [
+            ("Factory", "Use Builder pattern or simple new() function"),
+            (
+                "Service",
+                "Usually adds no semantic value - prefer direct naming",
+            ),
+        ];
 
-        let verbose_suffixes = [
-            ("Manager", "Name what it IS, not its role"),
-            ("Service", "Name what it IS, not its role"),
-            ("Handler", "Name what it IS, not its role"),
-            ("Processor", "Name what it IS, not its role"),
-            ("Controller", "Name what it IS, not its role"),
+        // Suffixes that are verbose for structs but acceptable for traits when they add clarity
+        let struct_verbose_suffixes = [
+            ("Manager", "For structs, name what it IS, not its role"),
+            ("Handler", "Be more specific about what you're handling"),
+            ("Processor", "Be more specific about what you're processing"),
+            (
+                "Controller",
+                "Be more specific about what you're controlling",
+            ),
         ];
 
         for (line_num, line) in content.lines().enumerate() {
             let trimmed = line.trim();
 
-            if trimmed.starts_with("pub struct ") || trimmed.starts_with("struct ") {
-                // Extract struct name for pattern matching
-                let struct_name = if let Some(name_part) = trimmed.split_whitespace().nth(2) {
+            // Check banned suffixes for all types
+            if trimmed.starts_with("pub struct ")
+                || trimmed.starts_with("struct ")
+                || trimmed.starts_with("pub enum ")
+                || trimmed.starts_with("enum ")
+                || trimmed.starts_with("pub trait ")
+                || trimmed.starts_with("trait ")
+            {
+                let type_name = if let Some(name_part) = trimmed.split_whitespace().nth(2) {
                     name_part.split('{').next().unwrap_or("").trim()
                 } else {
                     continue;
                 };
 
-                // Check for banned suffixes
+                // Check for banned suffixes (apply to all types)
                 for &(suffix, message) in &banned_suffixes {
-                    if struct_name.ends_with(suffix) {
+                    if type_name.ends_with(suffix) {
                         self.violations.push(NamingViolation::new(
                             &file_path.display().to_string(),
                             line_num + 1,
@@ -165,15 +180,21 @@ impl NamingChecker {
                     }
                 }
 
-                // Check for verbose suffixes
-                for &(suffix, message) in &verbose_suffixes {
-                    if struct_name.ends_with(suffix) {
-                        self.violations.push(NamingViolation::new(
-                            &file_path.display().to_string(),
-                            line_num + 1,
-                            "VERBOSE_TYPE_NAME",
-                            &format!("Type uses verbose '{suffix}' suffix. {message}"),
-                        ));
+                // Check for verbose suffixes (only for structs and enums, not traits)
+                if trimmed.starts_with("pub struct ")
+                    || trimmed.starts_with("struct ")
+                    || trimmed.starts_with("pub enum ")
+                    || trimmed.starts_with("enum ")
+                {
+                    for &(suffix, message) in &struct_verbose_suffixes {
+                        if type_name.ends_with(suffix) {
+                            self.violations.push(NamingViolation::new(
+                                &file_path.display().to_string(),
+                                line_num + 1,
+                                "VERBOSE_TYPE_SUFFIX",
+                                &format!("Type uses verbose '{suffix}' suffix. {message}"),
+                            ));
+                        }
                     }
                 }
             }
@@ -343,6 +364,7 @@ impl SomeStruct {
     #[test]
     fn test_banned_type_suffixes() {
         let mut checker = NamingChecker::new();
+
         let test_code = r#"
 pub struct PeerConnectionFactory {
     // fields
@@ -356,8 +378,12 @@ pub struct FileLibraryManager {
     // fields
 }
 
-pub struct ConfigBuilder {
-    // This is OK
+pub trait PeerManager {
+    // This should be allowed
+}
+
+pub trait TrackerManager {
+    // This should be allowed
 }
 
 struct PrivateFactory {
@@ -366,10 +392,11 @@ struct PrivateFactory {
 "#;
 
         checker.check_type_naming(Path::new("test.rs"), test_code);
-        // Should find: Factory (2), Service (1), Manager (1) = 4 violations
+        // Should find: Factory (2), Service (1), Manager struct (1) = 4 violations
+        // But NOT Manager traits (those are allowed)
         assert_eq!(checker.violations.len(), 4);
 
-        // Check specific violation types
+        // Check for specific violations
         assert!(
             checker
                 .violations
@@ -386,7 +413,21 @@ struct PrivateFactory {
             checker
                 .violations
                 .iter()
-                .any(|v| v.message.contains("Manager"))
+                .any(|v| v.message.contains("FileLibraryManager"))
+        );
+
+        // Ensure trait managers are NOT flagged
+        assert!(
+            !checker
+                .violations
+                .iter()
+                .any(|v| v.message.contains("PeerManager"))
+        );
+        assert!(
+            !checker
+                .violations
+                .iter()
+                .any(|v| v.message.contains("TrackerManager"))
         );
     }
 

@@ -13,8 +13,11 @@ use tokio::net::{TcpListener, TcpStream};
 
 /// BitTorrent peer server that serves pieces from a PieceStore
 pub struct BitTorrentPeerServer<P: PieceStore> {
+    /// Info hash of the torrent being served
     info_hash: InfoHash,
+    /// Storage backend containing piece data
     piece_store: Arc<P>,
+    /// Network address to bind the server socket
     listen_address: SocketAddr,
 }
 

@@ -25,6 +25,7 @@ chrono = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+bytes = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
@@ -36,7 +37,7 @@ hex = { workspace = true }
 urlencoding = { workspace = true }
 
 # Internal dependencies
-riptide-core = { workspace = true }
+riptide-core = { workspace = true, features = ["test-utils"] }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

@@ -10,7 +10,7 @@ use bytes::Bytes;
 use tokio::sync::RwLock;
 
 use crate::torrent::tracker::{
-    AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, TrackerManagement,
+    AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, TrackerManager,
 };
 use crate::torrent::{
     InfoHash, PeerId, PeerInfo, PeerManager, PeerMessage, PeerMessageEvent, TorrentError,
@@ -20,12 +20,16 @@ use crate::torrent::{
 const MOCK_NETWORK_DELAY_MS: u64 = 50;
 const MOCK_WAIT_PERIOD_MS: u64 = 100;
 
+// Type aliases for complex types
+type PeerMap = Arc<RwLock<HashMap<InfoHash, Vec<SocketAddr>>>>;
+type RequestQueue = Arc<RwLock<Vec<(SocketAddr, PeerMessage)>>>;
+
 /// Mock peer manager for testing.
 #[derive(Debug, Clone)]
-pub struct MockPeerManager {
-    connected_peers: Arc<RwLock<HashMap<InfoHash, Vec<SocketAddr>>>>,
+pub struct MockPeers {
+    connected_peers: PeerMap,
     should_fail_connection: bool,
-    pending_requests: Arc<RwLock<Vec<(SocketAddr, PeerMessage)>>>,
+    pending_requests: RequestQueue,
     simulate_piece_data: bool,
     /// Track total bytes uploaded to peers
     bytes_uploaded: Arc<RwLock<u64>>,
@@ -33,7 +37,7 @@ pub struct MockPeerManager {
     upload_start_time: Instant,
 }
 
-impl MockPeerManager {
+impl MockPeers {
     /// Creates a new mock peer manager.
     pub fn new() -> Self {
         Self {
@@ -86,14 +90,14 @@ impl MockPeerManager {
     }
 }
 
-impl Default for MockPeerManager {
+impl Default for MockPeers {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl PeerManager for MockPeerManager {
+impl PeerManager for MockPeers {
     async fn connect_peer(
         &mut self,
         address: SocketAddr,
@@ -207,7 +211,7 @@ impl PeerManager for MockPeerManager {
         Ok(())
     }
 
-    async fn configure_upload_manager(
+    async fn configure_upload(
         &mut self,
         _info_hash: InfoHash,
         _piece_size: u64,
@@ -227,13 +231,17 @@ impl PeerManager for MockPeerManager {
 
 /// Mock tracker manager for testing.
 #[derive(Debug, Clone)]
-pub struct MockTrackerManager {
+pub struct MockTracker {
     should_fail_announce: bool,
     mock_peers: Vec<SocketAddr>,
 }
 
-impl MockTrackerManager {
+impl MockTracker {
     /// Creates a new mock tracker manager.
+    ///
+    /// # Panics
+    /// Panics if hardcoded test socket addresses fail to parse.
+    /// This is acceptable in test code as it indicates a programming error.
     pub fn new() -> Self {
         Self {
             should_fail_announce: false,
@@ -258,14 +266,14 @@ impl MockTrackerManager {
     }
 }
 
-impl Default for MockTrackerManager {
+impl Default for MockTracker {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl TrackerManagement for MockTrackerManager {
+impl TrackerManager for MockTracker {
     async fn announce_to_trackers(
         &mut self,
         tracker_urls: &[String],
@@ -308,8 +316,8 @@ mod tests {
     use crate::torrent::tracker::AnnounceEvent;
 
     #[tokio::test]
-    async fn test_mock_peer_manager_basic_operations() {
-        let mut manager = MockPeerManager::new();
+    async fn test_mock_peers_basic_operations() {
+        let mut manager = MockPeers::new();
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_addr: SocketAddr = "127.0.0.1:6881".parse().unwrap();
         let peer_id = PeerId::generate();
@@ -328,8 +336,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mock_peer_manager_connection_failure() {
-        let mut manager = MockPeerManager::new_with_connection_failure();
+    async fn test_mock_peers_connection_failure() {
+        let mut manager = MockPeers::new_with_connection_failure();
         let info_hash = InfoHash::new([1u8; 20]);
         let peer_addr: SocketAddr = "127.0.0.1:6881".parse().unwrap();
         let peer_id = PeerId::generate();
@@ -340,8 +348,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mock_tracker_manager_announce() {
-        let mut manager = MockTrackerManager::new();
+    async fn test_mock_tracker_announce() {
+        let mut tracker = MockTracker::new();
         let request = AnnounceRequest {
             info_hash: InfoHash::new([1u8; 20]),
             peer_id: *PeerId::generate().as_bytes(),
@@ -352,7 +360,7 @@ mod tests {
             event: AnnounceEvent::Started,
         };
 
-        let result = manager
+        let result = tracker
             .announce_to_trackers(&["http://test-tracker.com/announce".to_string()], request)
             .await;
         assert!(result.is_ok());
@@ -363,8 +371,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mock_tracker_manager_announce_failure() {
-        let mut manager = MockTrackerManager::new_with_announce_failure();
+    async fn test_mock_tracker_announce_failure() {
+        let mut tracker = MockTracker::new_with_announce_failure();
         let request = AnnounceRequest {
             info_hash: InfoHash::new([1u8; 20]),
             peer_id: *PeerId::generate().as_bytes(),
@@ -375,7 +383,7 @@ mod tests {
             event: AnnounceEvent::Started,
         };
 
-        let result = manager
+        let result = tracker
             .announce_to_trackers(&["http://test-tracker.com/announce".to_string()], request)
             .await;
         assert!(result.is_err());

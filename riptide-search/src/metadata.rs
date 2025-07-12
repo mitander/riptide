@@ -15,24 +15,34 @@ pub struct ImdbMetadata {
 /// Response from OMDb API for movie/show details.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OmdbResponse {
+    /// Title of the media item
     #[serde(rename = "Title")]
     pub title: Option<String>,
+    /// Release year as string
     #[serde(rename = "Year")]
     pub year: Option<String>,
+    /// Media type (movie, series, etc.)
     #[serde(rename = "Type")]
     pub media_type: Option<String>,
+    /// Plot summary or description
     #[serde(rename = "Plot")]
     pub plot: Option<String>,
+    /// Genre classification
     #[serde(rename = "Genre")]
     pub genre: Option<String>,
+    /// IMDb rating as string
     #[serde(rename = "imdbRating")]
     pub imdb_rating: Option<String>,
+    /// URL to poster image
     #[serde(rename = "Poster")]
     pub poster: Option<String>,
+    /// IMDb identifier
     #[serde(rename = "imdbID")]
     pub imdb_id: Option<String>,
+    /// API response status
     #[serde(rename = "Response")]
     pub response: Option<String>,
+    /// Error message if request failed
     #[serde(rename = "Error")]
     pub error: Option<String>,
 }
@@ -40,16 +50,27 @@ pub struct OmdbResponse {
 /// Enhanced media metadata with IMDb information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaMetadata {
+    /// Title of the media item
     pub title: String,
+    /// Release year
     pub year: Option<u16>,
+    /// Type classification (movie, TV show, etc.)
     pub media_type: MediaType,
+    /// IMDb identifier
     pub imdb_id: Option<String>,
+    /// URL to poster image
     pub poster_url: Option<String>,
+    /// Plot summary or description
     pub plot: Option<String>,
+    /// Genre classification
     pub genre: Option<String>,
+    /// Rating score (typically 0-10)
     pub rating: Option<f32>,
+    /// Director name
     pub director: Option<String>,
+    /// List of main cast members
     pub cast: Vec<String>,
+    /// Runtime duration as string
     pub runtime: Option<String>,
 }
 

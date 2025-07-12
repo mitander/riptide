@@ -16,9 +16,7 @@ use riptide_core::torrent::enhanced_peer_connection::EnhancedPeerConnection;
 use riptide_core::torrent::error_recovery::ErrorRecoveryManager;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
 use riptide_core::torrent::protocol::types::PeerId;
-use riptide_core::torrent::{
-    PieceDownloader, PieceIndex, PieceStatus, TcpPeerManager, TorrentError,
-};
+use riptide_core::torrent::{PieceDownloader, PieceIndex, PieceStatus, TcpPeers, TorrentError};
 use sha1::{Digest, Sha1};
 use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -62,8 +60,8 @@ fn create_test_torrent_metadata() -> TorrentMetadata {
 
 /// Test fixture for integration tests with real BitTorrent components
 pub struct BitTorrentTestHarness {
-    pub downloader: PieceDownloader<FileStorage, TcpPeerManager>,
-    pub peer_manager: Arc<RwLock<TcpPeerManager>>,
+    pub downloader: PieceDownloader<FileStorage, TcpPeers>,
+    pub peers: Arc<RwLock<TcpPeers>>,
     pub test_servers: Vec<TestPeerServer>,
     pub metadata: TorrentMetadata,
     pub temp_dir: tempfile::TempDir,
@@ -93,19 +91,15 @@ impl BitTorrentTestHarness {
 
         let metadata = create_test_torrent_metadata();
         let peer_id = PeerId::generate();
-        let peer_manager = Arc::new(RwLock::new(TcpPeerManager::new(peer_id, 50)));
+        let peers = Arc::new(RwLock::new(TcpPeers::new(peer_id, 50)));
         let downloader_peer_id = PeerId::generate();
 
-        let downloader = PieceDownloader::new(
-            metadata.clone(),
-            storage,
-            peer_manager.clone(),
-            downloader_peer_id,
-        )?;
+        let downloader =
+            PieceDownloader::new(metadata.clone(), storage, peers.clone(), downloader_peer_id)?;
 
         Ok(Self {
             downloader,
-            peer_manager,
+            peers,
             test_servers: Vec::new(),
             metadata,
             temp_dir,

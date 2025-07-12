@@ -7,9 +7,13 @@ use std::time::Duration;
 /// Simulates BitTorrent peer behavior with configurable upload speed,
 /// reliability, and latency for testing download scenarios.
 pub struct MockPeer {
+    /// Unique identifier for this peer
     peer_id: String,
-    upload_speed: u64, // bytes per second
-    reliability: f32,  // 0.0 to 1.0
+    /// Upload bandwidth capacity in bytes per second
+    upload_speed: u64,
+    /// Connection reliability (0.0 = always fails, 1.0 = never fails)
+    reliability: f32,
+    /// Network latency for this peer
     latency: Duration,
 }
 

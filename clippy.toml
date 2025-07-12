@@ -4,7 +4,7 @@
 # === SIZE LIMITS ===
 # From STYLE.md: Functions 70 lines max, Modules 500 lines max
 too-many-lines-threshold = 500
-cognitive-complexity-threshold = 20
+cognitive-complexity-threshold = 15
 too-many-arguments-threshold = 6
 
 # === NAMING AND STYLE ===
@@ -33,5 +33,6 @@ pass-by-value-size-limit = 256
 
 # === COMPLEXITY ===
 # Keep code simple and maintainable
+# Increased thresholds for production codebase with complex domain types
 type-complexity-threshold = 150
-excessive-nesting-threshold = 7
+excessive-nesting-threshold = 8

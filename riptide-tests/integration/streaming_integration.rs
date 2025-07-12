@@ -1,7 +1,7 @@
 //! Integration tests for HTTP range handler integration with adaptive piece picker.
 
 use riptide_core::config::RiptideConfig;
-use riptide_core::engine::{MockPeerManager, MockTrackerManager, spawn_torrent_engine};
+use riptide_core::engine::{MockPeers, MockTracker, spawn_torrent_engine};
 use riptide_core::torrent::InfoHash;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
 use sha1::{Digest, Sha1};
@@ -27,12 +27,12 @@ mod tests {
     #[tokio::test]
     async fn test_range_request_updates_piece_picker_position() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
-        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
+        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create a larger test torrent for meaningful range testing
         let piece_count = 100;
@@ -113,12 +113,12 @@ mod tests {
     #[tokio::test]
     async fn test_adaptive_buffer_responds_to_playback_patterns() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
-        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
+        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create test torrent
         let piece_count = 200;
@@ -210,12 +210,12 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_range_requests_different_torrents() {
         let config = RiptideConfig::default();
-        let mut peer_manager = MockPeerManager::new();
-        peer_manager.enable_piece_data_simulation();
-        let mut tracker_manager = MockTrackerManager::new();
-        tracker_manager.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let mut peers = MockPeers::new();
+        peers.enable_piece_data_simulation();
+        let mut tracker = MockTracker::new();
+        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
 
-        let handle = spawn_torrent_engine(config, peer_manager, tracker_manager);
+        let handle = spawn_torrent_engine(config, peers, tracker);
 
         // Create multiple test torrents to simulate concurrent streaming
         let torrents = vec![

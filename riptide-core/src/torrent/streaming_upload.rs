@@ -94,7 +94,7 @@ pub struct UploadRequest {
 ///
 /// Prioritizes download bandwidth while maintaining enough upload activity
 /// to ensure good peer relationships and connection stability.
-pub struct StreamingUploadManager {
+pub struct StreamingUpload {
     config: StreamingUploadConfig,
     peer_stats: HashMap<SocketAddr, PeerUploadStats>,
     available_bandwidth_bps: u64,
@@ -104,7 +104,7 @@ pub struct StreamingUploadManager {
     upload_start_time: Instant,
 }
 
-impl StreamingUploadManager {
+impl StreamingUpload {
     /// Creates new streaming upload manager with default configuration.
     pub fn new() -> Self {
         Self::with_config(StreamingUploadConfig::default())
@@ -322,7 +322,7 @@ impl StreamingUploadManager {
     }
 }
 
-impl Default for StreamingUploadManager {
+impl Default for StreamingUpload {
     fn default() -> Self {
         Self::new()
     }
@@ -335,23 +335,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_streaming_upload_manager_creation() {
-        let manager = StreamingUploadManager::new();
-        let (total_uploaded, upload_speed) = manager.upload_stats();
+    fn test_streaming_upload_creation() {
+        let upload = StreamingUpload::new();
+        let (total_uploaded, upload_speed) = upload.upload_stats();
         assert_eq!(total_uploaded, 0);
         assert_eq!(upload_speed, 0);
     }
 
     #[test]
     fn test_reciprocity_tracking() {
-        let mut manager = StreamingUploadManager::new();
+        let mut upload = StreamingUpload::new();
         let peer_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
 
         // Record some activity
-        manager.record_download_from_peer(peer_addr, 1000);
-        manager.record_upload_to_peer(peer_addr, 500);
+        upload.record_download_from_peer(peer_addr, 1000);
+        upload.record_upload_to_peer(peer_addr, 500);
 
-        let (uploaded, downloaded, ratio) = manager.peer_upload_stats(peer_addr).unwrap();
+        let (uploaded, downloaded, ratio) = upload.peer_upload_stats(peer_addr).unwrap();
         assert_eq!(uploaded, 500);
         assert_eq!(downloaded, 1000);
         assert_eq!(ratio, 2.0); // Downloaded 2x what we uploaded
@@ -359,24 +359,24 @@ mod tests {
 
     #[test]
     fn test_streaming_position_filtering() {
-        let mut manager = StreamingUploadManager::new();
+        let mut upload = StreamingUpload::new();
         let peer_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6881);
         let info_hash = InfoHash::new([1u8; 20]);
 
         // Set streaming position to piece 10 (byte 10240 with 1024-byte pieces)
-        manager.update_streaming_position(info_hash, 10240);
+        upload.update_streaming_position(info_hash, 10240);
 
         // Make peer worthy by recording download activity
-        manager.record_download_from_peer(peer_addr, 1000);
+        upload.record_download_from_peer(peer_addr, 1000);
 
         // Should accept upload for piece 5 (behind streaming position)
         let accepted =
-            manager.queue_upload_request(peer_addr, info_hash, PieceIndex::new(5), 0, 1024, 1024);
+            upload.queue_upload_request(peer_addr, info_hash, PieceIndex::new(5), 0, 1024, 1024);
         assert!(accepted);
 
         // Should reject upload for piece 15 (ahead of streaming position)
         let rejected =
-            manager.queue_upload_request(peer_addr, info_hash, PieceIndex::new(15), 0, 1024, 1024);
+            upload.queue_upload_request(peer_addr, info_hash, PieceIndex::new(15), 0, 1024, 1024);
         assert!(!rejected);
     }
 
@@ -386,15 +386,15 @@ mod tests {
             max_upload_bandwidth_ratio: 0.1, // 10% of bandwidth
             ..Default::default()
         };
-        let mut manager = StreamingUploadManager::with_config(config);
-        manager.update_available_bandwidth(1000); // 1KB/s total, so 100 B/s for uploads
+        let mut upload = StreamingUpload::with_config(config);
+        upload.update_available_bandwidth(1000); // 1KB/s total, so 100 B/s for uploads
 
         // After uploading more than the limit, should throttle
-        manager.total_uploaded_bytes = 200; // Simulate past uploads
-        manager.upload_start_time = Instant::now() - Duration::from_secs(1); // 1 second ago
+        upload.total_uploaded_bytes = 200; // Simulate past uploads
+        upload.upload_start_time = Instant::now() - Duration::from_secs(1); // 1 second ago
 
         // Current speed is 200 B/s, which exceeds 100 B/s limit
-        let request = manager.next_upload_request();
+        let request = upload.next_upload_request();
         assert!(request.is_none()); // Should be throttled
     }
 }

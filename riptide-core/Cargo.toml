@@ -10,7 +10,7 @@ repository = "https://github.com/riptide-org/riptide"
 [features]
 default = []
 simulation = ["rand_chacha"]
-test-utils = []
+test-utils = ["tempfile"]
 
 [dependencies]
 # Workspace dependencies
@@ -44,6 +44,9 @@ clap = { workspace = true }
 
 # Optional simulation dependencies
 rand_chacha = { workspace = true, optional = true }
+
+# Optional test utilities dependencies
+tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }

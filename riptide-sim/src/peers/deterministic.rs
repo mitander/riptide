@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use riptide_core::torrent::{
     ConnectionStatus, InfoHash, PeerId, PeerInfo, PeerManager, PeerMessage, PeerMessageEvent,
     PieceIndex, PieceStore, TorrentError,
@@ -19,17 +20,17 @@ use tokio::time::sleep;
 /// Configuration for deterministic peer simulation.
 #[derive(Debug, Clone)]
 pub struct DeterministicConfig {
-    /// Base delay for message responses in milliseconds.
+    /// Base delay for message responses in milliseconds
     pub message_delay_ms: u64,
-    /// Probability of connection failure (0.0 to 1.0).
+    /// Probability of connection failure (0.0 to 1.0)
     pub connection_failure_rate: f64,
-    /// Probability of message loss (0.0 to 1.0).
+    /// Probability of message loss (0.0 to 1.0)
     pub message_loss_rate: f64,
-    /// Maximum number of simultaneous connections.
+    /// Maximum number of simultaneous connections
     pub max_connections: usize,
-    /// Upload rate per peer in bytes per second.
+    /// Upload rate per peer in bytes per second
     pub upload_rate_bps: u64,
-    /// Random seed for deterministic behavior.
+    /// Random seed for deterministic behavior
     pub seed: u64,
 }
 
@@ -88,41 +89,68 @@ impl DeterministicConfig {
 /// - Performance testing with controlled network conditions
 /// - Edge case testing with failure injection
 pub struct DeterministicPeers<P: PieceStore> {
+    /// Configuration parameters for simulation behavior
     config: DeterministicConfig,
+    /// Storage backend for piece data
     piece_store: Arc<P>,
+    /// Active simulated peers indexed by address
     peers: Arc<RwLock<HashMap<SocketAddr, SimulatedPeer>>>,
+    /// Channel for sending peer message events
     message_sender: mpsc::UnboundedSender<PeerMessageEvent>,
+    /// Channel for receiving peer message events
     message_receiver: Arc<Mutex<mpsc::UnboundedReceiver<PeerMessageEvent>>>,
+    /// Simulation statistics and metrics
     stats: Arc<RwLock<SimulationStats>>,
-    rng_state: Arc<Mutex<u64>>, // Simple LCG for deterministic randomness
+    /// RNG state for deterministic random behavior
+    rng_state: Arc<Mutex<u64>>,
+    /// Counter for generating unique peer IDs
     next_peer_id: Arc<Mutex<u32>>,
 }
 
 /// Simulated peer for deterministic testing.
 #[derive(Debug, Clone)]
 struct SimulatedPeer {
+    /// Network address of this peer
     address: SocketAddr,
+    /// Info hash of the torrent this peer serves
     info_hash: InfoHash,
+    /// Unique identifier for this peer
     peer_id: PeerId,
+    /// Current connection status
     status: ConnectionStatus,
+    /// Timestamp when connection was established
     connected_at: Option<Instant>,
+    /// Last time this peer was active
     last_activity: Instant,
+    /// Bitfield of which pieces this peer has available
     available_pieces: Vec<bool>,
+    /// Upload rate limit in bytes per second (for future bandwidth throttling)
+    #[allow(dead_code)]
     upload_rate_bps: u64,
+    /// Total bytes downloaded from this peer
     bytes_downloaded: u64,
+    /// Total bytes uploaded to this peer
     bytes_uploaded: u64,
 }
 
 /// Statistics for deterministic simulation tracking.
 #[derive(Debug, Default, Clone)]
 pub struct SimulationStats {
+    /// Total number of connection attempts made
     pub connections_attempted: u64,
+    /// Number of successful connections established
     pub connections_successful: u64,
+    /// Number of connection attempts that failed
     pub connections_failed: u64,
+    /// Total protocol messages sent
     pub messages_sent: u64,
+    /// Number of messages lost due to network simulation
     pub messages_lost: u64,
+    /// Total pieces served to peers
     pub pieces_served: u64,
+    /// Total bytes served to peers
     pub bytes_served: u64,
+    /// Timestamp when simulation began
     pub simulation_start: Option<Instant>,
 }
 
@@ -297,7 +325,7 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
             let mut stats = self.stats.write().await;
             stats.connections_failed += 1;
             return Err(TorrentError::PeerConnectionError {
-                reason: format!("Simulated connection failure for {}", peer_address),
+                reason: format!("Simulated connection failure for {peer_address}"),
             });
         }
 
@@ -347,16 +375,107 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
         // Simulate message delay
         sleep(self.message_delay()).await;
 
-        // Update peer activity
+        // Update peer activity and log with peer identification
         {
             let mut peers = self.peers.write().await;
             if let Some(peer) = peers.get_mut(&peer_address) {
                 peer.update_activity();
+                tracing::trace!(
+                    "Updated activity for peer {} (id: {:?})",
+                    peer_address,
+                    peer.peer_id
+                );
             }
         }
 
         // Process specific message types
         match message {
+            PeerMessage::Request {
+                piece_index,
+                offset,
+                length,
+            } => {
+                // Get piece data from piece store - use the peer's info_hash
+                let peer_info_hash = {
+                    let peers = self.peers.read().await;
+                    peers.get(&peer_address).map(|p| p.info_hash)
+                };
+
+                if let Some(info_hash) = peer_info_hash {
+                    // Check if peer has the requested piece before serving
+                    let peer_has_piece = {
+                        let peers = self.peers.read().await;
+                        peers
+                            .get(&peer_address)
+                            .map(|p| p.has_piece(piece_index))
+                            .unwrap_or(false)
+                    };
+
+                    if !peer_has_piece {
+                        tracing::debug!(
+                            "Peer {} does not have piece {}, ignoring request",
+                            peer_address,
+                            piece_index
+                        );
+                        return Ok(());
+                    }
+
+                    match self.piece_store.piece_data(info_hash, piece_index).await {
+                        Ok(piece_data) => {
+                            // Extract requested range
+                            let start = offset as usize;
+                            let end = std::cmp::min(start + length as usize, piece_data.len());
+                            let data = Bytes::from(piece_data[start..end].to_vec());
+
+                            let bytes_transferred = data.len() as u64;
+
+                            // Update peer upload stats
+                            {
+                                let mut peers = self.peers.write().await;
+                                if let Some(peer) = peers.get_mut(&peer_address) {
+                                    peer.bytes_uploaded += bytes_transferred;
+                                    tracing::debug!(
+                                        "Peer {} (id: {:?}) uploaded {} bytes for piece {}",
+                                        peer_address,
+                                        peer.peer_id,
+                                        bytes_transferred,
+                                        piece_index
+                                    );
+                                }
+                            }
+
+                            // Update statistics
+                            {
+                                let mut stats = self.stats.write().await;
+                                stats.bytes_served += bytes_transferred;
+                                stats.pieces_served += 1;
+                            }
+
+                            // Send piece data through message channel
+                            let event = PeerMessageEvent {
+                                peer_address,
+                                message: PeerMessage::Piece {
+                                    piece_index,
+                                    offset,
+                                    data,
+                                },
+                                received_at: Instant::now(),
+                            };
+
+                            if self.message_sender.send(event).is_err() {
+                                return Err(TorrentError::PeerConnectionError {
+                                    reason: "Message channel closed".to_string(),
+                                });
+                            }
+                        }
+                        Err(_) => {
+                            // Piece not available, ignore request
+                        }
+                    }
+                } else {
+                    // Peer not found, ignore request
+                }
+            }
             PeerMessage::Piece {
                 piece_index,
                 offset,
@@ -364,11 +483,19 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
             } => {
                 let bytes_transferred = data.len() as u64;
 
-                // Update statistics
+                // Update peer download stats
                 {
-                    let mut stats = self.stats.write().await;
-                    stats.bytes_served += bytes_transferred;
-                    stats.pieces_served += 1;
+                    let mut peers = self.peers.write().await;
+                    if let Some(peer) = peers.get_mut(&peer_address) {
+                        peer.bytes_downloaded += bytes_transferred;
+                        tracing::debug!(
+                            "Peer {} (id: {:?}) downloaded {} bytes for piece {}",
+                            peer_address,
+                            peer.peer_id,
+                            bytes_transferred,
+                            piece_index
+                        );
+                    }
                 }
 
                 // Send piece data through message channel
@@ -382,11 +509,11 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
                     received_at: Instant::now(),
                 };
 
-                self.message_sender
-                    .send(event)
-                    .map_err(|_| TorrentError::ProtocolError {
-                        message: "Failed to send piece data".to_string(),
-                    })?;
+                if self.message_sender.send(event).is_err() {
+                    return Err(TorrentError::PeerConnectionError {
+                        reason: "Message channel closed".to_string(),
+                    });
+                }
             }
             _ => {
                 // Handle other message types as needed
@@ -464,7 +591,7 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
     }
 
     /// Configure upload manager (no-op for simulation).
-    async fn configure_upload_manager(
+    async fn configure_upload(
         &mut self,
         _info_hash: InfoHash,
         _piece_size: u64,

@@ -5,37 +5,54 @@ use serde::Serialize;
 /// HTTP range request specification.
 #[derive(Debug, Clone)]
 pub struct RangeRequest {
-    pub ranges: Vec<(u64, u64)>, // (start, end) byte ranges
+    /// List of byte ranges in (start, end) format
+    pub ranges: Vec<(u64, u64)>,
 }
 
 /// Response to a range request.
 #[derive(Debug, Clone)]
 pub struct RangeResponse {
+    /// The actual data bytes for the requested range
     pub data: Vec<u8>,
+    /// Start byte position of this range
     pub start: u64,
+    /// End byte position of this range
     pub end: u64,
+    /// Total size of the complete file
     pub total_size: u64,
+    /// MIME type for the content
     pub content_type: String,
 }
 
 /// Information about streamable content.
 #[derive(Debug, Clone, Serialize)]
 pub struct ContentInfo {
+    /// Name of the content (torrent name or file name)
     pub name: String,
+    /// Total size of all files in bytes
     pub total_size: u64,
+    /// Primary MIME type if determinable
     pub mime_type: Option<String>,
+    /// List of individual files in the content
     pub files: Vec<FileInfo>,
+    /// Size of each piece in bytes
     pub piece_size: u32,
+    /// Total number of pieces in the torrent
     pub total_pieces: u32,
 }
 
 /// Information about a file within a torrent.
 #[derive(Debug, Clone, Serialize)]
 pub struct FileInfo {
+    /// File name including path within torrent
     pub name: String,
+    /// Size of this file in bytes
     pub size: u64,
+    /// Byte offset of this file within the complete torrent
     pub offset: u64,
+    /// MIME type of this file if determinable
     pub mime_type: Option<String>,
+    /// Whether this file appears to be media content
     pub is_media: bool,
 }
 
@@ -43,13 +60,13 @@ pub struct FileInfo {
 ///
 /// Provides range handling that understands BitTorrent piece boundaries
 /// and can optimize downloading for streaming scenarios.
-pub struct RangeHandler {
+pub struct Range {
     piece_size: u32,
     total_pieces: u32,
     total_size: u64,
 }
 
-impl RangeHandler {
+impl Range {
     /// Creates new range handler for torrent content.
     pub fn new(piece_size: u32, total_pieces: u32, total_size: u64) -> Self {
         Self {
@@ -238,44 +255,68 @@ impl RangeHandler {
 /// Range within a specific piece.
 #[derive(Debug, Clone)]
 pub struct PieceRange {
+    /// Index of the piece containing this range
     pub piece_index: u32,
+    /// Starting byte offset within the piece
     pub start_offset: u32,
+    /// Ending byte offset within the piece
     pub end_offset: u32,
+    /// Priority level for downloading this range
     pub priority: PiecePriority,
 }
 
 /// Priority level for piece downloading.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PiecePriority {
-    Critical, // Needed immediately for playback
-    High,     // Needed soon for smooth streaming
-    Normal,   // Prefetch for future playback
-    Low,      // Background download
+    /// Needed immediately for playback
+    Critical,
+    /// Needed soon for smooth streaming
+    High,
+    /// Prefetch for future playback
+    Normal,
+    /// Background download
+    Low,
 }
 
 /// Streaming buffer management information.
 #[derive(Debug, Clone)]
 pub struct StreamingBuffer {
+    /// Currently playing piece index
     pub current_piece: u32,
+    /// Pieces needed for immediate playback
     pub critical_pieces: Vec<PieceRange>,
+    /// Pieces being prefetched for smooth streaming
     pub prefetch_pieces: Vec<PieceRange>,
+    /// Target buffer duration ahead of playback
     pub buffer_duration: std::time::Duration,
+    /// Estimated bitrate in bits per second
     pub estimated_bitrate: u64,
 }
 
 /// Errors that can occur during range handling.
 #[derive(Debug, thiserror::Error)]
 pub enum RangeError {
+    /// Range start position is beyond the content size
     #[error("Invalid range start {start}, content size is {total_size}")]
-    InvalidStart { start: u64, total_size: u64 },
-
-    #[error("Invalid range length {length} starting at {start}, content size is {total_size}")]
-    InvalidLength {
+    InvalidStart {
+        /// The invalid start position
         start: u64,
-        length: u64,
+        /// Total size of the content
         total_size: u64,
     },
 
+    /// Range length extends beyond the content size
+    #[error("Invalid range length {length} starting at {start}, content size is {total_size}")]
+    InvalidLength {
+        /// Start position of the range
+        start: u64,
+        /// Length of the range
+        length: u64,
+        /// Total size of the content
+        total_size: u64,
+    },
+
+    /// The requested range cannot be satisfied
     #[error("Range not satisfiable")]
     NotSatisfiable,
 }
@@ -378,10 +419,10 @@ mod tests {
 
     #[test]
     fn test_calculate_required_pieces() {
-        let handler = RangeHandler::new(16384, 10, 163840); // 10 pieces of 16KB
+        let range = Range::new(16384, 10, 163840); // 10 pieces of 16KB
 
         // Request first 8KB (should need only first piece)
-        let pieces = handler.calculate_required_pieces(0, 8192);
+        let pieces = range.calculate_required_pieces(0, 8192);
         assert_eq!(pieces.len(), 1);
         assert_eq!(pieces[0].piece_index, 0);
         assert_eq!(pieces[0].start_offset, 0);
@@ -390,10 +431,10 @@ mod tests {
 
     #[test]
     fn test_calculate_required_pieces_spanning() {
-        let handler = RangeHandler::new(16384, 10, 163840);
+        let range = Range::new(16384, 10, 163840);
 
         // Request 20KB starting at 10KB (should span two pieces)
-        let pieces = handler.calculate_required_pieces(10240, 20480);
+        let pieces = range.calculate_required_pieces(10240, 20480);
         assert_eq!(pieces.len(), 2);
 
         // First piece: from offset 10240 to end of piece (16383)
@@ -408,16 +449,16 @@ mod tests {
 
     #[test]
     fn test_validate_range() {
-        let handler = RangeHandler::new(16384, 10, 163840);
+        let range = Range::new(16384, 10, 163840);
 
         // Valid range
-        assert!(handler.validate_range(0, 1024).is_ok());
+        assert!(range.validate_range(0, 1024).is_ok());
 
         // Invalid start
-        assert!(handler.validate_range(200000, 1024).is_err());
+        assert!(range.validate_range(200000, 1024).is_err());
 
         // Invalid length
-        assert!(handler.validate_range(163800, 1024).is_err());
+        assert!(range.validate_range(163800, 1024).is_err());
     }
 
     #[test]
@@ -454,9 +495,9 @@ mod tests {
 
     #[test]
     fn test_streaming_buffer_calculation() {
-        let handler = RangeHandler::new(32768, 100, 3276800); // 100 pieces of 32KB
+        let range = Range::new(32768, 100, 3276800); // 100 pieces of 32KB
 
-        let buffer = handler.calculate_streaming_buffer(
+        let buffer = range.calculate_streaming_buffer(
             65536,                              // Current position at piece 2
             1_000_000,                          // 1 Mbps
             std::time::Duration::from_secs(10), // 10 second buffer

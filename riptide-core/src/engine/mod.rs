@@ -20,14 +20,14 @@
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use riptide_core::engine::spawn_torrent_engine;
 //! use riptide_core::config::RiptideConfig;
-//! use riptide_core::torrent::{TcpPeerManager, TrackerManager};
+//! use riptide_core::torrent::{TcpPeers, Tracker};
 //!
 //! let config = RiptideConfig::default();
-//! let peer_manager = TcpPeerManager::new_default();
-//! let tracker_manager = TrackerManager::new(config.network.clone());
+//! let peers = TcpPeers::new_default();
+//! let tracker = Tracker::new(config.network.clone());
 //!
 //! // Spawn the engine actor
-//! let engine = spawn_torrent_engine(config, peer_manager, tracker_manager);
+//! let engine = spawn_torrent_engine(config, peers, tracker);
 //!
 //! // Use the handle to interact with the engine
 //! let info_hash = engine.add_magnet("magnet:?xt=...").await?;
@@ -49,4 +49,4 @@ pub use actor::spawn_torrent_engine;
 pub use commands::{EngineStats, TorrentSession, TorrentSessionParams};
 pub use handle::TorrentEngineHandle;
 #[cfg(any(test, feature = "test-utils"))]
-pub use test_mocks::{MockPeerManager, MockTrackerManager};
+pub use test_mocks::{MockPeers, MockTracker};

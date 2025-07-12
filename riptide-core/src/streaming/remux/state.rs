@@ -12,11 +12,22 @@ pub enum RemuxState {
     /// Waiting for sufficient head and tail data to start remuxing
     WaitingForHeadAndTail,
     /// Currently remuxing with FFmpeg
-    Remuxing { started_at: Instant },
+    Remuxing {
+        /// When the remuxing process started
+        started_at: Instant,
+    },
     /// Remuxing completed successfully
-    Completed { output_path: PathBuf },
+    Completed {
+        /// Path to the successfully remuxed output file
+        output_path: PathBuf,
+    },
     /// Remuxing failed
-    Failed { error: RemuxError, can_retry: bool },
+    Failed {
+        /// Details of the error that caused failure
+        error: RemuxError,
+        /// Whether the operation can be retried
+        can_retry: bool,
+    },
 }
 
 impl RemuxState {
@@ -123,26 +134,53 @@ impl RemuxProgress {
 /// Errors that can occur during remuxing
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum RemuxError {
+    /// FFmpeg process failed during remuxing
     #[error("FFmpeg process failed: {reason}")]
-    FfmpegFailed { reason: String },
+    FfmpegFailed {
+        /// Detailed error message from FFmpeg
+        reason: String,
+    },
 
+    /// Not enough data available to perform remuxing
     #[error("Insufficient data for remuxing: need head and tail")]
     InsufficientData,
 
+    /// Input file format is not supported for remuxing
     #[error("File format not supported for remuxing: {format}")]
-    UnsupportedFormat { format: String },
+    UnsupportedFormat {
+        /// The unsupported format identifier
+        format: String,
+    },
 
+    /// Remuxing operation timed out
     #[error("Remuxing timeout after {duration_secs} seconds")]
-    Timeout { duration_secs: u64 },
+    Timeout {
+        /// Number of seconds before timeout occurred
+        duration_secs: u64,
+    },
 
+    /// Input/output error during remuxing
     #[error("I/O error during remuxing: {reason}")]
-    IoError { reason: String },
+    IoError {
+        /// Description of the I/O error
+        reason: String,
+    },
 
+    /// Too many concurrent remuxing sessions
     #[error("Session limit exceeded: {current}/{max}")]
-    SessionLimitExceeded { current: usize, max: usize },
+    SessionLimitExceeded {
+        /// Current number of active sessions
+        current: usize,
+        /// Maximum allowed sessions
+        max: usize,
+    },
 
+    /// Remuxing attempted in invalid state
     #[error("Invalid session state: {reason}")]
-    InvalidState { reason: String },
+    InvalidState {
+        /// Description of the invalid state
+        reason: String,
+    },
 }
 
 impl RemuxError {

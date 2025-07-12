@@ -13,11 +13,17 @@ use crate::torrent::{InfoHash, TorrentError};
 /// Represents a connected peer
 #[derive(Debug, Clone)]
 pub struct PeerConnection {
+    /// Network address of the peer
     pub address: SocketAddr,
+    /// Peer's unique identifier (available after handshake)
     pub peer_id: Option<PeerId>,
+    /// Whether the peer has choked this connection
     pub is_choked: bool,
+    /// Whether this client is interested in the peer's pieces
     pub is_interested: bool,
+    /// Total bytes downloaded from this peer
     pub bytes_downloaded: u64,
+    /// Total bytes uploaded to this peer
     pub bytes_uploaded: u64,
 }
 

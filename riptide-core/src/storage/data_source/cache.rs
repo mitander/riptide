@@ -15,21 +15,35 @@ use crate::torrent::InfoHash;
 /// Errors that can occur during cache operations
 #[derive(Debug, thiserror::Error)]
 pub enum StorageCacheError {
+    /// Cache has reached capacity and cannot store more entries
     #[error("Cache is full and cannot store more data")]
     CacheFull,
 
+    /// Cache key is malformed or invalid
     #[error("Invalid cache key: {reason}")]
-    InvalidKey { reason: String },
+    InvalidKey { 
+        /// Description of why the key is invalid
+        reason: String 
+    },
 
+    /// Entry size exceeds the maximum allowed size
     #[error("Cache entry too large: {size} bytes exceeds limit {limit}")]
-    EntryTooLarge { size: usize, limit: usize },
+    EntryTooLarge { 
+        /// Actual size of the entry in bytes
+        size: usize, 
+        /// Maximum allowed size in bytes
+        limit: usize 
+    },
 }
 
 /// Cache key for assembled byte ranges
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CacheKey {
+    /// Torrent identifier for the cached data
     pub info_hash: InfoHash,
+    /// Starting byte offset of the cached range
     pub start: u64,
+    /// Ending byte offset of the cached range (exclusive)
     pub end: u64,
 }
 
@@ -57,9 +71,13 @@ impl CacheKey {
 /// Cached entry with metadata
 #[derive(Debug, Clone)]
 pub struct CacheEntry {
+    /// The cached byte data
     pub data: Vec<u8>,
+    /// When this entry was first created
     pub created_at: Instant,
+    /// Number of times this entry has been accessed
     pub access_count: u64,
+    /// When this entry was last accessed
     pub last_accessed: Instant,
 }
 
@@ -116,12 +134,19 @@ impl Default for StorageCacheConfig {
 /// Cache statistics for monitoring
 #[derive(Debug, Clone)]
 pub struct CacheStatistics {
+    /// Current number of cached entries
     pub entries: usize,
+    /// Maximum number of entries the cache can hold
     pub capacity: usize,
+    /// Total size of all cached data in bytes
     pub total_size: usize,
+    /// Number of cache hits since creation
     pub hit_count: u64,
+    /// Number of cache misses since creation
     pub miss_count: u64,
+    /// Number of entries evicted due to capacity limits
     pub eviction_count: u64,
+    /// Cache hit rate as a percentage (0.0 to 1.0)
     pub hit_rate: f64,
 }
 
@@ -138,16 +163,25 @@ impl CacheStatistics {
 
 /// High-performance storage cache for assembled file ranges
 pub struct StorageCache {
+    /// LRU cache storing assembled byte ranges
     cache: Arc<RwLock<LruCache<CacheKey, CacheEntry>>>,
+    /// Cache configuration settings
     config: StorageCacheConfig,
+    /// Number of cache hits for statistics
     hit_count: Arc<RwLock<u64>>,
+    /// Number of cache misses for statistics  
     miss_count: Arc<RwLock<u64>>,
+    /// Number of evicted entries for statistics
     eviction_count: Arc<RwLock<u64>>,
+    /// Current total size of cached data in bytes
     current_size: Arc<RwLock<usize>>,
 }
 
 impl StorageCache {
     /// Create new storage cache with configuration
+    ///
+    /// # Panics
+    /// Never panics - fallback capacity is hardcoded to 64 which is always valid
     pub fn new(config: StorageCacheConfig) -> Self {
         let capacity = std::num::NonZeroUsize::new(config.max_entries)
             .unwrap_or_else(|| std::num::NonZeroUsize::new(64).unwrap());

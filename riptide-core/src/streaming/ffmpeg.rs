@@ -9,7 +9,7 @@ use super::{StreamingError, StreamingResult};
 
 /// Abstraction for FFmpeg operations to enable both real and simulated remuxing
 #[async_trait]
-pub trait FfmpegProcessor: Send + Sync {
+pub trait Ffmpeg: Send + Sync {
     /// Remux input file to MP4 format with optimal streaming settings
     ///
     /// # Errors
@@ -81,12 +81,12 @@ pub struct RemuxingResult {
 }
 
 /// Production FFmpeg implementation using ffmpeg-next crate
-pub struct ProductionFfmpegProcessor {
+pub struct ProductionFfmpeg {
     #[allow(dead_code)]
     ffmpeg_path: Option<std::path::PathBuf>,
 }
 
-impl ProductionFfmpegProcessor {
+impl ProductionFfmpeg {
     /// Create new FFmpeg processor with optional custom binary path
     pub fn new(ffmpeg_path: Option<std::path::PathBuf>) -> Self {
         Self { ffmpeg_path }
@@ -112,7 +112,7 @@ impl ProductionFfmpegProcessor {
 }
 
 #[async_trait]
-impl FfmpegProcessor for ProductionFfmpegProcessor {
+impl Ffmpeg for ProductionFfmpeg {
     async fn remux_to_mp4(
         &self,
         input_path: &Path,
@@ -353,9 +353,9 @@ impl FfmpegProcessor for ProductionFfmpegProcessor {
 ///
 /// Uses real FFmpeg with accelerated processing for consistent output quality.
 /// Simulates faster processing speeds while maintaining compatibility with browsers.
-pub struct SimulationFfmpegProcessor {
+pub struct SimulationFfmpeg {
     /// Base FFmpeg processor for real conversion
-    base_processor: ProductionFfmpegProcessor,
+    base_processor: ProductionFfmpeg,
 
     /// Simulated processing time per megabyte (for timing simulation)
     processing_speed_mb_per_sec: f64,
@@ -364,11 +364,11 @@ pub struct SimulationFfmpegProcessor {
     is_available: bool,
 }
 
-impl SimulationFfmpegProcessor {
+impl SimulationFfmpeg {
     /// Create new simulation processor
     pub fn new() -> Self {
         Self {
-            base_processor: ProductionFfmpegProcessor::new(None),
+            base_processor: ProductionFfmpeg::new(None),
             processing_speed_mb_per_sec: 100.0, // Simulate 100 MB/s (faster than real)
             is_available: true,
         }
@@ -387,14 +387,14 @@ impl SimulationFfmpegProcessor {
     }
 }
 
-impl Default for SimulationFfmpegProcessor {
+impl Default for SimulationFfmpeg {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl FfmpegProcessor for SimulationFfmpegProcessor {
+impl Ffmpeg for SimulationFfmpeg {
     async fn remux_to_mp4(
         &self,
         input_path: &Path,
@@ -456,7 +456,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_simulation_ffmpeg_processor() {
+    async fn test_simulation_ffmpeg() {
         let temp_dir = tempdir().unwrap();
         let input_path = temp_dir.path().join("input.mkv");
         let output_path = temp_dir.path().join("output.mp4");
@@ -464,7 +464,7 @@ mod tests {
         // Create dummy input file (invalid format will cause FFmpeg to fail)
         std::fs::write(&input_path, vec![0u8; 1024 * 1024]).unwrap(); // 1MB file
 
-        let processor = SimulationFfmpegProcessor::new().with_speed(10.0); // 10 MB/s for fast test
+        let processor = SimulationFfmpeg::new().with_speed(10.0); // 10 MB/s for fast test
 
         let options = RemuxingOptions::default();
         let result = processor
@@ -487,7 +487,7 @@ mod tests {
 
         std::fs::write(&input_path, b"dummy content").unwrap();
 
-        let processor = SimulationFfmpegProcessor::new().unavailable();
+        let processor = SimulationFfmpeg::new().unavailable();
         let options = RemuxingOptions::default();
 
         let result = processor

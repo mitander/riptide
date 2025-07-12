@@ -1,6 +1,9 @@
 //! Layout components - headers, cards, containers, navigation
 
-/// Renders a page header with title and optional subtitle
+/// Renders a page header with title and optional subtitle.
+///
+/// Creates a responsive header section with title, optional subtitle, and action buttons.
+/// Used at the top of main content areas to establish page context.
 pub fn page_header(title: &str, subtitle: Option<&str>, actions: Option<&str>) -> String {
     let subtitle_html = subtitle
         .map(|s| format!(r#"<p class="text-gray-400 mt-2">{s}</p>"#))
@@ -21,7 +24,10 @@ pub fn page_header(title: &str, subtitle: Option<&str>, actions: Option<&str>) -
     )
 }
 
-/// Renders a card container with optional header and actions
+/// Renders a card container with optional header and actions.
+///
+/// Creates a styled container with consistent padding, borders, and optional header section.
+/// Perfect for grouping related content with optional title and action buttons.
 pub fn card(title: Option<&str>, content: &str, actions: Option<&str>) -> String {
     let header_html = title
         .map(|t| {
@@ -46,7 +52,10 @@ pub fn card(title: Option<&str>, content: &str, actions: Option<&str>) -> String
     )
 }
 
-/// Renders the main navigation bar
+/// Renders the main navigation bar.
+///
+/// Creates responsive navigation with brand, page links, and connection status.
+/// Highlights the active page based on the provided page identifier.
 pub fn nav_bar(active_page: &str) -> String {
     let nav_item = |href: &str, label: &str, page: &str| {
         let active_class = if page == active_page {
@@ -91,12 +100,18 @@ pub fn nav_bar(active_page: &str) -> String {
     )
 }
 
-/// Renders a grid container for responsive layouts
+/// Renders a grid container for responsive layouts.
+///
+/// Creates a CSS Grid container with specified column configuration and gap spacing.
+/// Use Tailwind grid column classes like "grid-cols-3" or "grid-cols-1 lg:grid-cols-3".
 pub fn grid(columns: &str, content: &str) -> String {
     format!(r#"<div class="grid {columns} gap-6">{content}</div>"#)
 }
 
-/// Renders a button with Tailwind styling
+/// Renders a button with Tailwind styling.
+///
+/// Creates styled buttons with predefined variants (primary, secondary, danger, ghost).
+/// Supports additional HTML attributes for custom behavior like onclick handlers.
 pub fn button(text: &str, variant: &str, attributes: Option<&str>) -> String {
     let base_classes = "px-4 py-2 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900";
 
@@ -113,7 +128,10 @@ pub fn button(text: &str, variant: &str, attributes: Option<&str>) -> String {
     format!(r#"<button class="{base_classes} {variant_classes}" {attrs}>{text}</button>"#)
 }
 
-/// Renders an input field with Tailwind styling
+/// Renders an input field with Tailwind styling.
+///
+/// Creates form input elements with consistent styling and focus states.
+/// Supports all HTML input types and additional attributes for validation or behavior.
 pub fn input(name: &str, placeholder: &str, input_type: &str, attributes: Option<&str>) -> String {
     let attrs = attributes.unwrap_or("");
 

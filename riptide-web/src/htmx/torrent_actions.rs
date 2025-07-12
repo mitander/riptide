@@ -8,6 +8,9 @@ use crate::components::{activity, torrent};
 use crate::server::AppState;
 
 /// Calculates estimated time to completion for a download.
+///
+/// Returns human-readable ETA string (e.g. "5m", "2h", "1d") based on
+/// current download progress and speed. Returns None if download is complete.
 fn calculate_eta(progress: f32, download_speed_bps: u64, total_size: u64) -> Option<String> {
     if progress >= 1.0 || download_speed_bps == 0 {
         return None;
@@ -34,10 +37,15 @@ fn calculate_eta(progress: f32, download_speed_bps: u64, total_size: u64) -> Opt
 /// Form data for adding torrents
 #[derive(Deserialize)]
 pub struct AddTorrentForm {
+    /// Magnet link URL from the form
     pub magnet: String,
 }
 
-/// Handles adding torrents via HTMX form submission
+/// Handles adding torrents via HTMX form submission.
+///
+/// Processes magnet link submission from HTMX forms, adds the torrent to the engine,
+/// and starts downloading immediately. Returns appropriate success or error notification
+/// toasts for user feedback.
 pub async fn add_torrent(
     State(state): State<AppState>,
     Form(form): Form<AddTorrentForm>,
@@ -98,13 +106,20 @@ pub async fn add_torrent(
     }
 }
 
-/// Renders torrent list for the torrents page with real-time updates
+/// Renders torrent list for the torrents page with real-time updates.
+///
+/// Generates HTML for all active torrents with detailed information including
+/// progress bars, file sizes, speeds, and ETAs. Uses movie metadata when available
+/// for better display names. Shows empty state when no torrents are active.
+///
+/// # Panics
+/// Panics if engine communication fails or active sessions are unavailable.
 pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
     let sessions = state.engine().active_sessions().await.unwrap();
 
     // Get movie manager data for better naming
     let movie_titles: std::collections::HashMap<_, _> =
-        if let Ok(movie_manager) = state.file_manager() {
+        if let Ok(movie_manager) = state.file_library() {
             let manager = movie_manager.read().await;
             manager
                 .all_files()
@@ -172,7 +187,11 @@ pub async fn torrent_list(State(state): State<AppState>) -> Html<String> {
     ))
 }
 
-/// Renders torrent details modal
+/// Renders torrent details modal.
+///
+/// Creates detailed modal content for torrent statistics including sizes, transfer ratios,
+/// and peer information. Shows details for the first active torrent or placeholder data
+/// when no torrents are available.
 ///
 /// # Panics
 /// Panics if engine communication fails or active sessions are unavailable.

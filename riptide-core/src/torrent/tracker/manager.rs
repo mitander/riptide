@@ -16,14 +16,14 @@ use crate::torrent::TorrentError;
 ///
 /// Handles tracker selection, failover, and connection pooling to optimize
 /// peer discovery across multiple trackers per torrent.
-pub struct TrackerManager {
+pub struct Tracker {
     /// Network configuration for tracker clients
     network_config: NetworkConfig,
     /// Cached tracker clients keyed by URL
     tracker_clients: HashMap<String, Arc<HttpTrackerClient>>,
 }
 
-impl TrackerManager {
+impl Tracker {
     /// Creates new tracker manager with network configuration.
     pub fn new(network_config: NetworkConfig) -> Self {
         Self {
@@ -161,7 +161,7 @@ impl TrackerManager {
 /// Enables both real and simulated tracker management for testing
 /// while maintaining consistent interface for torrent engine.
 #[async_trait]
-pub trait TrackerManagement: Send + Sync {
+pub trait TrackerManager: Send + Sync {
     /// Announces to best available tracker from list.
     ///
     /// # Errors
@@ -184,7 +184,7 @@ pub trait TrackerManagement: Send + Sync {
 }
 
 #[async_trait]
-impl TrackerManagement for TrackerManager {
+impl TrackerManager for Tracker {
     async fn announce_to_trackers(
         &mut self,
         tracker_urls: &[String],
@@ -210,9 +210,9 @@ mod tests {
     use crate::torrent::tracker::AnnounceEvent;
 
     #[tokio::test]
-    async fn test_tracker_manager_creation() {
+    async fn test_tracker_creation() {
         let config = RiptideConfig::default();
-        let manager = TrackerManager::new(config.network);
+        let manager = Tracker::new(config.network);
 
         assert_eq!(manager.cached_trackers_count(), 0);
     }
@@ -220,7 +220,7 @@ mod tests {
     #[tokio::test]
     async fn test_empty_tracker_urls() {
         let config = RiptideConfig::default();
-        let mut manager = TrackerManager::new(config.network);
+        let mut manager = Tracker::new(config.network);
         let info_hash = create_test_info_hash();
 
         let request = AnnounceRequest {
@@ -242,7 +242,7 @@ mod tests {
         // This test requires a real network connection to a non-existent port
         // to simulate a connection failure.
         let config = RiptideConfig::default();
-        let mut manager = TrackerManager::new(config.network);
+        let mut manager = Tracker::new(config.network);
         let info_hash = create_test_info_hash();
 
         let trackers = vec![
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn test_cache_management() {
         let config = RiptideConfig::default();
-        let mut manager = TrackerManager::new(config.network);
+        let mut manager = Tracker::new(config.network);
 
         // Simulate creating tracker clients
         let _client1 = manager.tracker_client_for_url("http://tracker1.example.com");

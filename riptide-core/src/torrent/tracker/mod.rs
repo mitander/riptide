@@ -10,7 +10,7 @@ pub mod types;
 
 // Re-export public API
 pub use client::HttpTrackerClient;
-pub use manager::{TrackerManagement, TrackerManager};
+pub use manager::{Tracker, TrackerManager};
 pub use types::{
     AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, ScrapeStats,
     TrackerClient,

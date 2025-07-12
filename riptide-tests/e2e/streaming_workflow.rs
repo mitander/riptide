@@ -11,16 +11,19 @@ use async_trait::async_trait;
 use futures::future;
 use riptide_core::config::RiptideConfig;
 use riptide_core::storage::{DataError, DataResult, DataSource, RangeAvailability};
-use riptide_core::streaming::{FfmpegProcessor, HttpStreaming, RemuxingOptions, RemuxingResult};
+use riptide_core::streaming::{Ffmpeg, HttpStreaming, RemuxingOptions, RemuxingResult};
 use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore, TorrentError};
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::sync::RwLock;
 
+/// Type alias for file storage
+type FileStorage = Arc<RwLock<HashMap<InfoHash, Vec<u8>>>>;
+
 /// Test data source that serves complete files for testing
 #[derive(Clone)]
 struct TestDataSource {
-    files: Arc<RwLock<HashMap<InfoHash, Vec<u8>>>>,
+    files: FileStorage,
 }
 
 impl TestDataSource {
@@ -157,11 +160,11 @@ impl PieceStore for MockPieceStore {
 
 /// Mock FFmpeg processor for testing
 #[allow(dead_code)]
-struct MockFfmpegProcessor {
+struct MockFfmpeg {
     temp_dir: TempDir,
 }
 
-impl MockFfmpegProcessor {
+impl MockFfmpeg {
     fn new() -> Self {
         Self {
             temp_dir: TempDir::new().expect("Failed to create temp dir"),
@@ -170,7 +173,7 @@ impl MockFfmpegProcessor {
 }
 
 #[async_trait]
-impl FfmpegProcessor for MockFfmpegProcessor {
+impl Ffmpeg for MockFfmpeg {
     async fn remux_to_mp4(
         &self,
         _input_path: &std::path::Path,
@@ -199,8 +202,8 @@ impl FfmpegProcessor for MockFfmpegProcessor {
     }
 }
 
-fn create_ffmpeg_processor() -> Arc<dyn FfmpegProcessor> {
-    Arc::new(MockFfmpegProcessor::new())
+fn create_ffmpeg() -> Arc<dyn Ffmpeg> {
+    Arc::new(MockFfmpeg::new())
 }
 
 async fn create_test_files() -> (InfoHash, Vec<u8>, Vec<u8>, Vec<u8>) {
@@ -256,9 +259,9 @@ async fn setup_http_streaming(data_source: Arc<dyn DataSource>) -> HttpStreaming
     // Create a mock torrent engine handle for testing
     let (sender, _receiver) = tokio::sync::mpsc::channel(100);
     let torrent_engine = riptide_core::torrent::TorrentEngineHandle::new(sender);
-    let ffmpeg_processor = create_ffmpeg_processor();
+    let ffmpeg = create_ffmpeg();
 
-    HttpStreaming::new(torrent_engine, data_source, config, ffmpeg_processor)
+    HttpStreaming::new(torrent_engine, data_source, config, ffmpeg)
 }
 
 #[tokio::test]

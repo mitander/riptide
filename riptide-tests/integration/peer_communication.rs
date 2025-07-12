@@ -1,4 +1,4 @@
-//! Minimal test to isolate message passing issues in SimPeerManager
+//! Minimal test to isolate message passing issues in SimPeers
 
 #![allow(clippy::uninlined_format_args)]
 
@@ -6,8 +6,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PeerMessage, PieceIndex, TorrentPiece};
-use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeerManager};
+use riptide_core::torrent::{InfoHash, PeerId, PeerMessage, Peers, PieceIndex, TorrentPiece};
+use riptide_sim::{InMemoryPeerConfig, InMemoryPieceStore, SimPeers};
 use tokio::sync::RwLock;
 
 #[tokio::test]
@@ -32,20 +32,20 @@ async fn test_basic_message_send_receive() {
 
     // Create peer manager
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = SimPeerManager::new(config, piece_store.clone());
+    let mut peers = SimPeers::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let peer_id = PeerId::generate();
 
     // Inject peer with piece available
-    peer_manager
+    peers
         .inject_peer_with_pieces(peer_addr, info_hash, vec![true], 100_000)
         .await;
     println!("MSG_TEST: Injected peer {}", peer_addr);
 
     // Connect to peer
     println!("MSG_TEST: Connecting to peer...");
-    peer_manager
+    peers
         .connect_peer(peer_addr, info_hash, peer_id)
         .await
         .unwrap();
@@ -58,7 +58,7 @@ async fn test_basic_message_send_receive() {
         length: 512,
     };
     println!("MSG_TEST: Sending request: {:?}", request);
-    peer_manager.send_message(peer_addr, request).await.unwrap();
+    peers.send_message(peer_addr, request).await.unwrap();
     println!("MSG_TEST: Request sent");
 
     // Try to receive response with timeout
@@ -69,7 +69,7 @@ async fn test_basic_message_send_receive() {
             attempt += 1;
             println!("MSG_TEST: Receive attempt {}", attempt);
 
-            match peer_manager.receive_message().await {
+            match peers.receive_message().await {
                 Ok(msg_event) => {
                     println!(
                         "MSG_TEST: Received message from {}: {:?}",
@@ -154,29 +154,23 @@ async fn test_message_queue_behavior() {
         .unwrap();
 
     let config = InMemoryPeerConfig::default();
-    let mut peer_manager = SimPeerManager::new(config, piece_store);
+    let mut peers = SimPeers::new(config, piece_store);
 
     let peer1: SocketAddr = "127.0.0.1:8081".parse().unwrap();
     let peer2: SocketAddr = "127.0.0.1:8082".parse().unwrap();
     let peer_id = PeerId::generate();
 
     // Inject two peers
-    peer_manager
+    peers
         .inject_peer_with_pieces(peer1, info_hash, vec![true, false], 100_000)
         .await;
-    peer_manager
+    peers
         .inject_peer_with_pieces(peer2, info_hash, vec![false, true], 100_000)
         .await;
 
     // Connect to both peers
-    peer_manager
-        .connect_peer(peer1, info_hash, peer_id)
-        .await
-        .unwrap();
-    peer_manager
-        .connect_peer(peer2, info_hash, peer_id)
-        .await
-        .unwrap();
+    peers.connect_peer(peer1, info_hash, peer_id).await.unwrap();
+    peers.connect_peer(peer2, info_hash, peer_id).await.unwrap();
 
     println!("QUEUE_TEST: Connected to both peers");
 
@@ -193,17 +187,17 @@ async fn test_message_queue_behavior() {
     };
 
     println!("QUEUE_TEST: Sending request for piece 0 to peer1");
-    peer_manager.send_message(peer1, request1).await.unwrap();
+    peers.send_message(peer1, request1).await.unwrap();
 
     println!("QUEUE_TEST: Sending request for piece 1 to peer2");
-    peer_manager.send_message(peer2, request2).await.unwrap();
+    peers.send_message(peer2, request2).await.unwrap();
 
     // Collect all messages within timeout
     let mut received_messages = Vec::new();
     let timeout_result = tokio::time::timeout(Duration::from_secs(3), async {
         while received_messages.len() < 4 {
             // Expect 2 bitfields + 2 piece responses
-            match peer_manager.receive_message().await {
+            match peers.receive_message().await {
                 Ok(msg_event) => {
                     println!(
                         "QUEUE_TEST: Received from {}: {:?}",
@@ -249,7 +243,7 @@ async fn test_message_queue_behavior() {
 }
 
 #[tokio::test]
-async fn test_peer_manager_in_isolation() {
+async fn test_peers_in_isolation() {
     println!("ISO_TEST: Testing peer manager in complete isolation");
 
     let info_hash = InfoHash::new([3u8; 20]);
@@ -257,16 +251,13 @@ async fn test_peer_manager_in_isolation() {
     let config = InMemoryPeerConfig::default();
 
     // Use Arc<RwLock> wrapper like PieceDownloader does
-    let peer_manager = Arc::new(RwLock::new(SimPeerManager::new(
-        config,
-        piece_store.clone(),
-    )));
+    let peers = Arc::new(RwLock::new(SimPeers::new(config, piece_store.clone())));
 
     let peer_addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
 
     // Step 1: Inject peer through the Arc<RwLock> wrapper
     {
-        let mut pm = peer_manager.write().await;
+        let mut pm = peers.write().await;
         pm.inject_peer_with_pieces(peer_addr, info_hash, vec![true], 50_000)
             .await;
     }
@@ -274,7 +265,7 @@ async fn test_peer_manager_in_isolation() {
 
     // Step 2: Connect through the wrapper
     {
-        let mut pm = peer_manager.write().await;
+        let mut pm = peers.write().await;
         let result = pm
             .connect_peer(peer_addr, info_hash, PeerId::generate())
             .await;
@@ -283,7 +274,7 @@ async fn test_peer_manager_in_isolation() {
 
     // Step 3: Send message through wrapper
     {
-        let mut pm = peer_manager.write().await;
+        let mut pm = peers.write().await;
         let request = PeerMessage::Interested;
         let result = pm.send_message(peer_addr, request).await;
         println!("ISO_TEST: Send result: {:?}", result);
@@ -292,7 +283,7 @@ async fn test_peer_manager_in_isolation() {
     // Step 4: Try to receive
     println!("ISO_TEST: Attempting to receive message...");
     let receive_result = tokio::time::timeout(Duration::from_secs(2), async {
-        let mut pm = peer_manager.write().await;
+        let mut pm = peers.write().await;
         pm.receive_message().await
     })
     .await;

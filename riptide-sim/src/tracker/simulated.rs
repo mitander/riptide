@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use riptide_core::torrent::tracker::{
     AnnounceEvent, AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, ScrapeStats,
 };
-use riptide_core::torrent::{InfoHash, TorrentError, TrackerClient, TrackerManagement};
+use riptide_core::torrent::{InfoHash, TorrentError, TrackerClient, TrackerManager};
 
 /// Type alias for peer coordination function
 type PeerCoordinator = Box<dyn Fn(&InfoHash) -> Vec<SocketAddr> + Send + Sync>;
@@ -21,11 +21,17 @@ type PeerCoordinator = Box<dyn Fn(&InfoHash) -> Vec<SocketAddr> + Send + Sync>;
 /// Maintains internal state for realistic swarm simulation and supports
 /// injecting specific responses for edge case testing.
 pub struct SimulatedTrackerClient {
+    /// Base URL for announce requests
     announce_url: String,
+    /// Generator for creating deterministic peer addresses
     peer_generator: Arc<Mutex<PeerGenerator>>,
+    /// Statistics for each torrent swarm being tracked
     swarm_stats: Arc<Mutex<HashMap<InfoHash, SwarmStats>>>,
+    /// Count of announce requests made
     announce_count: AtomicU32,
+    /// Configuration for response behavior
     response_config: ResponseConfig,
+    /// Optional function to coordinate peer responses
     peer_coordinator: Option<PeerCoordinator>,
 }
 
@@ -139,7 +145,7 @@ impl SimulatedTrackerClient {
         }
     }
 
-    /// Configure peer coordinator callback to get peer addresses from ContentAwarePeerManager.
+    /// Configure peer coordinator callback to get peer addresses from ContentAwarePeers.
     ///
     /// This ensures the tracker returns peer addresses that the peer manager
     /// knows about and can handle connections to.
@@ -336,18 +342,18 @@ impl TrackerClient for SimulatedTrackerClient {
 ///
 /// Provides deterministic tracker selection and failover behavior
 /// without requiring real network infrastructure. Returns peer addresses
-/// that ContentAwarePeerManager can handle.
-pub struct SimulatedTrackerCoordinator {
+/// that ContentAwarePeers can handle.
+pub struct SimulatedTracker {
     default_client: SimulatedTrackerClient,
 }
 
-impl Default for SimulatedTrackerCoordinator {
+impl Default for SimulatedTracker {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SimulatedTrackerCoordinator {
+impl SimulatedTracker {
     /// Creates new simulated tracker manager with default client.
     pub fn new() -> Self {
         Self {
@@ -401,7 +407,7 @@ impl SimulatedTrackerCoordinator {
 }
 
 #[async_trait]
-impl TrackerManagement for SimulatedTrackerCoordinator {
+impl TrackerManager for SimulatedTracker {
     /// Simulates announcing to best available tracker from list.
     ///
     /// Uses internal simulated tracker client regardless of provided URLs

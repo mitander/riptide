@@ -8,9 +8,13 @@ use crate::torrent::{InfoHash, PieceIndex};
 /// Priority levels for piece requests
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Priority {
+    /// Low priority background requests, processed when queue is empty
     Background,
+    /// Standard priority requests for regular piece downloads
     Normal,
+    /// High priority requests for pieces needed soon for streaming
     High,
+    /// Critical priority requests for immediate playback requirements
     Critical,
 }
 
@@ -26,11 +30,17 @@ pub struct PriorityRequestQueue {
 /// A pending piece request
 #[derive(Debug, Clone)]
 pub struct PendingRequest {
+    /// Torrent identifier for this piece request
     pub info_hash: InfoHash,
+    /// Index of the piece being requested
     pub piece_index: PieceIndex,
+    /// Timestamp when this request was first created
     pub requested_at: Instant,
+    /// Optional deadline for when this request expires
     pub deadline: Option<Instant>,
+    /// Priority level determining queue order
     pub priority: Priority,
+    /// Number of times this request has been retried
     pub retry_count: u32,
 }
 

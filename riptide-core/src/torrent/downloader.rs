@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
 
+/// Type alias for piece data storage
+type PieceDataStore = Arc<RwLock<HashMap<PieceIndex, Vec<u8>>>>;
+
 #[cfg(test)]
 use super::enhanced_peer_connection::EnhancedPeerConnection;
 use super::error_recovery::ErrorRecoveryManager;
@@ -30,8 +33,11 @@ const PEER_REQUEST_TIMEOUT_SECS: u64 = 30;
 /// Used to coordinate piece-level downloads across multiple connections.
 #[derive(Debug, Clone)]
 pub struct PieceRequest {
+    /// Index of the piece to download
     pub piece_index: PieceIndex,
+    /// Byte offset within the piece
     pub offset: u32,
+    /// Number of bytes to download
     pub length: u32,
 }
 
@@ -41,11 +47,19 @@ pub struct PieceRequest {
 /// through verification to completion or failure.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PieceStatus {
+    /// Piece is queued for download
     Pending,
+    /// Piece is currently being downloaded
     Downloading,
+    /// Piece data is being verified
     Verifying,
+    /// Piece download completed and verified
     Complete,
-    Failed { attempts: u32 },
+    /// Piece download failed after specified attempts
+    Failed {
+        /// Number of download attempts made
+        attempts: u32,
+    },
 }
 
 /// Download progress for a single piece.
@@ -54,9 +68,13 @@ pub enum PieceStatus {
 /// and completion percentage for individual pieces.
 #[derive(Debug, Clone)]
 pub struct PieceProgress {
+    /// Index of the piece being tracked
     pub piece_index: PieceIndex,
+    /// Current download status of the piece
     pub status: PieceStatus,
+    /// Number of bytes successfully downloaded
     pub bytes_downloaded: u32,
+    /// Total size of the piece in bytes
     pub total_bytes: u32,
 }
 
@@ -67,10 +85,10 @@ pub struct PieceProgress {
 pub struct PieceDownloader<S: Storage, P: PeerManager> {
     torrent_metadata: TorrentMetadata,
     storage: S,
-    peer_manager: Arc<RwLock<P>>,
+    peers: Arc<RwLock<P>>,
     peer_id: PeerId,
     piece_status: Arc<RwLock<HashMap<PieceIndex, PieceStatus>>>,
-    piece_data: Arc<RwLock<HashMap<PieceIndex, Vec<u8>>>>,
+    piece_data: PieceDataStore,
     available_peers: Arc<RwLock<Vec<SocketAddr>>>,
     error_recovery: Arc<RwLock<ErrorRecoveryManager>>,
 }
@@ -86,7 +104,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     pub fn new(
         torrent_metadata: TorrentMetadata,
         storage: S,
-        peer_manager: Arc<RwLock<P>>,
+        peers: Arc<RwLock<P>>,
         peer_id: PeerId,
     ) -> Result<Self, TorrentError> {
         let total_pieces = torrent_metadata.piece_hashes.len();
@@ -104,7 +122,7 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         Ok(Self {
             torrent_metadata,
             storage,
-            peer_manager,
+            peers,
             peer_id,
             piece_status: Arc::new(RwLock::new(piece_status)),
             piece_data: Arc::new(RwLock::new(HashMap::new())),
@@ -152,6 +170,9 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     /// - `TorrentError::PeerConnectionError` - No peers available or all peers failed
     /// - `TorrentError::PieceHashMismatch` - Hash verification failed after all retries
     /// - `TorrentError::StorageError` - Failed to store piece data
+    ///
+    /// # Panics
+    /// Panics if hardcoded dummy peer address "0.0.0.0:0" cannot be parsed (should never happen)
     pub async fn download_piece(&mut self, piece_index: PieceIndex) -> Result<(), TorrentError> {
         let download_start = Instant::now();
         tracing::debug!("download_piece: START piece={piece_index}");
@@ -522,8 +543,8 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
     /// Establishes connection to a peer for downloading.
     async fn connect_to_peer(&self, peer_addr: SocketAddr) -> Result<(), TorrentError> {
         tracing::trace!("Connecting to peer: {peer_addr}");
-        let mut peer_manager = self.peer_manager.write().await;
-        let result = peer_manager
+        let mut peers = self.peers.write().await;
+        let result = peers
             .connect_peer(peer_addr, self.torrent_metadata.info_hash, self.peer_id)
             .await;
         match &result {
@@ -596,8 +617,8 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
         };
 
         {
-            let mut peer_manager = self.peer_manager.write().await;
-            peer_manager.send_message(peer_addr, request_msg).await?;
+            let mut peers = self.peers.write().await;
+            peers.send_message(peer_addr, request_msg).await?;
         }
 
         self.wait_for_piece_response(peer_addr, piece_index, offset)
@@ -624,8 +645,8 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
                 }
 
                 let msg_event = {
-                    let mut peer_manager = self.peer_manager.write().await;
-                    match peer_manager.receive_message().await {
+                    let mut peers = self.peers.write().await;
+                    match peers.receive_message().await {
                         Ok(msg_event) => msg_event,
                         Err(_) => continue,
                     }
@@ -689,8 +710,8 @@ impl<S: Storage, P: PeerManager> PieceDownloader<S, P> {
 
     /// Disconnects from peer after download completion.
     async fn disconnect_from_peer(&self, peer_addr: SocketAddr) {
-        let mut peer_manager = self.peer_manager.write().await;
-        let _ = peer_manager.disconnect_peer(peer_addr).await;
+        let mut peers = self.peers.write().await;
+        let _ = peers.disconnect_peer(peer_addr).await;
     }
 
     /// Verifies piece data against expected hash.
@@ -749,7 +770,7 @@ mod tests {
     use tokio::sync::RwLock;
 
     use super::*;
-    use crate::engine::MockPeerManager;
+    use crate::engine::MockPeers;
     use crate::storage::FileStorage;
     use crate::torrent::protocol::types::PeerId;
     use crate::torrent::test_data::create_test_torrent_metadata;
@@ -767,9 +788,9 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let peer_manager = Arc::new(RwLock::new(MockPeerManager::new()));
+        let peers = Arc::new(RwLock::new(MockPeers::new()));
         let peer_id = PeerId::generate();
-        let downloader = PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         let progress = downloader.progress().await;
         assert_eq!(progress.len(), 3);
@@ -785,10 +806,9 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let peer_manager = Arc::new(RwLock::new(MockPeerManager::new()));
+        let peers = Arc::new(RwLock::new(MockPeers::new()));
         let peer_id = PeerId::generate();
-        let mut downloader =
-            PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let mut downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         // Add mock peers for testing
         let mock_peers = vec![
@@ -820,12 +840,11 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let mut mock_peer_manager = MockPeerManager::new();
-        mock_peer_manager.enable_piece_data_simulation();
-        let peer_manager = Arc::new(RwLock::new(mock_peer_manager));
+        let mut mock_peers = MockPeers::new();
+        mock_peers.enable_piece_data_simulation();
+        let peers = Arc::new(RwLock::new(mock_peers));
         let peer_id = PeerId::generate();
-        let mut downloader =
-            PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let mut downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         // Add mock peers for testing
         let mock_peers = vec![
@@ -860,11 +879,11 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let mut mock_peer_manager = MockPeerManager::new();
-        mock_peer_manager.enable_piece_data_simulation();
-        let peer_manager = Arc::new(RwLock::new(mock_peer_manager));
+        let mut mock_peers = MockPeers::new();
+        mock_peers.enable_piece_data_simulation();
+        let peers = Arc::new(RwLock::new(mock_peers));
         let peer_id = PeerId::generate();
-        let downloader = PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         // Test normal piece size
         assert_eq!(downloader.calculate_piece_size(PieceIndex::new(0)), 32768);
@@ -886,9 +905,9 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let peer_manager = Arc::new(RwLock::new(MockPeerManager::new()));
+        let peers = Arc::new(RwLock::new(MockPeers::new()));
         let peer_id = PeerId::generate();
-        let downloader = PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         // Test valid piece data
         let valid_piece_data = vec![0u8; 32768]; // Matches piece 0 hash
@@ -911,9 +930,9 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let peer_manager = Arc::new(RwLock::new(MockPeerManager::new()));
+        let peers = Arc::new(RwLock::new(MockPeers::new()));
         let peer_id = PeerId::generate();
-        let downloader = PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         let mut piece_data = vec![0u8; 1024];
         let block_data = vec![42u8; 256];
@@ -943,9 +962,9 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let peer_manager = Arc::new(RwLock::new(MockPeerManager::new()));
+        let peers = Arc::new(RwLock::new(MockPeers::new()));
         let peer_id = PeerId::generate();
-        let downloader = PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         let peer_addr = "127.0.0.1:6881".parse().unwrap();
 
@@ -966,10 +985,9 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let peer_manager = Arc::new(RwLock::new(MockPeerManager::new()));
+        let peers = Arc::new(RwLock::new(MockPeers::new()));
         let peer_id = PeerId::generate();
-        let mut downloader =
-            PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let mut downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         // Test error recovery statistics
         let initial_stats = downloader.error_recovery_statistics().await;
@@ -1013,10 +1031,9 @@ mod tests {
         );
 
         let metadata = create_test_metadata();
-        let peer_manager = Arc::new(RwLock::new(MockPeerManager::new()));
+        let peers = Arc::new(RwLock::new(MockPeers::new()));
         let peer_id = PeerId::generate();
-        let mut downloader =
-            PieceDownloader::new(metadata, storage, peer_manager, peer_id).unwrap();
+        let mut downloader = PieceDownloader::new(metadata, storage, peers, peer_id).unwrap();
 
         // Set up peers where some will be blacklisted
         let mixed_peers = vec![

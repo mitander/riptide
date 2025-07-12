@@ -14,10 +14,15 @@ use crate::deterministic::{DeterministicSimulation, EventType};
 
 /// Media-aware streaming simulation.
 pub struct MediaStreamingSimulation {
+    /// Core simulation engine for deterministic behavior
     simulation: DeterministicSimulation,
+    /// Movie folder analysis and metadata
     movie_folder: MovieFolder,
+    /// Size of torrent pieces in bytes
     piece_size: u32,
-    piece_to_file_map: HashMap<PieceIndex, usize>, // Maps pieces to file indices
+    /// Maps torrent pieces to file indices in movie folder
+    piece_to_file_map: HashMap<PieceIndex, usize>,
+    /// Current playback position for simulation tracking
     #[allow(dead_code)]
     playback_position: Duration,
 }

@@ -136,10 +136,10 @@ impl PieceStore for InMemoryPieceStore {
     /// Checks if piece is available without retrieving data.
     fn has_piece(&self, info_hash: InfoHash, piece_index: PieceIndex) -> bool {
         // For async-to-sync conversion, we use try_read which is non-blocking
-        if let Ok(torrents) = self.torrents.try_read() {
-            if let Some(pieces) = torrents.get(&info_hash) {
-                return pieces.contains_key(&piece_index.as_u32());
-            }
+        if let Ok(torrents) = self.torrents.try_read()
+            && let Some(pieces) = torrents.get(&info_hash)
+        {
+            return pieces.contains_key(&piece_index.as_u32());
         }
         false
     }
@@ -216,7 +216,7 @@ mod tests {
             },
         ];
 
-        store.add_torrent(info_hash, pieces).await;
+        store.add_torrent_pieces(info_hash, pieces).await;
 
         assert_eq!(store.torrent_count().await, 1);
         assert_eq!(store.piece_count(info_hash).await, 2);

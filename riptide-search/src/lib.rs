@@ -22,5 +22,5 @@ pub use metadata::{ImdbMetadata, MediaMetadata};
 pub use search::MediaSearch;
 pub use types::{MediaSearchResult, MediaType, TorrentResult, VideoQuality};
 
-// Type alias for convenience
+/// Convenience type alias for Results with MediaSearchError.
 pub type Result<T> = std::result::Result<T, MediaSearchError>;

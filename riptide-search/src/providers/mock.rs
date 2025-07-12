@@ -17,6 +17,7 @@ pub struct MockProvider;
 
 #[cfg(test)]
 impl MockProvider {
+    /// Creates a new mock provider for testing.
     pub fn new() -> Self {
         Self
     }

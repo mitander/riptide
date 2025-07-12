@@ -3,12 +3,18 @@
 //! Provides standardized torrent metadata and piece data for consistent
 //! testing across torrent-related modules.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use sha1::{Digest, Sha1};
 
 use super::parsing::TorrentFile;
-use super::{InfoHash, PieceIndex, TorrentMetadata};
+use super::{InfoHash, PieceIndex, TorrentError, TorrentMetadata};
 use crate::storage::file_storage::FileStorage;
+#[cfg(any(test, feature = "test-utils"))]
 use crate::storage::test_fixtures::create_temp_storage_dirs;
+use crate::torrent::{PieceStore, TorrentPiece};
 
 /// Creates standard test torrent metadata with predictable hashes.
 ///
@@ -81,10 +87,92 @@ pub fn create_test_info_hash() -> InfoHash {
     InfoHash::new([0x42u8; 20])
 }
 
+/// Creates a mock piece store for testing with predefined test data.
+///
+/// Returns a piece store populated with deterministic test pieces that can be
+/// used across different test scenarios for consistent behavior.
+pub fn create_test_piece_store() -> Arc<TestPieceStore> {
+    let mut store = TestPieceStore::new();
+    let info_hash = InfoHash::new([1u8; 20]);
+
+    // Add test pieces with deterministic data
+    let pieces = vec![
+        TorrentPiece {
+            index: 0,
+            data: vec![0u8; 1024],
+            hash: [0u8; 20],
+        },
+        TorrentPiece {
+            index: 1,
+            data: vec![1u8; 1024],
+            hash: [1u8; 20],
+        },
+    ];
+
+    for piece in pieces {
+        store.add_piece(info_hash, piece);
+    }
+
+    Arc::new(store)
+}
+
+/// Test piece store implementation for deterministic testing.
+///
+/// Provides in-memory piece storage with predictable behavior for testing
+/// torrent operations without requiring real file I/O.
+pub struct TestPieceStore {
+    pieces: HashMap<(InfoHash, u32), TorrentPiece>,
+    piece_counts: HashMap<InfoHash, u32>,
+}
+
+impl Default for TestPieceStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TestPieceStore {
+    /// Creates new empty test piece store.
+    pub fn new() -> Self {
+        Self {
+            pieces: HashMap::new(),
+            piece_counts: HashMap::new(),
+        }
+    }
+
+    /// Adds a piece to the store.
+    pub fn add_piece(&mut self, info_hash: InfoHash, piece: TorrentPiece) {
+        self.pieces.insert((info_hash, piece.index), piece);
+        *self.piece_counts.entry(info_hash).or_insert(0) += 1;
+    }
+}
+
+#[async_trait]
+impl PieceStore for TestPieceStore {
+    async fn piece_data(
+        &self,
+        info_hash: InfoHash,
+        piece_index: PieceIndex,
+    ) -> Result<Vec<u8>, TorrentError> {
+        self.pieces
+            .get(&(info_hash, piece_index.as_u32()))
+            .map(|piece| piece.data.clone())
+            .ok_or(TorrentError::TorrentNotFound { info_hash })
+    }
+
+    fn has_piece(&self, info_hash: InfoHash, piece_index: PieceIndex) -> bool {
+        self.pieces.contains_key(&(info_hash, piece_index.as_u32()))
+    }
+
+    fn piece_count(&self, info_hash: InfoHash) -> Result<u32, TorrentError> {
+        Ok(self.piece_counts.get(&info_hash).copied().unwrap_or(0))
+    }
+}
+
 /// Creates complete test environment with torrent metadata and storage.
 ///
-/// Composition pattern for tests that need both torrent and storage setup.
-/// Avoids duplicating setup code across integration tests.
+/// Only available when tempfile is available (in tests or with test-utils feature).
+#[cfg(any(test, feature = "test-utils"))]
 pub fn create_test_environment() -> (TorrentMetadata, FileStorage, tempfile::TempDir) {
     let metadata = create_test_torrent_metadata();
     let (temp_dir, downloads_dir, library_dir) = create_temp_storage_dirs();

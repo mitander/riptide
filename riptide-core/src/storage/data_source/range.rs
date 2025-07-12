@@ -12,9 +12,13 @@ use crate::torrent::InfoHash;
 /// Information about a piece range required for a byte range
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PieceRange {
+    /// Index of the piece containing data for this range
     pub piece_index: u32,
+    /// Byte offset within the piece where the range starts
     pub start_offset: u32,
+    /// Byte offset within the piece where the range ends (exclusive)
     pub end_offset: u32,
+    /// Download priority for this piece
     pub priority: PiecePriority,
 }
 
@@ -34,18 +38,26 @@ pub enum PiecePriority {
 /// Buffer requirements for efficient streaming
 #[derive(Debug, Clone)]
 pub struct BufferInfo {
+    /// Minimum buffer size required for smooth playback
     pub minimum_buffer_size: u64,
+    /// Recommended buffer size for optimal performance
     pub recommended_buffer_size: u64,
+    /// Piece indices that should be prefetched for future playback
     pub prefetch_pieces: Vec<u32>,
+    /// Piece indices that are critical for current playback
     pub critical_pieces: Vec<u32>,
 }
 
 /// Metadata about torrent structure needed for calculations
 #[derive(Debug, Clone)]
 pub struct TorrentLayout {
+    /// Size of each piece in bytes (except possibly the last piece)
     pub piece_size: u32,
+    /// Total number of pieces in the torrent
     pub total_pieces: u32,
+    /// Total size of all files in the torrent
     pub total_size: u64,
+    /// Size of the last piece in bytes (may be smaller than piece_size)
     pub last_piece_size: u32,
 }
 
@@ -102,6 +114,10 @@ impl RangeCalculator {
     }
 
     /// Validate that a byte range is well-formed and within file bounds
+    ///
+    /// # Errors
+    /// - `DataError::InvalidRange` if start >= end
+    /// - `DataError::RangeExceedsFile` if range extends beyond file size
     pub fn validate_range(&self, range: &Range<u64>) -> DataResult<()> {
         if range.start >= range.end {
             return Err(DataError::InvalidRange {
@@ -125,6 +141,10 @@ impl RangeCalculator {
     ///
     /// Returns a list of piece indices and the byte ranges within each piece
     /// that are needed to fulfill the request.
+    ///
+    /// # Errors
+    /// - `DataError::InvalidRange` if range is malformed
+    /// - `DataError::RangeExceedsFile` if range extends beyond file size
     pub fn pieces_for_range(&self, range: Range<u64>) -> DataResult<Vec<PieceRange>> {
         self.validate_range(&range)?;
 
@@ -163,7 +183,11 @@ impl RangeCalculator {
         Ok(pieces)
     }
 
-    /// Calculate optimal buffer requirements for streaming a byte range
+    /// Calculate buffer requirements for serving a byte range
+    ///
+    /// # Errors
+    /// - `DataError::InvalidRange` if range is malformed
+    /// - `DataError::RangeExceedsFile` if range extends beyond file size
     pub fn calculate_buffer_requirements(&self, range: Range<u64>) -> DataResult<BufferInfo> {
         self.validate_range(&range)?;
 

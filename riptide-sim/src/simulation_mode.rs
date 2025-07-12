@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use riptide_core::torrent::PieceStore;
 
-use crate::peer_manager::{DeterministicConfig, DeterministicPeers, DevelopmentPeers};
+use crate::peers::{DeterministicConfig, DeterministicPeers, DevelopmentPeers};
 
 /// Simulation mode configuration for different testing scenarios.
 #[derive(Debug, Clone)]
@@ -199,11 +199,11 @@ impl SimulationMode {
 }
 
 /// Factory for creating peer managers based on simulation mode.
-pub struct SimulationPeerManagerFactory;
+pub struct SimulationPeersBuilder;
 
-impl SimulationPeerManagerFactory {
+impl SimulationPeersBuilder {
     /// Creates appropriate peer manager for the given simulation mode.
-    pub fn create_peer_manager<P: PieceStore + 'static>(
+    pub fn create_peers<P: PieceStore + 'static>(
         mode: &SimulationMode,
         piece_store: Arc<P>,
     ) -> Box<dyn riptide_core::torrent::PeerManager> {
@@ -237,7 +237,7 @@ impl SimulationPeerManagerFactory {
             SimulationMode::development() // Default for development
         };
 
-        Self::create_peer_manager(&mode, piece_store)
+        Self::create_peers(&mode, piece_store)
     }
 }
 

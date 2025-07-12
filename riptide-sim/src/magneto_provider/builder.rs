@@ -7,9 +7,13 @@ use super::{MockMagnetoProvider, MockTorrentEntry, TorrentEntryParams};
 
 /// Builder for creating customized mock magneto providers.
 pub struct MockMagnetoProviderBuilder {
+    /// Random seed for deterministic behavior
     seed: u64,
+    /// Probability of request failures (0.0 to 1.0)
     failure_rate: f64,
+    /// Artificial delay before responding to requests
     response_delay: Duration,
+    /// Custom content organized by category
     custom_content: HashMap<String, Vec<MockTorrentEntry>>,
 }
 

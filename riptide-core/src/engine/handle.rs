@@ -324,7 +324,7 @@ impl TorrentEngineHandle {
     ///
     /// # Errors
     /// - `TorrentError::TorrentNotFound` - Info hash not in active torrents
-    pub async fn configure_upload_manager(
+    pub async fn configure_upload(
         &self,
         info_hash: InfoHash,
         piece_size: u64,

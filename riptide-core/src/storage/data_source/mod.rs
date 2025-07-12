@@ -29,40 +29,70 @@ use crate::torrent::InfoHash;
 /// Unified error type for all data source operations
 #[derive(Debug, thiserror::Error)]
 pub enum DataError {
+    /// Byte range is invalid (start >= end)
     #[error("Invalid range: start {start} >= end {end}")]
-    InvalidRange { start: u64, end: u64 },
+    InvalidRange {
+        /// Start byte position of the invalid range
+        start: u64,
+        /// End byte position of the invalid range
+        end: u64,
+    },
 
+    /// Requested range extends beyond file boundaries
     #[error("Range {start}..{end} exceeds file size {file_size}")]
     RangeExceedsFile {
+        /// Start byte position of the range
         start: u64,
+        /// End byte position of the range
         end: u64,
+        /// Total size of the file
         file_size: u64,
     },
 
+    /// Required data pieces are not available
     #[error("Insufficient data: missing {missing_count} pieces for range {start}..{end}")]
     InsufficientData {
+        /// Start byte position of the requested range
         start: u64,
+        /// End byte position of the requested range
         end: u64,
+        /// Number of missing pieces needed for the range
         missing_count: usize,
     },
 
+    /// Generic storage system error
     #[error("Storage error: {reason}")]
-    Storage { reason: String },
+    Storage {
+        /// Description of the storage error
+        reason: String,
+    },
 
+    /// Cache-related operation failed
     #[error("Cache error: {reason}")]
-    Cache { reason: String },
+    Cache {
+        /// Description of the cache error
+        reason: String,
+    },
 
+    /// Requested file could not be found
     #[error("File not found: {info_hash}")]
-    FileNotFound { info_hash: InfoHash },
+    FileNotFound {
+        /// Info hash of the file that was not found
+        info_hash: InfoHash,
+    },
 
+    /// Underlying torrent operation failed
     #[error("Torrent error: {source}")]
     Torrent {
+        /// The underlying torrent error
         #[from]
         source: crate::torrent::TorrentError,
     },
 
+    /// Underlying I/O operation failed
     #[error("I/O error: {source}")]
     Io {
+        /// The underlying I/O error
         #[from]
         source: std::io::Error,
     },
@@ -74,8 +104,11 @@ pub type DataResult<T> = Result<T, DataError>;
 /// Key for caching byte ranges across data sources
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RangeKey {
+    /// Info hash identifying the file
     pub info_hash: InfoHash,
+    /// Start byte position of the range
     pub start: u64,
+    /// End byte position of the range
     pub end: u64,
 }
 
@@ -103,8 +136,11 @@ impl RangeKey {
 /// Information about data availability for a specific range
 #[derive(Debug, Clone)]
 pub struct RangeAvailability {
+    /// Whether the complete range is available
     pub available: bool,
+    /// List of piece indices that are missing for this range
     pub missing_pieces: Vec<u32>,
+    /// Whether this range was found in cache
     pub cache_hit: bool,
 }
 
@@ -180,10 +216,15 @@ pub trait CacheableDataSource: DataSource {
 /// Statistics about cache performance
 #[derive(Debug, Clone)]
 pub struct CacheStats {
+    /// Number of cache hits
     pub hits: u64,
+    /// Number of cache misses
     pub misses: u64,
+    /// Number of cache entries evicted
     pub evictions: u64,
+    /// Total memory usage in bytes
     pub memory_usage: u64,
+    /// Number of entries currently in cache
     pub entry_count: usize,
 }
 
@@ -200,6 +241,9 @@ impl CacheStats {
 }
 
 /// Validate that a byte range is well-formed
+///
+/// # Errors
+/// - `DataError::InvalidRange` if start >= end
 pub fn validate_range(range: &Range<u64>) -> DataResult<()> {
     if range.start >= range.end {
         return Err(DataError::InvalidRange {
@@ -211,6 +255,10 @@ pub fn validate_range(range: &Range<u64>) -> DataResult<()> {
 }
 
 /// Validate that a byte range is within file bounds
+///
+/// # Errors
+/// - `DataError::InvalidRange` if range is malformed
+/// - `DataError::RangeExceedsFile` if range extends beyond file size
 pub fn validate_range_bounds(range: &Range<u64>, file_size: u64) -> DataResult<()> {
     validate_range(range)?;
 

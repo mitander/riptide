@@ -1,3 +1,9 @@
+//! Streaming readiness checking for torrent media
+//!
+//! Evaluates whether torrents are ready for streaming by checking download progress,
+//! buffer status, and remux readiness. Provides detailed progress information for
+//! frontend loading indicators.
+
 use axum::extract::{Path, State};
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
@@ -5,20 +11,31 @@ use tracing::info;
 
 use crate::server::AppState;
 
+/// Response structure for streaming readiness checks
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingReadinessResponse {
+    /// Whether the torrent is ready for streaming
     pub ready: bool,
+    /// Container format of the media file
     pub container_format: String,
+    /// Whether remuxing is required for streaming
     pub requires_remuxing: bool,
+    /// Descriptive message about readiness status
     pub message: String,
+    /// Total file size in bytes if known
     pub file_size: Option<u64>,
+    /// Download/buffer progress as a fraction (0.0-1.0)
     pub progress: Option<f64>,
 }
 
+/// Internal enum for readiness check results
 #[derive(Debug)]
 enum ReadinessResult {
+    /// Stream is ready for playback
     Ready,
+    /// Stream is not ready with reason
     NotReady(String),
+    /// Error occurred during readiness check
     #[allow(dead_code)]
     Error(String),
 }
@@ -114,6 +131,11 @@ pub async fn streaming_readiness_handler(
     }))
 }
 
+/// Internal function to evaluate streaming readiness based on multiple criteria
+///
+/// Checks buffer status, remux readiness, and file metadata to determine if
+/// streaming can begin. Uses configurable thresholds for buffer size, health,
+/// and duration requirements.
 async fn check_streaming_readiness(
     state: &AppState,
     info_hash: riptide_core::torrent::InfoHash,
