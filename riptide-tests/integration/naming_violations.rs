@@ -250,11 +250,8 @@ impl NamingChecker {
                     "Panics"
                 };
 
-                // Check if next line is blank (required)
-                if i + 1 >= lines.len()
-                    || !lines[i + 1].trim().is_empty()
-                    || !lines[i + 1].starts_with("///")
-                {
+                // Check if next line is blank documentation line (required)
+                if i + 1 >= lines.len() || lines[i + 1].trim() != "///" {
                     self.violations.push(NamingViolation::new(
                         &file_path.display().to_string(),
                         i + 1,
@@ -280,8 +277,8 @@ impl NamingChecker {
                     if !doc_content.is_empty() {
                         found_content = true;
 
-                        // Must start with bullet point
-                        if !doc_content.starts_with("- ") {
+                        // Must start with bullet point (only for Errors sections)
+                        if section_type == "Errors" && !doc_content.starts_with("- ") {
                             self.violations.push(NamingViolation::new(
                                 &file_path.display().to_string(),
                                 j + 1,

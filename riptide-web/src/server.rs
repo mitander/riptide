@@ -120,7 +120,7 @@ impl AppState {
 ///
 /// # Errors
 ///
-/// Returns error if server fails to bind to address or start successfully.
+/// - `std::io::Error` - If server fails to bind to address or start successfully
 ///
 /// # Panics
 ///

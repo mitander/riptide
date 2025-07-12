@@ -43,8 +43,8 @@ impl MediaStreamingSimulation {
     ///
     /// # Errors
     ///
-    /// - I/O errors reading folder contents
-    /// - Invalid movie folder structure
+    /// - `std::io::Error` - I/O errors reading folder contents
+    /// - `SimulationError` - Invalid movie folder structure
     pub async fn from_movie_folder(
         folder_path: &Path,
         seed: u64,

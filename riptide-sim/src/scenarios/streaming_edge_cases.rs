@@ -20,7 +20,7 @@ use crate::{
 ///
 /// # Errors
 ///
-/// Returns error if simulation fails to complete or network configuration is invalid.
+/// - `SimulationError` - If simulation fails to complete or network configuration is invalid
 pub fn severe_network_degradation_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::bandwidth_limited(1001);
     // Configure poor network conditions
@@ -38,7 +38,7 @@ pub fn severe_network_degradation_scenario() -> Result<SimulationReport, Simulat
 ///
 /// # Errors
 ///
-/// Returns error if simulation fails to complete or peer configuration is invalid.
+/// - `SimulationError` - If simulation fails or peer behavior configuration is invalid
 pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::high_peer_churn(1002);
     config.max_simulated_peers = 25; // Connection limit
@@ -54,7 +54,7 @@ pub fn extreme_peer_churn_scenario() -> Result<SimulationReport, SimulationError
 ///
 /// # Errors
 ///
-/// Returns error if simulation fails to complete or piece failure scenario configuration is invalid.
+/// - `SimulationError` - If simulation fails or piece configuration is invalid
 pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::ideal_streaming(1003);
     // Configure some peers to provide corrupted data
@@ -72,7 +72,7 @@ pub fn cascading_piece_failures_scenario() -> Result<SimulationReport, Simulatio
 ///
 /// # Errors
 ///
-/// Returns error if simulation fails to complete or resource constraint configuration is invalid.
+/// - `SimulationError` - If simulation fails or bandwidth configuration is invalid
 pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::ideal_streaming(1004);
     config.max_simulated_peers = 50; // Many peers to stress limits
@@ -97,7 +97,7 @@ pub fn resource_exhaustion_scenario() -> Result<SimulationReport, SimulationErro
 ///
 /// # Errors
 ///
-/// Returns error if simulation fails to complete or isolation scenario configuration is invalid.
+/// - `SimulationError` - If simulation fails or connection configuration is invalid
 pub fn total_peer_failure_scenario() -> Result<SimulationReport, SimulationError> {
     let mut config = SimulationConfig::mixed_network_quality(1005);
     config.max_simulated_peers = 5; // Few peers so they can all fail
