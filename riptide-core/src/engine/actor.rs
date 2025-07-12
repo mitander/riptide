@@ -67,12 +67,12 @@ async fn run_actor_loop<P, T>(
     loop {
         tokio::select! {
             Some(command) = receiver.recv() => {
-                if !handle_command(&mut engine, command).await {
+                if !execute_command(&mut engine, command).await {
                     break;
                 }
             }
             Some(command) = piece_receiver.recv() => {
-                if !handle_command(&mut engine, command).await {
+                if !execute_command(&mut engine, command).await {
                     break;
                 }
             }
@@ -84,7 +84,7 @@ async fn run_actor_loop<P, T>(
 
 /// Handles a single command for the torrent engine.
 /// Returns true to continue processing, false to shutdown.
-async fn handle_command<P, T>(
+async fn execute_command<P, T>(
     engine: &mut TorrentEngine<P, T>,
     command: TorrentEngineCommand,
 ) -> bool

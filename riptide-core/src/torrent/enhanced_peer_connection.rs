@@ -72,20 +72,20 @@ impl EnhancedPeerConnection {
         }
 
         // Process any immediate messages from peer (like their bitfield)
-        self.handle_incoming_messages_nonblocking().await?;
+        self.process_incoming_messages_nonblocking().await?;
 
         Ok(())
     }
 
-    /// Handle incoming messages without blocking (process what's immediately available)
-    async fn handle_incoming_messages_nonblocking(&mut self) -> Result<(), TorrentError> {
+    /// Process incoming messages without blocking (process what's immediately available)
+    async fn process_incoming_messages_nonblocking(&mut self) -> Result<(), TorrentError> {
         // This is a simplified version - in a real implementation you'd use non-blocking reads
         // For now, we'll try to read one message with a very short timeout
         match tokio::time::timeout(Duration::from_millis(100), self.protocol.receive_message())
             .await
         {
             Ok(Ok(message)) => {
-                self.handle_peer_message(message).await?;
+                self.process_peer_message(message).await?;
             }
             Ok(Err(_)) | Err(_) => {
                 // No message available or error - that's fine for non-blocking
@@ -95,12 +95,12 @@ impl EnhancedPeerConnection {
         Ok(())
     }
 
-    /// Handle received peer message and update state accordingly
+    /// Process received peer message and update state accordingly
     ///
     /// # Errors
     ///
     /// - `TorrentError::ProtocolError` - If invalid message or protocol violation
-    pub async fn handle_peer_message(&mut self, message: PeerMessage) -> Result<(), TorrentError> {
+    pub async fn process_peer_message(&mut self, message: PeerMessage) -> Result<(), TorrentError> {
         self.state.record_activity();
 
         match message {
@@ -108,16 +108,16 @@ impl EnhancedPeerConnection {
                 // Activity already recorded
             }
             PeerMessage::Choke => {
-                self.state.handle_choke();
+                self.state.receive_choke();
             }
             PeerMessage::Unchoke => {
-                self.state.handle_unchoke();
+                self.state.receive_unchoke();
             }
             PeerMessage::Interested => {
-                self.state.handle_peer_interested();
+                self.state.receive_interested();
             }
             PeerMessage::NotInterested => {
-                self.state.handle_peer_not_interested();
+                self.state.receive_not_interested();
             }
             PeerMessage::Have { piece_index } => {
                 self.state.peer_has_piece(piece_index);
@@ -135,7 +135,7 @@ impl EnhancedPeerConnection {
                 length,
             } => {
                 // Handle piece request from peer
-                self.handle_piece_request(piece_index, offset, length)
+                self.process_piece_request(piece_index, offset, length)
                     .await?;
             }
             PeerMessage::Piece {
@@ -192,8 +192,8 @@ impl EnhancedPeerConnection {
         Ok(())
     }
 
-    /// Handle piece request from peer
-    async fn handle_piece_request(
+    /// Process piece request from peer
+    async fn process_piece_request(
         &mut self,
         piece_index: PieceIndex,
         offset: u32,
@@ -455,7 +455,7 @@ mod tests {
 
         // Handle choke message
         connection
-            .handle_peer_message(PeerMessage::Choke)
+            .process_peer_message(PeerMessage::Choke)
             .await
             .unwrap();
         assert!(connection.state.is_choked_by_peer());
@@ -463,7 +463,7 @@ mod tests {
 
         // Handle unchoke message
         connection
-            .handle_peer_message(PeerMessage::Unchoke)
+            .process_peer_message(PeerMessage::Unchoke)
             .await
             .unwrap();
         assert!(!connection.state.is_choked_by_peer());
@@ -471,7 +471,7 @@ mod tests {
 
         // Handle interested message
         connection
-            .handle_peer_message(PeerMessage::Interested)
+            .process_peer_message(PeerMessage::Interested)
             .await
             .unwrap();
         assert!(connection.state.is_peer_interested());
@@ -487,7 +487,7 @@ mod tests {
 
         // Handle Have message
         connection
-            .handle_peer_message(PeerMessage::Have { piece_index })
+            .process_peer_message(PeerMessage::Have { piece_index })
             .await
             .unwrap();
 
@@ -506,7 +506,7 @@ mod tests {
 
         // Handle bitfield message (this should work without connection since it's only state)
         connection
-            .handle_peer_message(PeerMessage::Bitfield { bitfield })
+            .process_peer_message(PeerMessage::Bitfield { bitfield })
             .await
             .unwrap();
 

@@ -220,7 +220,7 @@ impl BitTorrentTestHarness {
             let bitfield = bitfield.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = Self::handle_peer_connection(
+                if let Err(e) = Self::serve_peer_connection(
                     stream,
                     pieces,
                     bitfield,
@@ -237,8 +237,8 @@ impl BitTorrentTestHarness {
         Ok(())
     }
 
-    /// Handle a single peer connection
-    async fn handle_peer_connection(
+    /// Serve a single peer connection
+    async fn serve_peer_connection(
         mut stream: tokio::net::TcpStream,
         pieces: HashMap<PieceIndex, Vec<u8>>,
         bitfield: Vec<u8>,

@@ -241,28 +241,28 @@ impl PeerConnectionState {
         }
     }
 
-    /// Handle choke message from peer
-    pub fn handle_choke(&mut self) {
+    /// Receive choke message from peer
+    pub fn receive_choke(&mut self) {
         self.record_activity();
         self.choked_by_peer = true;
         // Cancel all pending requests when choked
         self.pending_requests.clear();
     }
 
-    /// Handle unchoke message from peer
-    pub fn handle_unchoke(&mut self) {
+    /// Receive unchoke message from peer
+    pub fn receive_unchoke(&mut self) {
         self.record_activity();
         self.choked_by_peer = false;
     }
 
-    /// Handle interested message from peer
-    pub fn handle_peer_interested(&mut self) {
+    /// Receive interested message from peer
+    pub fn receive_interested(&mut self) {
         self.record_activity();
         self.peer_interested = true;
     }
 
-    /// Handle not interested message from peer
-    pub fn handle_peer_not_interested(&mut self) {
+    /// Receive not interested message from peer
+    pub fn receive_not_interested(&mut self) {
         self.record_activity();
         self.peer_interested = false;
     }
@@ -446,7 +446,7 @@ mod tests {
         assert!(!state.can_request_pieces());
 
         // Unchoke allows requests
-        state.handle_unchoke();
+        state.receive_unchoke();
         assert!(!state.is_choked_by_peer());
         assert!(state.can_request_pieces());
 
@@ -456,7 +456,7 @@ mod tests {
             .unwrap();
         assert_eq!(state.pending_request_count(), 1);
 
-        state.handle_choke();
+        state.receive_choke();
         assert!(state.is_choked_by_peer());
         assert!(!state.can_request_pieces());
         assert_eq!(state.pending_request_count(), 0);
@@ -470,19 +470,19 @@ mod tests {
         assert!(!state.is_peer_interested());
 
         state.update_interest(true);
-        state.handle_peer_interested();
+        state.receive_interested();
 
         assert!(state.is_interested());
         assert!(state.is_peer_interested());
 
-        state.handle_peer_not_interested();
+        state.receive_not_interested();
         assert!(!state.is_peer_interested());
     }
 
     #[test]
     fn test_pending_request_management() {
         let mut state = PeerConnectionState::new(100);
-        state.handle_unchoke(); // Allow requests
+        state.receive_unchoke(); // Allow requests
 
         // Add requests
         state
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn test_max_pending_requests() {
         let mut state = PeerConnectionState::new(100);
-        state.handle_unchoke();
+        state.receive_unchoke();
 
         // Fill up to limit
         for i in 0..MAX_PENDING_REQUESTS {
