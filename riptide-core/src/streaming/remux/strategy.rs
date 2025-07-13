@@ -131,20 +131,56 @@ impl StreamingStrategy for RemuxStreamStrategy {
                     .len();
 
                 // Check if requested range is beyond current remux progress
-                // range.start >= current_remux_size means no data available at that position
+                // Wait briefly for remux to catch up instead of immediate failure
                 if range.start >= current_remux_size {
                     tracing::debug!(
-                        "Range request {}..{} beyond current remux progress ({}), waiting for more data",
+                        "Range request {}..{} at current remux progress ({}), waiting for more data",
                         range.start,
                         range.end,
                         current_remux_size
                     );
-                    return Err(StrategyError::StreamingNotReady {
-                        reason: format!(
-                            "Remux in progress: requested byte {} not yet available (current size: {})",
-                            range.start, current_remux_size
-                        ),
-                    });
+
+                    // Wait up to 2 seconds for remux to generate more data
+                    let max_wait_ms = 2000;
+                    let check_interval_ms = 100;
+                    let mut waited_ms = 0;
+
+                    while waited_ms < max_wait_ms {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(check_interval_ms))
+                            .await;
+                        waited_ms += check_interval_ms;
+
+                        // Recheck file size
+                        if let Ok(metadata) = tokio::fs::metadata(&output_path).await {
+                            let updated_size = metadata.len();
+                            if range.start < updated_size {
+                                tracing::debug!(
+                                    "Remux caught up: size grew from {} to {} bytes after {}ms wait",
+                                    current_remux_size,
+                                    updated_size,
+                                    waited_ms
+                                );
+                                break;
+                            }
+                        }
+                    }
+
+                    // Final check after waiting
+                    let final_size = tokio::fs::metadata(&output_path)
+                        .await
+                        .map_err(|e| StrategyError::RemuxingFailed {
+                            reason: format!("Failed to get final remux file metadata: {e}"),
+                        })?
+                        .len();
+
+                    if range.start >= final_size {
+                        return Err(StrategyError::StreamingNotReady {
+                            reason: format!(
+                                "Remux in progress: requested byte {} not yet available after {}ms wait (current size: {})",
+                                range.start, waited_ms, final_size
+                            ),
+                        });
+                    }
                 }
 
                 // If request is beyond available remux data, use what's available
