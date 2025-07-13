@@ -470,7 +470,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_integration_harness_creation() {
         let harness = BitTorrentTestHarness::new().await;
         assert!(harness.is_ok());
@@ -481,7 +480,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_peer_server_setup() {
         let mut harness = BitTorrentTestHarness::new().await.unwrap();
 
@@ -495,7 +493,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_enhanced_connection_real() {
         let result = tokio::time::timeout(
             Duration::from_secs(2), // Reduced timeout for faster failure
@@ -517,7 +514,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_error_recovery_integration() {
         let result =
             tokio::time::timeout(Duration::from_secs(5), test_error_recovery_real_failures()).await;
@@ -530,7 +526,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_piece_download_integration() {
         let result =
             tokio::time::timeout(Duration::from_secs(5), test_piece_download_with_retry()).await; // Reduced timeout

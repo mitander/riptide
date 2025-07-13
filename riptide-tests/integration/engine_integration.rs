@@ -2,9 +2,12 @@
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use riptide_core::config::RiptideConfig;
-    use riptide_core::engine::{MockPeers, MockTracker, spawn_torrent_engine};
+    use riptide_core::engine::spawn_torrent_engine;
     use riptide_core::torrent::{InfoHash, TorrentError};
+    use riptide_sim::{InMemoryPieceStore, SimulatedConfig, SimulatedPeers, SimulatedTracker};
     use sha1::{Digest, Sha1};
 
     /// Generates proper SHA1 hashes for test torrent metadata.
@@ -22,19 +25,12 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_end_to_end_seeking_functionality() {
         let config = RiptideConfig::default();
-        let mut peers = MockPeers::new();
-        peers.enable_piece_data_simulation();
-        let mut tracker = MockTracker::new();
-
-        // Set up mock peers for the tracker manager
-        let mock_peers = vec![
-            "127.0.0.1:8080".parse().unwrap(),
-            "127.0.0.1:8081".parse().unwrap(),
-        ];
-        tracker.configure_mock_peers(mock_peers);
+        let piece_store = Arc::new(InMemoryPieceStore::new());
+        let sim_config = SimulatedConfig::ideal(); // Use ideal conditions for test reliability
+        let peers = SimulatedPeers::new(sim_config, piece_store.clone());
+        let tracker = SimulatedTracker::default();
 
         let handle = spawn_torrent_engine(config, peers, tracker);
 
@@ -115,13 +111,12 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_adaptive_buffering_under_different_conditions() {
         let config = RiptideConfig::default();
-        let mut peers = MockPeers::new();
-        peers.enable_piece_data_simulation();
-        let mut tracker = MockTracker::new();
-        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let piece_store = Arc::new(InMemoryPieceStore::new());
+        let sim_config = SimulatedConfig::ideal();
+        let peers = SimulatedPeers::new(sim_config, piece_store.clone());
+        let tracker = SimulatedTracker::default();
 
         let handle = spawn_torrent_engine(config, peers, tracker);
 
@@ -182,13 +177,12 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_multiple_concurrent_streams() {
         let config = RiptideConfig::default();
-        let mut peers = MockPeers::new();
-        peers.enable_piece_data_simulation();
-        let mut tracker = MockTracker::new();
-        tracker.configure_mock_peers(vec!["127.0.0.1:8080".parse().unwrap()]);
+        let piece_store = Arc::new(InMemoryPieceStore::new());
+        let sim_config = SimulatedConfig::ideal();
+        let peers = SimulatedPeers::new(sim_config, piece_store.clone());
+        let tracker = SimulatedTracker::default();
 
         let handle = spawn_torrent_engine(config, peers, tracker);
 

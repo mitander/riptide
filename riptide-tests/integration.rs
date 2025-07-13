@@ -15,9 +15,8 @@ mod engine_integration;
 mod mp4_validation;
 #[path = "integration/naming_violations.rs"]
 mod naming_violations;
-// Temporarily disabled - fixing API issues
-// #[path = "integration/peer_communication.rs"]
-// mod peer_communication;
+#[path = "integration/peer_communication.rs"]
+mod peer_communication;
 #[path = "integration/remux_pipeline.rs"]
 mod remux_pipeline;
 #[path = "integration/sim_streaming_integration.rs"]
@@ -27,6 +26,5 @@ mod streaming_integration;
 
 #[path = "integration/torrent_integration.rs"]
 mod torrent_integration;
-// Temporarily disabled - fixing API issues
-// #[path = "integration/torrent_protocol.rs"]
-// mod torrent_protocol;
+#[path = "integration/torrent_protocol.rs"]
+mod torrent_protocol;

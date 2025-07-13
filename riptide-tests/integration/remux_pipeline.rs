@@ -144,7 +144,6 @@ fn create_test_config() -> riptide_core::streaming::remux::types::RemuxConfig {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_strategy_creation() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
@@ -162,7 +161,6 @@ async fn test_remux_strategy_creation() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_insufficient_head_data() {
     let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([1u8; 20]);
@@ -199,7 +197,6 @@ async fn test_remux_insufficient_head_data() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_with_head_data() {
     let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([2u8; 20]);
@@ -250,7 +247,6 @@ async fn test_remux_with_head_data() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_container_format_output() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
@@ -274,7 +270,6 @@ async fn test_remux_container_format_output() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_file_size_estimation() {
     let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([4u8; 20]);
@@ -307,7 +302,6 @@ async fn test_remux_file_size_estimation() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_concurrent_sessions() {
     let mut data_source = MockDataSource::new();
     let test_data = create_test_video_data(512 * 1024); // 512KB test file
@@ -378,7 +372,6 @@ async fn test_remux_concurrent_sessions() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_format_support() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
@@ -399,7 +392,6 @@ async fn test_remux_format_support() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_error_handling() {
     let data_source: Arc<dyn DataSource> = Arc::new(MockDataSource::new());
     let config = create_test_config();
@@ -427,7 +419,6 @@ async fn test_remux_error_handling() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_range_requests() {
     let mut data_source = MockDataSource::new();
     let info_hash = InfoHash::new([5u8; 20]);

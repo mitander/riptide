@@ -8,7 +8,6 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_development_mode_full_simulation_loop() {
     // 1. Create a temporary movie file for the test
     let temp_dir = tempfile::tempdir().unwrap();

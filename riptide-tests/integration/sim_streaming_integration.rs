@@ -13,7 +13,6 @@ mod tests {
 
     /// Prove PieceBasedStreamReader works identically with simulation and production
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_core_streaming_with_simulation_data() {
         // This test proves the SAME core logic works with simulation data
         // In production, we'd pass a real PieceStore implementation
@@ -70,7 +69,6 @@ mod tests {
 
     /// Test that demonstrates production/simulation equivalence
     #[tokio::test]
-    #[ignore = "Needs API updates for new DeterministicPeers interface"]
     async fn test_production_simulation_equivalence() {
         // This test proves that switching from simulation to production
         // only changes the PieceStore implementation, not the logic

@@ -1,4 +1,4 @@
-//! Integration tests for peer communication using DeterministicPeers
+//! Integration tests for peer communication using SimulatedPeers
 
 #![allow(clippy::uninlined_format_args)]
 
@@ -6,9 +6,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PeerMessage, PieceIndex, TorrentPiece};
 use riptide_core::torrent::test_data::create_test_piece_store;
-use riptide_sim::{SimulatedConfig, SimulatedPeers, InMemoryPieceStore};
+use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PeerMessage, PieceIndex, TorrentPiece};
+use riptide_sim::{InMemoryPieceStore, SimulatedConfig, SimulatedPeers};
 
 #[tokio::test]
 async fn test_basic_peer_connection() {
@@ -19,7 +19,7 @@ async fn test_basic_peer_connection() {
 
     // Create peer manager with ideal conditions for testing
     let config = SimulatedConfig::ideal(); // No failures for reliable testing
-    let mut peers = DeterministicPeers::new(config, piece_store);
+    let mut peers = SimulatedPeers::new(config, piece_store);
 
     let peer_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let peer_id = PeerId::generate();
@@ -27,12 +27,18 @@ async fn test_basic_peer_connection() {
     // Test connection
     println!("PEER_TEST: Connecting to peer {}", peer_addr);
     let result = peers.connect_peer(peer_addr, info_hash, peer_id).await;
-    assert!(result.is_ok(), "Peer connection should succeed with ideal config");
+    assert!(
+        result.is_ok(),
+        "Peer connection should succeed with ideal config"
+    );
 
     // Verify connection
     let connected = peers.connected_peers().await;
     assert_eq!(connected.len(), 1, "Should have exactly one connected peer");
-    assert_eq!(connected[0].address, peer_addr, "Connected peer address should match");
+    assert_eq!(
+        connected[0].address, peer_addr,
+        "Connected peer address should match"
+    );
 
     println!("PEER_TEST: Basic peer connection test completed successfully");
 }
@@ -56,19 +62,22 @@ async fn test_message_passing() {
 
     // Create peer manager with ideal conditions
     let config = SimulatedConfig::ideal();
-    let mut peers = DeterministicPeers::new(config, piece_store);
+    let mut peers = SimulatedPeers::new(config, piece_store);
 
     let peer_addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
     let peer_id = PeerId::generate();
 
     // Connect peer
-    peers.connect_peer(peer_addr, info_hash, peer_id).await.unwrap();
+    peers
+        .connect_peer(peer_addr, info_hash, peer_id)
+        .await
+        .unwrap();
     println!("MSG_TEST: Connected to peer {}", peer_addr);
 
     // Send a piece request message
     let request = PeerMessage::Request {
-        index: PieceIndex::new(0),
-        begin: 0,
+        piece_index: PieceIndex::new(0),
+        offset: 0,
         length: 1024,
     };
 
@@ -87,7 +96,10 @@ async fn test_message_passing() {
             // In ideal conditions with test data, we should get some response
         }
         Ok(Err(e)) => {
-            println!("MSG_TEST: Message receive error (expected in simulation): {:?}", e);
+            println!(
+                "MSG_TEST: Message receive error (expected in simulation): {:?}",
+                e
+            );
             // This is acceptable in simulation environment
         }
         Err(_) => {
@@ -107,7 +119,7 @@ async fn test_peer_statistics() {
     let piece_store = create_test_piece_store();
 
     let config = SimulatedConfig::default();
-    let mut peers = DeterministicPeers::new(config, piece_store);
+    let mut peers = SimulatedPeers::new(config, piece_store);
 
     let peer_addr1: SocketAddr = "127.0.0.1:8082".parse().unwrap();
     let peer_addr2: SocketAddr = "127.0.0.1:8083".parse().unwrap();
@@ -119,8 +131,14 @@ async fn test_peer_statistics() {
     let result2 = peers.connect_peer(peer_addr2, info_hash, peer_id2).await;
 
     // At least one connection should succeed (depending on failure rate)
-    let successful_connections = [result1.is_ok(), result2.is_ok()].iter().filter(|&&x| x).count();
-    println!("STATS_TEST: {} out of 2 connections succeeded", successful_connections);
+    let successful_connections = [result1.is_ok(), result2.is_ok()]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+    println!(
+        "STATS_TEST: {} out of 2 connections succeeded",
+        successful_connections
+    );
 
     // Verify connected peers count
     let connected = peers.connected_peers().await;
@@ -138,7 +156,7 @@ async fn test_poor_network_conditions() {
 
     // Use poor network conditions config
     let config = SimulatedConfig::poor();
-    let mut peers = DeterministicPeers::new(config, piece_store);
+    let mut peers = SimulatedPeers::new(config, piece_store);
 
     let peer_addr: SocketAddr = "127.0.0.1:8084".parse().unwrap();
     let peer_id = PeerId::generate();
@@ -154,7 +172,10 @@ async fn test_poor_network_conditions() {
             assert_eq!(connected.len(), 1);
         }
         Err(e) => {
-            println!("NETWORK_TEST: Connection failed as expected with poor conditions: {:?}", e);
+            println!(
+                "NETWORK_TEST: Connection failed as expected with poor conditions: {:?}",
+                e
+            );
             let connected = peers.connected_peers().await;
             assert_eq!(connected.len(), 0);
         }
