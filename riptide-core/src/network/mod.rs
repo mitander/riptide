@@ -5,12 +5,14 @@
 
 pub mod peer;
 pub mod simulation;
+pub mod token_bucket;
 
 use std::time::Duration;
 
 use async_trait::async_trait;
 pub use peer::{PeerConnection, PeerLayer, ProductionPeerLayer, SimulationPeerLayer};
 pub use simulation::SimulationNetworkLayer;
+pub use token_bucket::{TokenBucket, TokenBucketError};
 
 use crate::torrent::TorrentError;
 

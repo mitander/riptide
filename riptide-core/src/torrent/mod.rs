@@ -14,10 +14,11 @@ pub mod piece_picker;
 pub mod piece_store;
 // pub mod production_peers;
 pub mod protocol;
-pub mod streaming_upload;
+
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_data;
 pub mod tracker;
+pub mod upload_rate_limiter;
 
 use std::fmt;
 use std::str::FromStr;
@@ -40,11 +41,11 @@ pub use piece_store::PieceStore;
 pub use protocol::{
     BitTorrentPeerProtocol, PeerHandshake, PeerId, PeerMessage, PeerProtocol, PeerState,
 };
-pub use streaming_upload::{StreamingUpload, StreamingUploadConfig, UploadRequest};
 pub use tracker::{
     AnnounceRequest, AnnounceResponse, HttpTrackerClient, ScrapeRequest, ScrapeResponse,
     ScrapeStats, Tracker, TrackerClient, TrackerManager,
 };
+pub use upload_rate_limiter::{UploadRateLimitConfig, UploadRateLimitError, UploadRateLimiter};
 
 pub use crate::engine::{EngineStats, TorrentEngineHandle, TorrentSession, spawn_torrent_engine};
 #[cfg(any(test, feature = "test-utils"))]

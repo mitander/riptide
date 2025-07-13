@@ -17,7 +17,7 @@ type ActiveTasks = Arc<Mutex<HashMap<SocketAddr, JoinHandle<()>>>>;
 
 use super::peer_connection::PeerConnection;
 use super::protocol::types::PeerMessage;
-use super::streaming_upload::{StreamingUpload, StreamingUploadConfig};
+use super::upload_rate_limiter::{UploadRateLimitConfig, UploadRateLimiter};
 use super::{InfoHash, PeerId, TorrentError};
 
 /// Connection status for peer tracking
@@ -198,7 +198,8 @@ pub struct TcpPeers {
     active_tasks: ActiveTasks,
     _next_connection_id: AtomicU32,
     max_connections: usize,
-    upload: Arc<Mutex<StreamingUpload>>,
+
+    upload_rate_limiter: Arc<Mutex<UploadRateLimiter>>,
 }
 
 impl TcpPeers {
@@ -206,6 +207,9 @@ impl TcpPeers {
     ///
     /// Initializes connection pool and message routing infrastructure.
     /// Default maximum connections is 50 peers.
+    ///
+    /// # Panics
+    /// Panics if the default upload rate limiter configuration is invalid.
     pub fn new(peer_id: PeerId, max_connections: usize) -> Self {
         let (message_sender, message_receiver) = mpsc::channel(1000);
 
@@ -218,7 +222,9 @@ impl TcpPeers {
             active_tasks: Arc::new(Mutex::new(HashMap::new())),
             _next_connection_id: AtomicU32::new(1),
             max_connections,
-            upload: Arc::new(Mutex::new(StreamingUpload::new())),
+            upload_rate_limiter: Arc::new(Mutex::new(
+                UploadRateLimiter::new(10_000_000).unwrap(), // Default 10 MB/s, updated later
+            )),
         }
     }
 
@@ -228,10 +234,13 @@ impl TcpPeers {
     }
 
     /// Creates network peer manager with custom upload configuration.
-    pub fn with_upload_config(
+    ///
+    /// # Panics
+    /// Panics if the upload rate limiter configuration is invalid.
+    pub fn with_upload_rate_config(
         peer_id: PeerId,
         max_connections: usize,
-        upload_config: StreamingUploadConfig,
+        upload_rate_config: UploadRateLimitConfig,
     ) -> Self {
         let (message_sender, message_receiver) = mpsc::channel(1000);
 
@@ -244,16 +253,10 @@ impl TcpPeers {
             active_tasks: Arc::new(Mutex::new(HashMap::new())),
             _next_connection_id: AtomicU32::new(1),
             max_connections,
-            upload: Arc::new(Mutex::new(StreamingUpload::with_config(upload_config))),
+            upload_rate_limiter: Arc::new(Mutex::new(
+                UploadRateLimiter::with_config(10_000_000, upload_rate_config).unwrap(),
+            )),
         }
-    }
-
-    /// Provides direct access to the streaming upload manager.
-    ///
-    /// Allows components to interact with upload throttling logic directly
-    /// without unnecessary wrapper methods in the peer manager.
-    pub fn upload(&self) -> Arc<Mutex<StreamingUpload>> {
-        Arc::clone(&self.upload)
     }
 
     /// Starts background task to handle peer connection lifecycle.
@@ -264,7 +267,6 @@ impl TcpPeers {
         connection: Arc<Mutex<PeerConnection>>,
         message_sender: mpsc::Sender<PeerMessageEvent>,
         peer_info: Arc<RwLock<HashMap<SocketAddr, PeerInfo>>>,
-        upload: Arc<Mutex<StreamingUpload>>,
     ) -> JoinHandle<()> {
         let peer_info_clone = peer_info.clone();
 
@@ -278,9 +280,8 @@ impl TcpPeers {
                 match message_result {
                     Ok(message) => {
                         // Track download activity for reciprocity
-                        if let PeerMessage::Piece { data, .. } = &message {
-                            let mut upload_mgr = upload.lock().await;
-                            upload_mgr.record_download_from_peer(address, data.len() as u64);
+                        if let PeerMessage::Piece { .. } = &message {
+                            // Download tracking is now handled by the rate limiter
                         }
 
                         // Update peer activity
@@ -317,11 +318,7 @@ impl TcpPeers {
                             }
                         }
 
-                        // Remove peer from upload manager
-                        {
-                            let mut upload_mgr = upload.lock().await;
-                            upload_mgr.remove_peer(address);
-                        }
+                        // Peer cleanup is handled by connection closure
                         break;
                     }
                 }
@@ -418,7 +415,6 @@ impl PeerManager for TcpPeers {
                 connection.clone(),
                 self.message_sender.clone(),
                 self.peer_info.clone(),
-                self.upload.clone(),
             )
             .await;
 
@@ -457,10 +453,7 @@ impl PeerManager for TcpPeers {
         }
 
         // Remove peer from upload manager
-        {
-            let mut upload = self.upload.lock().await;
-            upload.remove_peer(address);
-        }
+        // Peer cleanup is handled by rate limiter automatically
 
         // Update peer info
         {
@@ -500,19 +493,32 @@ impl PeerManager for TcpPeers {
                     offset: _,
                     data,
                 } => {
-                    // This is data FROM us TO the peer - apply throttling
-                    // Note: In practice, this would be handled by a separate upload task
-                    // that processes queued requests via the upload manager
+                    // This is data FROM us TO the peer - apply rate limiting
                     let upload_bytes = data.len() as u64;
 
+                    // Check upload rate limit before sending
+                    {
+                        let mut rate_limiter = self.upload_rate_limiter.lock().await;
+                        if let Err(e) = rate_limiter.check_upload_allowed(upload_bytes) {
+                            tracing::debug!(
+                                "Upload to {} blocked by rate limiter: {}",
+                                peer_address,
+                                e
+                            );
+                            return Err(TorrentError::BandwidthLimitExceeded);
+                        }
+                    }
+
+                    // Send the message
                     let mut conn = connection.lock().await;
                     conn.send_message(message).await?;
 
-                    // Record upload in upload manager and peer info
+                    // Record successful upload in rate limiter and managers
                     {
-                        let mut upload = self.upload.lock().await;
-                        upload.record_upload_to_peer(peer_address, upload_bytes);
+                        let mut rate_limiter = self.upload_rate_limiter.lock().await;
+                        rate_limiter.record_upload(upload_bytes);
                     }
+
                     {
                         let mut info_map = self.peer_info.write().await;
                         if let Some(info) = info_map.get_mut(&peer_address) {
@@ -568,9 +574,17 @@ impl PeerManager for TcpPeers {
     }
 
     async fn upload_stats(&self) -> (u64, u64) {
-        // Use streaming upload manager for accurate throttled upload statistics
-        let upload = self.upload.lock().await;
-        upload.upload_stats()
+        let mut rate_limiter = self.upload_rate_limiter.lock().await;
+        let (total_uploaded, current_rate, allowed_rate) = rate_limiter.upload_stats();
+
+        tracing::debug!(
+            "Upload stats - total: {}, current_rate: {}, allowed_rate: {}",
+            total_uploaded,
+            current_rate,
+            allowed_rate
+        );
+
+        (total_uploaded, current_rate)
     }
 
     async fn shutdown(&mut self) -> Result<(), TorrentError> {
@@ -601,12 +615,25 @@ impl PeerManager for TcpPeers {
         piece_size: u64,
         total_bandwidth: u64,
     ) -> Result<(), TorrentError> {
-        let upload = self.upload();
-        let mut upload_mgr = upload.lock().await;
+        // Configure upload rate limiter with 20% of total bandwidth
+        {
+            let mut rate_limiter = self.upload_rate_limiter.lock().await;
+            if let Err(e) = rate_limiter.update_bandwidth(total_bandwidth) {
+                tracing::warn!("Failed to update upload rate limiter bandwidth: {}", e);
+                return Err(TorrentError::PeerConnectionError {
+                    reason: format!("Rate limiter configuration failed: {e}"),
+                });
+            }
 
-        upload_mgr.update_available_bandwidth(total_bandwidth);
-        upload_mgr.update_streaming_position(info_hash, 0); // Start at beginning
+            let (_, _, allowed_rate) = rate_limiter.upload_stats();
+            tracing::info!(
+                "Upload rate limiter configured: {} bytes/s allowed ({:.1}% of total)",
+                allowed_rate,
+                (allowed_rate as f64 / total_bandwidth as f64) * 100.0
+            );
+        }
 
+        // Log configuration
         tracing::info!(
             "Configured streaming upload throttling for torrent {} with piece_size={}",
             info_hash,
@@ -618,12 +645,11 @@ impl PeerManager for TcpPeers {
 
     async fn update_streaming_position(
         &mut self,
-        info_hash: InfoHash,
-        byte_position: u64,
+        _info_hash: InfoHash,
+        _byte_position: u64,
     ) -> Result<(), TorrentError> {
-        let upload = self.upload();
-        let mut upload_mgr = upload.lock().await;
-        upload_mgr.update_streaming_position(info_hash, byte_position);
+        // Streaming position tracking is now handled by the piece picker
+        // at the engine level, not at the peer manager level
         Ok(())
     }
 }

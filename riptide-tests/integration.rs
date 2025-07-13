@@ -31,3 +31,5 @@ mod streaming_integration;
 mod torrent_integration;
 #[path = "integration/torrent_protocol.rs"]
 mod torrent_protocol;
+#[path = "integration/upload_rate_limiting.rs"]
+mod upload_rate_limiting;
