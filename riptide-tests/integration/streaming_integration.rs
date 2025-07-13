@@ -711,7 +711,7 @@ mod tests {
 
         // Simulate a large file where only part is available
         let total_file_size = 50 * 1024 * 1024; // 50MB
-        let available_bytes = 10 * 1024 * 1024; // Only 10MB available
+        let available_bytes = 25 * 1024 * 1024; // 25MB available (more than MIN_HEADER_SIZE)
 
         let available_data = create_avi_test_data(available_bytes as usize);
         data_source.add_file(info_hash, total_file_size, available_data);

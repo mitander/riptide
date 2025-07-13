@@ -107,7 +107,8 @@ impl StreamPump {
     ///
     /// # Errors
     ///
-    /// Returns error if writing fails or if the initial data times out.
+    /// - `ProgressiveStreamError::WriteFailed` - If writing to output fails
+    /// - `ProgressiveStreamError::InitialDataTimeout` - If initial data times out
     pub fn pump_to<W: Write>(&self, mut writer: W) -> Result<u64, ProgressiveStreamError> {
         let mut offset = 0u64;
 
@@ -242,7 +243,7 @@ impl FfmpegRunner {
     ///
     /// # Errors
     ///
-    /// Returns error if FFmpeg fails to start.
+    /// - `ProgressiveStreamError::FfmpegStart` - If FFmpeg fails to start
     pub fn run_progressive(&self) -> Result<FfmpegHandle, ProgressiveStreamError> {
         let mut cmd = Command::new("ffmpeg");
 
