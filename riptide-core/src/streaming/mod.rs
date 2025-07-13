@@ -374,6 +374,21 @@ impl HttpStreaming {
             return Err(StrategyError::InvalidRange { range: start..end });
         }
 
+        // Update piece picker position for sequential downloading
+        // This ensures pieces are downloaded in streaming order relative to playback position
+        if actual_start > 0
+            && let Err(e) = self
+                .torrent_engine
+                .update_streaming_position(info_hash, actual_start)
+                .await
+        {
+            tracing::warn!(
+                "Failed to update piece picker position for {}: {}",
+                info_hash,
+                e
+            );
+        }
+
         // Serve the requested range
         let stream_data = strategy
             .serve_range(&handle, actual_start..actual_end + 1)
