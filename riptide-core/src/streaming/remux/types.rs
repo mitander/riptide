@@ -241,6 +241,8 @@ pub struct RemuxSession {
     pub last_activity: Instant,
     /// Unique identifier for this session
     pub session_id: u64,
+    /// Streaming handle for progressive streaming (if active)
+    pub streaming_handle: Option<std::sync::Arc<crate::streaming::migration::StreamingHandle>>,
 }
 
 impl RemuxSession {
@@ -256,6 +258,7 @@ impl RemuxSession {
             created_at: now,
             last_activity: now,
             session_id,
+            streaming_handle: None,
         }
     }
 

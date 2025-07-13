@@ -243,9 +243,66 @@ impl StreamingStrategy for RemuxStreamStrategy {
                     range_end: actual_end,
                 })
             }
-            StreamReadiness::Processing => Err(StrategyError::StreamingNotReady {
-                reason: "Remuxing in progress".to_string(),
-            }),
+            StreamReadiness::Processing => {
+                // Wait for remux to start producing data instead of immediately failing
+                // This fixes the timing bug where browser gets HTTP 500 on immediate requests
+                tracing::debug!(
+                    "Remux in processing state, waiting for initial data to become available for {}",
+                    handle.info_hash
+                );
+
+                let max_wait_ms = 10000; // 10 seconds for initial remux startup
+                let check_interval_ms = 200;
+                let mut waited_ms = 0;
+
+                while waited_ms < max_wait_ms {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(check_interval_ms)).await;
+                    waited_ms += check_interval_ms;
+
+                    // Check if remux has started producing output
+                    match self.remuxer.check_readiness(handle.info_hash).await {
+                        Ok(StreamReadiness::Ready) => {
+                            // Remux is now ready, try serving the range
+                            tracing::debug!(
+                                "Remux became ready after {}ms wait, attempting to serve range",
+                                waited_ms
+                            );
+
+                            // Get the output file path and check if we have any data
+                            if let Ok(output_path) =
+                                self.remuxer.output_path(handle.info_hash).await
+                                && let Ok(metadata) = tokio::fs::metadata(&output_path).await
+                            {
+                                let current_size = metadata.len();
+                                if current_size > 0 {
+                                    // We have some data, recursively call serve_range now that it's ready
+                                    return self.serve_range(handle, range).await;
+                                }
+                            }
+                        }
+                        Ok(StreamReadiness::Processing) => {
+                            // Still processing, continue waiting
+                            continue;
+                        }
+                        Ok(StreamReadiness::Failed) => {
+                            return Err(StrategyError::RemuxingFailed {
+                                reason: "Remuxing failed during startup wait".to_string(),
+                            });
+                        }
+                        _ => {
+                            // Other states, continue waiting
+                            continue;
+                        }
+                    }
+                }
+
+                // Timeout reached, return appropriate error
+                Err(StrategyError::StreamingNotReady {
+                    reason: format!(
+                        "Remux startup timeout: no data available after {waited_ms}ms wait"
+                    ),
+                })
+            }
             StreamReadiness::WaitingForData => Err(StrategyError::StreamingNotReady {
                 reason: "Waiting for sufficient data".to_string(),
             }),

@@ -13,6 +13,9 @@ pub mod progressive;
 pub mod range;
 pub mod remux;
 
+pub mod migration;
+pub mod simple;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -91,7 +94,12 @@ impl HttpStreaming {
         _config: RiptideConfig,
         ffmpeg: Arc<dyn Ffmpeg>,
     ) -> Self {
-        let remuxer = Remuxer::new(Default::default(), Arc::clone(&data_source), ffmpeg);
+        let remuxer = Remuxer::new_with_engine(
+            Default::default(),
+            Arc::clone(&data_source),
+            ffmpeg,
+            Some(torrent_engine.clone()),
+        );
 
         let mut strategies: HashMap<ContainerFormat, Arc<dyn StreamingStrategy>> = HashMap::new();
 
@@ -345,32 +353,14 @@ impl HttpStreaming {
         // Prepare stream handle
         let handle = strategy.prepare_stream(info_hash, format).await?;
 
-        // Get file size first - debug which source provides the size
-        let total_size = match strategy.serve_range(&handle, 0..1).await {
-            Ok(sample) => {
-                let strategy_size = sample.total_size.unwrap_or(0);
-                tracing::debug!(
-                    "File size from strategy sample: {} bytes for {}",
-                    strategy_size,
-                    info_hash
-                );
-                strategy_size
-            }
-            Err(strategy_err) => {
-                tracing::debug!(
-                    "Strategy sample failed ({}), falling back to data source for {}",
-                    strategy_err,
-                    info_hash
-                );
-                let data_source_size = self.data_source.file_size(info_hash).await.unwrap_or(0);
-                tracing::debug!(
-                    "File size from data source: {} bytes for {}",
-                    data_source_size,
-                    info_hash
-                );
-                data_source_size
-            }
-        };
+        // Always use data source as authoritative file size to ensure consistency
+        // This prevents file size inconsistency between different code paths
+        let total_size = self.data_source.file_size(info_hash).await.unwrap_or(0);
+        tracing::debug!(
+            "File size from data source: {} bytes for {}",
+            total_size,
+            info_hash
+        );
 
         tracing::info!(
             "Final file size determined: {} bytes for {}",

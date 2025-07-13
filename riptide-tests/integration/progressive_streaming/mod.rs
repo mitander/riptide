@@ -216,9 +216,9 @@ async fn test_progressive_streaming_with_incremental_data() {
                         metadata.len()
                     );
                 }
-                Err(e) => panic!("Progressive streaming failed: {}", e),
+                Err(e) => panic!("Progressive streaming failed: {e}"),
             },
-            Err(e) => panic!("Task join failed: {}", e),
+            Err(e) => panic!("Task join failed: {e}"),
         },
         Err(_) => panic!("Progressive streaming timed out"),
     }
@@ -283,10 +283,7 @@ async fn test_progressive_streaming_with_corrupt_data() {
                 }
                 Err(e) => {
                     // Partial failure is acceptable with corrupt data
-                    println!(
-                        "Progressive streaming failed as expected with corrupt data: {}",
-                        e
-                    );
+                    println!("Progressive streaming failed as expected with corrupt data: {e}");
 
                     // Check if we got partial output
                     if output_path.exists() {
@@ -300,7 +297,7 @@ async fn test_progressive_streaming_with_corrupt_data() {
                     }
                 }
             },
-            Err(e) => panic!("Task join failed: {}", e),
+            Err(e) => panic!("Task join failed: {e}"),
         },
         Err(_) => panic!("Progressive streaming timed out"),
     }
@@ -329,10 +326,7 @@ async fn test_progressive_feeder_state_transitions() {
     let initial_state = feeder.state().await;
     match initial_state {
         ProgressiveState::WaitingForData { .. } => (),
-        _ => panic!(
-            "Expected WaitingForData state initially, got: {:?}",
-            initial_state
-        ),
+        _ => panic!("Expected WaitingForData state initially, got: {initial_state:?}"),
     }
 
     // Make some data available
@@ -361,13 +355,13 @@ async fn test_progressive_feeder_state_transitions() {
     let final_state = feeder.state().await;
     match final_state {
         ProgressiveState::Feeding { .. } | ProgressiveState::Completed { .. } => {
-            println!("State transitioned correctly to: {:?}", final_state);
+            println!("State transitioned correctly to: {final_state:?}");
         }
         ProgressiveState::Failed { error } => {
-            panic!("Unexpected failure state: {}", error);
+            panic!("Unexpected failure state: {error}");
         }
         other => {
-            println!("State is: {:?}, waiting for progression...", other);
+            println!("State is: {other:?}, waiting for progression...");
         }
     }
 
@@ -417,26 +411,25 @@ async fn test_progressive_streaming_performance() {
         Ok(join_result) => match join_result {
             Ok(feeder_result) => match feeder_result {
                 Ok(()) => {
-                    println!("Progressive streaming completed in {:?}", elapsed);
+                    println!("Progressive streaming completed in {elapsed:?}");
 
                     if output_path.exists() {
                         let metadata = fs::metadata(&output_path).await.unwrap();
                         let throughput = (metadata.len() as f64) / elapsed.as_secs_f64();
-                        println!("Throughput: {:.2} bytes/sec", throughput);
+                        println!("Throughput: {throughput:.2} bytes/sec");
 
                         // Performance assertion - should process at least 1KB/sec
                         assert!(
                             throughput > 1024.0,
-                            "Throughput too low: {:.2} bytes/sec",
-                            throughput
+                            "Throughput too low: {throughput:.2} bytes/sec"
                         );
                     }
                 }
-                Err(e) => panic!("Progressive streaming failed: {}", e),
+                Err(e) => panic!("Progressive streaming failed: {e}"),
             },
-            Err(e) => panic!("Task join failed: {}", e),
+            Err(e) => panic!("Task join failed: {e}"),
         },
-        Err(_) => panic!("Progressive streaming timed out after {:?}", elapsed),
+        Err(_) => panic!("Progressive streaming timed out after {elapsed:?}"),
     }
 }
 
@@ -456,7 +449,7 @@ async fn test_debug_ffmpeg_behavior() {
     // Only make header available initially (25KB)
     let header_size = 25600u64;
     data_source.make_available(0..header_size);
-    println!("Made header available: 0..{} bytes", header_size);
+    println!("Made header available: 0..{header_size} bytes");
 
     let input_path = temp_dir.path().join("debug_input.avi");
     let mut feeder = ProgressiveFeeder::new(
@@ -476,7 +469,7 @@ async fn test_debug_ffmpeg_behavior() {
         allow_partial: true,
     };
 
-    println!("Starting progressive feeder with options: {:?}", options);
+    println!("Starting progressive feeder with options: {options:?}");
 
     // Start progressive data simulation in background
     let data_source_clone = data_source.clone();
@@ -512,11 +505,11 @@ async fn test_debug_ffmpeg_behavior() {
 
     match feeder_result {
         Ok(result) => {
-            println!("Progressive feeder completed in {:?}", elapsed);
-            println!("Result: {:?}", result);
+            println!("Progressive feeder completed in {elapsed:?}");
+            println!("Result: {result:?}");
         }
         Err(e) => {
-            println!("Progressive feeder task failed: {:?}", e);
+            println!("Progressive feeder task failed: {e:?}");
         }
     }
 
@@ -605,10 +598,7 @@ async fn test_progressive_with_real_avi_structure() {
     let result = feeder.start(&options).await;
     let elapsed = start_time.elapsed();
 
-    println!(
-        "Real AVI test completed in {:?} with result: {:?}",
-        elapsed, result
-    );
+    println!("Real AVI test completed in {elapsed:?} with result: {result:?}");
 
     if output_path.exists() {
         let metadata = fs::metadata(&output_path).await.unwrap();
@@ -660,7 +650,7 @@ fn create_minimal_valid_avi() -> Vec<u8> {
     for i in 0..10 {
         data.extend_from_slice(b"00dc"); // Video chunk
         data.extend_from_slice(&100u32.to_le_bytes()); // Chunk size
-        data.extend_from_slice(&vec![0x42u8 + (i as u8); 100]); // Fake frame data
+        data.extend_from_slice(&[0x42u8 + (i as u8); 100]); // Fake frame data
     }
 
     // Fix sizes

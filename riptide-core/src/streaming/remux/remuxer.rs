@@ -13,7 +13,7 @@ use tracing::{debug, error, info, warn};
 use super::state::{RemuxError, RemuxState};
 use super::types::{RemuxConfig, RemuxSession, StreamHandle, StreamReadiness, StreamingStatus};
 use crate::storage::DataSource;
-use crate::streaming::progressive::{ProgressiveFeeder, ProgressiveState};
+use crate::streaming::migration::ProgressiveStreaming;
 use crate::streaming::{Ffmpeg, RemuxingOptions, StrategyError, StreamingResult};
 use crate::torrent::InfoHash;
 
@@ -25,6 +25,7 @@ pub struct Remuxer {
     session_counter: AtomicU64,
     data_source: Arc<dyn DataSource>,
     ffmpeg: Arc<dyn Ffmpeg>,
+    torrent_engine: Option<crate::engine::TorrentEngineHandle>,
 }
 
 impl Remuxer {
@@ -33,6 +34,16 @@ impl Remuxer {
         config: RemuxConfig,
         data_source: Arc<dyn DataSource>,
         ffmpeg: Arc<dyn Ffmpeg>,
+    ) -> Self {
+        Self::new_with_engine(config, data_source, ffmpeg, None)
+    }
+
+    /// Create a new remux session manager with torrent engine handle
+    pub fn new_with_engine(
+        config: RemuxConfig,
+        data_source: Arc<dyn DataSource>,
+        ffmpeg: Arc<dyn Ffmpeg>,
+        torrent_engine: Option<crate::engine::TorrentEngineHandle>,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_sessions));
 
@@ -48,6 +59,7 @@ impl Remuxer {
             session_counter: AtomicU64::new(1),
             data_source,
             ffmpeg,
+            torrent_engine,
         }
     }
 
@@ -377,36 +389,39 @@ impl Remuxer {
         };
 
         debug!(
-            "feed_ffmpeg_data: Creating progressive feeder for {} with file_size={}",
+            "feed_ffmpeg_data: Creating progressive streaming for {} with file_size={}",
             info_hash, file_size
         );
 
-        // Create and start progressive feeder
-        let mut feeder = ProgressiveFeeder::new(
-            info_hash,
-            self.data_source.clone(),
-            temp_input,
-            output_path.clone(),
-            file_size,
-        );
+        // Create progressive streaming instance with migration layer
+        let progressive_streaming =
+            ProgressiveStreaming::new(self.data_source.clone(), self.torrent_engine.clone());
 
         // Start progressive streaming
         debug!(
-            "feed_ffmpeg_data: Starting progressive feeder for {}",
+            "feed_ffmpeg_data: Starting progressive streaming for {}",
             info_hash
         );
-        feeder.start(&remux_options).await?;
+        let streaming_handle = progressive_streaming
+            .start_streaming(
+                info_hash,
+                temp_input,
+                output_path.clone(),
+                file_size,
+                &remux_options,
+            )
+            .await?;
         debug!(
-            "feed_ffmpeg_data: Progressive feeder started successfully for {}",
+            "feed_ffmpeg_data: Progressive streaming started successfully for {}",
             info_hash
         );
 
-        // Store feeder reference in session for monitoring
+        // Store streaming handle in session for monitoring
+        let handle_arc = std::sync::Arc::new(streaming_handle);
         {
             let mut sessions = self.sessions.write().await;
             if let Some(session) = sessions.get_mut(&info_hash) {
-                // We'll monitor the feeder state in the background
-                session.touch();
+                session.streaming_handle = Some(handle_arc.clone());
             }
         }
 
@@ -414,6 +429,7 @@ impl Remuxer {
         let sessions = self.sessions.clone();
         let info_hash_copy = info_hash;
         let output_path_copy = output_path.clone();
+        let handle_monitor = handle_arc.clone();
 
         tokio::spawn(async move {
             let mut check_interval = tokio::time::interval(std::time::Duration::from_secs(1));
@@ -422,14 +438,17 @@ impl Remuxer {
             loop {
                 check_interval.tick().await;
 
-                // Check feeder state
-                let state = feeder.state().await;
+                // Check if streaming output is ready
+                let is_ready = handle_monitor.is_ready().await;
 
-                match state {
-                    ProgressiveState::Completed { total_bytes } => {
+                if is_ready {
+                    consecutive_ready_checks += 1;
+
+                    // If ready for several checks, mark as completed
+                    if consecutive_ready_checks >= 3 {
                         info!(
-                            "Progressive streaming completed for {} ({} bytes processed)",
-                            info_hash_copy, total_bytes
+                            "Progressive streaming ready for {} (output file available)",
+                            info_hash_copy
                         );
 
                         // Mark session as completed
@@ -440,49 +459,19 @@ impl Remuxer {
                             };
                             session.touch();
                         }
-                        break;
-                    }
-                    ProgressiveState::Failed { error } => {
-                        error!(
-                            "Progressive streaming failed for {}: {}",
-                            info_hash_copy, error
-                        );
 
-                        // Mark session as failed
-                        let mut sessions = sessions.write().await;
-                        if let Some(session) = sessions.get_mut(&info_hash_copy) {
-                            session.state = RemuxState::Failed {
-                                error: RemuxError::FfmpegFailed {
-                                    reason: error.clone(),
-                                },
-                                can_retry: true,
-                            };
-                            session.touch();
-                        }
-                        break;
-                    }
-                    ProgressiveState::Feeding { bytes_fed, .. } => {
-                        // Check if output file is ready for streaming
-                        if feeder.is_output_ready().await {
-                            consecutive_ready_checks += 1;
-
-                            // After a few successful checks, mark as ready
-                            if consecutive_ready_checks >= 3 {
-                                debug!(
-                                    "Progressive output ready for streaming: {} ({} bytes fed)",
-                                    info_hash_copy, bytes_fed
-                                );
+                        // Wait for streaming to complete in background
+                        let handle_clone = Arc::clone(&handle_monitor);
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_clone.wait_completion().await {
+                                error!("Streaming completion failed: {}", e);
                             }
-                        } else {
-                            consecutive_ready_checks = 0;
-                        }
+                        });
+
+                        break;
                     }
-                    ProgressiveState::WaitingForData { bytes_needed } => {
-                        debug!(
-                            "Waiting for {} bytes to start progressive streaming for {}",
-                            bytes_needed, info_hash_copy
-                        );
-                    }
+                } else {
+                    consecutive_ready_checks = 0;
                 }
             }
         });
@@ -807,6 +796,7 @@ impl Clone for Remuxer {
             session_counter: AtomicU64::new(self.session_counter.load(Ordering::SeqCst)),
             data_source: Arc::clone(&self.data_source),
             ffmpeg: Arc::clone(&self.ffmpeg),
+            torrent_engine: self.torrent_engine.clone(),
         }
     }
 }

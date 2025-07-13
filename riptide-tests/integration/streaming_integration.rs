@@ -645,7 +645,7 @@ mod tests {
         // Progressive streaming needs more time than the old blocking approach
         let mut attempts = 0;
         let max_attempts = 20; // 10 seconds total
-        let mut last_error: Option<StrategyError> = None;
+        let mut _last_error: Option<StrategyError> = None;
 
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -660,7 +660,7 @@ mod tests {
             match result {
                 Ok(_) => {
                     // Progressive streaming is working!
-                    last_error = None;
+                    _last_error = None;
                     break;
                 }
                 Err(e) => {
@@ -689,16 +689,16 @@ mod tests {
                             }
                             _ => {}
                         }
-                        last_error = Some(e);
+                        _last_error = Some(e);
                         break;
                     }
                     // Otherwise, continue waiting
-                    last_error = Some(e);
+                    _last_error = Some(e);
                 }
             }
         }
 
-        let result = if let Some(e) = last_error {
+        let result = if let Some(e) = _last_error {
             Err(e)
         } else {
             Ok(())

@@ -26,6 +26,9 @@ mod peer_communication;
 mod remux_pipeline;
 #[path = "integration/sim_streaming_integration.rs"]
 mod sim_streaming_integration;
+#[path = "integration/simple_streaming_test.rs"]
+mod simple_streaming_test;
+
 #[path = "integration/streaming_integration.rs"]
 mod streaming_integration;
 
