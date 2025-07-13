@@ -43,6 +43,7 @@ impl TokenBucket {
     /// - `refill_rate`: Tokens added per second (sustained rate)
     ///
     /// # Panics
+    ///
     /// Panics if capacity or refill_rate is zero.
     pub fn new(capacity: u64, refill_rate: u64) -> Self {
         assert!(
@@ -68,6 +69,7 @@ impl TokenBucket {
     /// or `Err(TokenBucketError::InsufficientTokens)` if not enough tokens available.
     ///
     /// # Errors
+    ///
     /// - `TokenBucketError::InsufficientTokens` - If requested tokens exceed available tokens
     pub fn try_consume(&mut self, tokens: u64) -> Result<(), TokenBucketError> {
         self.refill();

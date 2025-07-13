@@ -66,6 +66,7 @@ impl UploadRateLimiter {
     /// - `total_bandwidth_bps`: Total available bandwidth in bytes per second
     ///
     /// # Errors
+    ///
     /// - `UploadRateLimitError::InvalidConfig` - If bandwidth is zero
     pub fn new(total_bandwidth_bps: u64) -> Result<Self, UploadRateLimitError> {
         Self::with_config(total_bandwidth_bps, UploadRateLimitConfig::default())
@@ -78,6 +79,7 @@ impl UploadRateLimiter {
     /// - `config`: Rate limiting configuration
     ///
     /// # Errors
+    ///
     /// - `UploadRateLimitError::InvalidConfig` - If bandwidth is zero or config is invalid
     pub fn with_config(
         total_bandwidth_bps: u64,
@@ -126,6 +128,7 @@ impl UploadRateLimiter {
     /// Returns `Ok(())` if upload is permitted, `Err` if rate limit would be exceeded.
     ///
     /// # Errors
+    ///
     /// - `UploadRateLimitError::RateLimitExceeded` - If upload would exceed rate limit
     pub fn check_upload_allowed(&mut self, bytes: u64) -> Result<(), UploadRateLimitError> {
         self.token_bucket
@@ -148,6 +151,7 @@ impl UploadRateLimiter {
     /// Updates total bandwidth estimate and reconfigures rate limiting.
     ///
     /// # Errors
+    ///
     /// - `UploadRateLimitError::InvalidConfig` - If new bandwidth is zero
     pub fn update_bandwidth(&mut self, new_bandwidth_bps: u64) -> Result<(), UploadRateLimitError> {
         if new_bandwidth_bps == 0 {

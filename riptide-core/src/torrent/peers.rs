@@ -209,6 +209,7 @@ impl TcpPeers {
     /// Default maximum connections is 50 peers.
     ///
     /// # Panics
+    ///
     /// Panics if the default upload rate limiter configuration is invalid.
     pub fn new(peer_id: PeerId, max_connections: usize) -> Self {
         let (message_sender, message_receiver) = mpsc::channel(1000);
@@ -236,6 +237,7 @@ impl TcpPeers {
     /// Creates network peer manager with custom upload configuration.
     ///
     /// # Panics
+    ///
     /// Panics if the upload rate limiter configuration is invalid.
     pub fn with_upload_rate_config(
         peer_id: PeerId,
