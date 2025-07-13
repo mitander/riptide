@@ -17,17 +17,15 @@ mod dev_simulation;
 mod engine_integration;
 #[path = "integration/mp4_validation.rs"]
 mod mp4_validation;
-#[path = "integration/progressive_streaming/mod.rs"]
-mod progressive_streaming;
 
 #[path = "integration/peer_communication.rs"]
 mod peer_communication;
+#[path = "integration/progressive_streaming_test.rs"]
+mod progressive_streaming_test;
 #[path = "integration/remux_pipeline.rs"]
 mod remux_pipeline;
 #[path = "integration/sim_streaming_integration.rs"]
 mod sim_streaming_integration;
-#[path = "integration/simple_streaming_test.rs"]
-mod simple_streaming_test;
 
 #[path = "integration/streaming_integration.rs"]
 mod streaming_integration;

@@ -13,9 +13,6 @@ pub mod progressive;
 pub mod range;
 pub mod remux;
 
-pub mod migration;
-pub mod simple;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -24,6 +21,7 @@ pub use ffmpeg::{Ffmpeg, ProductionFfmpeg, RemuxingOptions, RemuxingResult, Simu
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
+pub use progressive::{ProgressInfo, ProgressiveStreamError, ProgressiveStreamer};
 pub use range::{ContentInfo, Range, RangeRequest, RangeResponse};
 // Legacy aliases for backward compatibility
 pub use remux::RemuxStreamStrategy as RemuxStreamingStrategy;

@@ -1,13 +1,10 @@
-//! Integration tests for the simple progressive streaming implementation.
+//! Integration tests for the progressive streaming implementation.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use riptide_core::storage::data_source::{DataError, DataSource, RangeAvailability};
-use riptide_core::streaming::RemuxingOptions;
-use riptide_core::streaming::migration::{ProgressiveStreaming, StreamingImplementation};
-use riptide_core::streaming::simple::{SimpleProgressiveStreamer, StreamPump};
+use riptide_core::streaming::progressive::{ProgressiveStreamer, StreamPump};
 use riptide_core::torrent::InfoHash;
 use tempfile::TempDir;
 use tokio::sync::Mutex;
@@ -241,14 +238,14 @@ async fn test_stream_pump_progressive_availability() {
 }
 
 #[tokio::test]
-async fn test_simple_progressive_streamer() {
+async fn test_progressive_streamer() {
     let temp_dir = TempDir::new().unwrap();
     let output_path = temp_dir.path().join("output.mp4");
 
     let data_source = Arc::new(MockTorrentDataSource::new(10 * 1024 * 1024)); // 10MB
     let info_hash = InfoHash::new([2u8; 20]); // Third test hash
 
-    let streamer = SimpleProgressiveStreamer::new(
+    let streamer = ProgressiveStreamer::new(
         data_source,
         info_hash,
         10 * 1024 * 1024,
@@ -266,47 +263,6 @@ async fn test_simple_progressive_streamer() {
 
     // Note: We can't actually test FFmpeg execution without FFmpeg installed
     // This would need to be tested in a real integration environment
-}
-
-#[tokio::test]
-async fn test_migration_interface() {
-    let temp_dir = TempDir::new().unwrap();
-    let output_path = temp_dir.path().join("output.mp4");
-
-    let data_source = Arc::new(MockTorrentDataSource::new(5 * 1024 * 1024));
-    let info_hash = InfoHash::new([3u8; 20]); // Migration test hash
-
-    // Test with simple implementation
-    let streaming = ProgressiveStreaming::with_implementation(
-        StreamingImplementation::Simple,
-        data_source.clone(),
-        None,
-    );
-
-    let options = RemuxingOptions {
-        video_codec: "libx264".to_string(),
-        audio_codec: "aac".to_string(),
-        ..Default::default()
-    };
-
-    let handle = streaming
-        .start_streaming(
-            info_hash,
-            PathBuf::from("input.avi"),
-            output_path.clone(),
-            5 * 1024 * 1024,
-            &options,
-        )
-        .await;
-
-    // Should succeed in creating handle (actual FFmpeg execution would fail in test env)
-    assert!(handle.is_ok());
-
-    let handle = handle.unwrap();
-    assert!(!handle.is_ready().await);
-
-    // Cleanup
-    handle.shutdown();
 }
 
 #[tokio::test]
@@ -377,7 +333,7 @@ async fn test_timeout_handling() {
 
 #[test]
 fn test_ffmpeg_command_construction() {
-    use riptide_core::streaming::simple::FfmpegRunner;
+    use riptide_core::streaming::progressive::FfmpegRunner;
 
     let temp_dir = TempDir::new().unwrap();
     let output_path = temp_dir.path().join("test.mp4");
@@ -391,7 +347,7 @@ fn test_ffmpeg_command_construction() {
 
 #[test]
 fn test_format_detection_and_auto_handling() {
-    use riptide_core::streaming::simple::FfmpegRunner;
+    use riptide_core::streaming::progressive::FfmpegRunner;
 
     let temp_dir = TempDir::new().unwrap();
 

@@ -13,8 +13,8 @@ use tracing::{debug, error, info, warn};
 use super::state::{RemuxError, RemuxState};
 use super::types::{RemuxConfig, RemuxSession, StreamHandle, StreamReadiness, StreamingStatus};
 use crate::storage::DataSource;
-use crate::streaming::migration::ProgressiveStreaming;
-use crate::streaming::{Ffmpeg, RemuxingOptions, StrategyError, StreamingResult};
+use crate::streaming::progressive::ProgressiveStreamer;
+use crate::streaming::{Ffmpeg, StrategyError, StreamingResult};
 use crate::torrent::InfoHash;
 
 /// Manages remuxing sessions with state machine and concurrency control
@@ -356,8 +356,7 @@ impl Remuxer {
             (file_size, output_path)
         };
 
-        // Create temporary input file path
-        let temp_input = output_path.with_extension("progressive_input");
+        // Note: temp input path no longer needed with new ProgressiveStreamer
 
         // Check if this is an AVI file by reading minimal header
         let header_size = 16u64.min(file_size);
@@ -370,111 +369,48 @@ impl Remuxer {
                 false
             };
 
-        // Configure FFmpeg options for streaming
-        let video_codec = if is_avi_file {
-            // For AVI files, transcode video to H.264 for better browser compatibility
-            // AVI files often have DivX/Xvid codecs that don't work well in MP4
-            "libx264".to_string()
-        } else {
-            "copy".to_string()
-        };
-
-        let remux_options = RemuxingOptions {
-            video_codec,
-            audio_codec: "aac".to_string(), // Convert audio for better compatibility
-            faststart: true,
-            timeout_seconds: Some(300),
-            ignore_index: false,
-            allow_partial: true, // Allow partial data for progressive streaming
-        };
+        // Note: video codec configuration now handled directly by ProgressiveStreamer
 
         debug!(
             "feed_ffmpeg_data: Creating progressive streaming for {} with file_size={}",
             info_hash, file_size
         );
 
-        // Create progressive streaming instance with migration layer
-        let progressive_streaming =
-            ProgressiveStreaming::new(self.data_source.clone(), self.torrent_engine.clone());
+        // Determine input format from file type
+        let input_format = if is_avi_file {
+            "avi".to_string()
+        } else {
+            "auto".to_string()
+        };
+
+        // Create progressive streaming instance
+        let progressive_streamer = ProgressiveStreamer::new(
+            self.data_source.clone(),
+            info_hash,
+            file_size,
+            input_format,
+            output_path.clone(),
+            self.torrent_engine.clone(),
+        );
 
         // Start progressive streaming
         debug!(
             "feed_ffmpeg_data: Starting progressive streaming for {}",
             info_hash
         );
-        let streaming_handle = progressive_streaming
-            .start_streaming(
-                info_hash,
-                temp_input,
-                output_path.clone(),
-                file_size,
-                &remux_options,
-            )
-            .await?;
+        let streaming_handle = progressive_streamer.start();
         debug!(
             "feed_ffmpeg_data: Progressive streaming started successfully for {}",
             info_hash
         );
 
         // Store streaming handle in session for monitoring
-        let handle_arc = std::sync::Arc::new(streaming_handle);
         {
             let mut sessions = self.sessions.write().await;
             if let Some(session) = sessions.get_mut(&info_hash) {
-                session.streaming_handle = Some(handle_arc.clone());
+                session.streaming_handle = Some(streaming_handle);
             }
         }
-
-        // Start monitoring task
-        let sessions = self.sessions.clone();
-        let info_hash_copy = info_hash;
-        let output_path_copy = output_path.clone();
-        let handle_monitor = handle_arc.clone();
-
-        tokio::spawn(async move {
-            let mut check_interval = tokio::time::interval(std::time::Duration::from_secs(1));
-            let mut consecutive_ready_checks = 0;
-
-            loop {
-                check_interval.tick().await;
-
-                // Check if streaming output is ready
-                let is_ready = handle_monitor.is_ready().await;
-
-                if is_ready {
-                    consecutive_ready_checks += 1;
-
-                    // If ready for several checks, mark as completed
-                    if consecutive_ready_checks >= 3 {
-                        info!(
-                            "Progressive streaming ready for {} (output file available)",
-                            info_hash_copy
-                        );
-
-                        // Mark session as completed
-                        let mut sessions = sessions.write().await;
-                        if let Some(session) = sessions.get_mut(&info_hash_copy) {
-                            session.state = RemuxState::Completed {
-                                output_path: output_path_copy.clone(),
-                            };
-                            session.touch();
-                        }
-
-                        // Wait for streaming to complete in background
-                        let handle_clone = Arc::clone(&handle_monitor);
-                        tokio::spawn(async move {
-                            if let Err(e) = handle_clone.wait_completion().await {
-                                error!("Streaming completion failed: {}", e);
-                            }
-                        });
-
-                        break;
-                    }
-                } else {
-                    consecutive_ready_checks = 0;
-                }
-            }
-        });
 
         info!(
             "Started progressive streaming for {} -> {}",

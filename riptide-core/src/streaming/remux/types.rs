@@ -242,7 +242,9 @@ pub struct RemuxSession {
     /// Unique identifier for this session
     pub session_id: u64,
     /// Streaming handle for progressive streaming (if active)
-    pub streaming_handle: Option<std::sync::Arc<crate::streaming::migration::StreamingHandle>>,
+    pub streaming_handle: Option<
+        tokio::task::JoinHandle<Result<(), crate::streaming::progressive::ProgressiveStreamError>>,
+    >,
 }
 
 impl RemuxSession {
