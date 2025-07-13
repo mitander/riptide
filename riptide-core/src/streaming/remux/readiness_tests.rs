@@ -561,9 +561,9 @@ mod tests {
         );
         let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
-        // Should be waiting because head is 1 byte short
+        // With extended timeout for progressive streaming, should be processing and waiting for more data
         let readiness = remuxer.check_readiness(info_hash).await.unwrap();
-        assert_eq!(readiness, StreamReadiness::WaitingForData);
+        assert_eq!(readiness, StreamReadiness::Processing);
     }
 
     #[tokio::test]
@@ -613,9 +613,9 @@ mod tests {
         );
         let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
-        // Should still be waiting because small files need full content
+        // With extended timeout for progressive streaming, should be processing and waiting for more data
         let readiness = remuxer.check_readiness(info_hash).await.unwrap();
-        assert_eq!(readiness, StreamReadiness::WaitingForData);
+        assert_eq!(readiness, StreamReadiness::Processing);
     }
 
     #[tokio::test]

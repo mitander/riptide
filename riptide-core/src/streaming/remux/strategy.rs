@@ -123,7 +123,7 @@ impl StreamingStrategy for RemuxStreamStrategy {
                     })?;
 
                 // Get current remux file size for range validation
-                let current_remux_size = tokio::fs::metadata(&output_path)
+                let mut current_remux_size = tokio::fs::metadata(&output_path)
                     .await
                     .map_err(|e| StrategyError::RemuxingFailed {
                         reason: format!("Failed to get remux file metadata: {e}"),
@@ -140,8 +140,8 @@ impl StreamingStrategy for RemuxStreamStrategy {
                         current_remux_size
                     );
 
-                    // Wait up to 2 seconds for remux to generate more data
-                    let max_wait_ms = 2000;
+                    // Wait up to 30 seconds for remux to generate more data for progressive streaming
+                    let max_wait_ms = 30000;
                     let check_interval_ms = 100;
                     let mut waited_ms = 0;
 
@@ -174,13 +174,26 @@ impl StreamingStrategy for RemuxStreamStrategy {
                         .len();
 
                     if range.start >= final_size {
-                        return Err(StrategyError::StreamingNotReady {
-                            reason: format!(
-                                "Remux in progress: requested byte {} not yet available after {}ms wait (current size: {})",
-                                range.start, waited_ms, final_size
-                            ),
-                        });
+                        // Check if we have any partial data available
+                        if final_size > 0 {
+                            // We have some data, but not up to the requested start position
+                            // For progressive playback, we should indicate this properly
+                            return Err(StrategyError::StreamingNotReady {
+                                reason: format!(
+                                    "Remux in progress: requested byte {} not yet available after {}ms wait (current size: {})",
+                                    range.start, waited_ms, final_size
+                                ),
+                            });
+                        } else {
+                            // No data at all yet
+                            return Err(StrategyError::StreamingNotReady {
+                                reason: "Remux in progress: no data available yet".to_string(),
+                            });
+                        }
                     }
+
+                    // Update current_remux_size for the next step
+                    current_remux_size = final_size;
                 }
 
                 // If request is beyond available remux data, use what's available
@@ -208,10 +221,24 @@ impl StreamingStrategy for RemuxStreamStrategy {
                     }
                 })?;
 
+                // For progressive streaming, if we're still remuxing and serving partial data,
+                // we might want to indicate the actual remuxed file size instead of original
+                // Check if remuxing is still in progress by comparing sizes
+                let is_remuxing = current_remux_size < original_file_size;
+
+                let reported_total_size = if is_remuxing {
+                    // During remuxing, report the current size to help players understand
+                    // that more data is being produced
+                    Some(current_remux_size.max(actual_end))
+                } else {
+                    // For completed remux, report the original file size for compatibility
+                    Some(original_file_size)
+                };
+
                 Ok(StreamData {
                     data: file_data,
                     content_type: "video/mp4".to_string(),
-                    total_size: Some(original_file_size),
+                    total_size: reported_total_size,
                     range_start: range.start,
                     range_end: actual_end,
                 })

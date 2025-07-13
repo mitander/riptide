@@ -17,6 +17,8 @@ mod dev_simulation;
 mod engine_integration;
 #[path = "integration/mp4_validation.rs"]
 mod mp4_validation;
+#[path = "integration/progressive_streaming/mod.rs"]
+mod progressive_streaming;
 
 #[path = "integration/peer_communication.rs"]
 mod peer_communication;

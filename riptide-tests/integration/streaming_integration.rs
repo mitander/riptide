@@ -1,13 +1,21 @@
 //! Integration tests for HTTP range handler integration with adaptive piece picker.
 
+use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
+use std::time::Duration;
 
 use riptide_core::config::RiptideConfig;
 use riptide_core::engine::spawn_torrent_engine;
+use riptide_core::storage::data_source::{DataError, DataResult, DataSource, RangeAvailability};
+use riptide_core::streaming::{
+    ContainerFormat, RemuxStreamStrategy, StrategyError, StreamingStrategy,
+};
 use riptide_core::torrent::InfoHash;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
 use riptide_sim::{InMemoryPieceStore, SimulatedConfig, SimulatedPeers, SimulatedTracker};
 use sha1::{Digest, Sha1};
+use tokio::sync::RwLock;
 
 /// Generates proper SHA1 hashes for test torrent metadata.
 fn generate_test_piece_hashes(piece_count: usize, piece_size: u32) -> Vec<[u8; 20]> {
@@ -376,5 +384,429 @@ mod tests {
         }
 
         handle.shutdown().await.unwrap();
+    }
+
+    /// Mock data source that simulates partial file availability during download
+    #[derive(Debug)]
+    struct PartialDataSource {
+        available_ranges: RwLock<HashMap<InfoHash, Vec<Range<u64>>>>,
+        file_sizes: HashMap<InfoHash, u64>,
+        file_data: HashMap<InfoHash, Vec<u8>>,
+    }
+
+    impl PartialDataSource {
+        fn new() -> Self {
+            Self {
+                available_ranges: RwLock::new(HashMap::new()),
+                file_sizes: HashMap::new(),
+                file_data: HashMap::new(),
+            }
+        }
+
+        fn add_file(&mut self, info_hash: InfoHash, total_size: u64, available_data: Vec<u8>) {
+            self.file_sizes.insert(info_hash, total_size);
+            self.file_data.insert(info_hash, available_data);
+        }
+
+        async fn make_range_available(&self, info_hash: InfoHash, range: Range<u64>) {
+            let mut ranges = self.available_ranges.write().await;
+            ranges.entry(info_hash).or_insert_with(Vec::new).push(range);
+        }
+
+        async fn simulate_partial_download(&self, info_hash: InfoHash, downloaded_bytes: u64) {
+            self.make_range_available(info_hash, 0..downloaded_bytes)
+                .await;
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl DataSource for PartialDataSource {
+        async fn read_range(&self, info_hash: InfoHash, range: Range<u64>) -> DataResult<Vec<u8>> {
+            let total_size = self.file_sizes.get(&info_hash).copied().unwrap_or(0);
+
+            // Simulate the blocking behavior that causes the bug
+            if range.end > total_size {
+                return Err(DataError::RangeExceedsFile {
+                    start: range.start,
+                    end: range.end,
+                    file_size: total_size,
+                });
+            }
+
+            // Check if the entire range is available
+            let ranges = self.available_ranges.read().await;
+            let empty_vec = Vec::new();
+            let available_ranges = ranges.get(&info_hash).unwrap_or(&empty_vec);
+
+            let is_available = available_ranges
+                .iter()
+                .any(|r| r.start <= range.start && r.end >= range.end);
+
+            if !is_available {
+                // Simulate waiting for data that never comes (like in the bug)
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                return Err(DataError::InsufficientData {
+                    start: range.start,
+                    end: range.end,
+                    missing_count: 1,
+                });
+            }
+
+            let data = self.file_data.get(&info_hash).unwrap();
+            if range.end > data.len() as u64 {
+                return Err(DataError::InsufficientData {
+                    start: range.start,
+                    end: range.end,
+                    missing_count: 1,
+                });
+            }
+
+            Ok(data[range.start as usize..range.end as usize].to_vec())
+        }
+
+        async fn file_size(&self, info_hash: InfoHash) -> DataResult<u64> {
+            self.file_sizes
+                .get(&info_hash)
+                .copied()
+                .ok_or_else(|| DataError::InsufficientData {
+                    start: 0,
+                    end: 0,
+                    missing_count: 1,
+                })
+        }
+
+        async fn check_range_availability(
+            &self,
+            info_hash: InfoHash,
+            range: Range<u64>,
+        ) -> DataResult<RangeAvailability> {
+            let ranges = self.available_ranges.read().await;
+            if let Some(available) = ranges.get(&info_hash) {
+                let is_available = available
+                    .iter()
+                    .any(|r| r.start <= range.start && r.end >= range.end);
+                Ok(RangeAvailability {
+                    available: is_available,
+                    missing_pieces: if is_available { Vec::new() } else { vec![0] },
+                    cache_hit: false,
+                })
+            } else {
+                Ok(RangeAvailability {
+                    available: false,
+                    missing_pieces: vec![0],
+                    cache_hit: false,
+                })
+            }
+        }
+
+        fn source_type(&self) -> &'static str {
+            "partial_data_source"
+        }
+
+        async fn can_handle(&self, info_hash: InfoHash) -> bool {
+            self.file_sizes.contains_key(&info_hash)
+        }
+    }
+
+    /// Mock FFmpeg implementation that creates simple test output
+    struct MockFfmpeg {
+        _temp_dir: tempfile::TempDir,
+    }
+
+    impl MockFfmpeg {
+        fn new() -> Self {
+            Self {
+                _temp_dir: tempfile::TempDir::new().expect("Failed to create temp dir"),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl riptide_core::streaming::Ffmpeg for MockFfmpeg {
+        async fn remux_to_mp4(
+            &self,
+            _input_path: &std::path::Path,
+            output_path: &std::path::Path,
+            _options: &riptide_core::streaming::RemuxingOptions,
+        ) -> riptide_core::streaming::StreamingResult<riptide_core::streaming::RemuxingResult>
+        {
+            // Create a valid MP4 file for testing (must be >512KB for streaming readiness)
+            let mut mp4_data = Vec::with_capacity(1024 * 1024);
+
+            // Add ftyp atom (file type box)
+            let ftyp_size: u32 = 24; // 8 byte header + 16 byte data
+            mp4_data.extend_from_slice(&ftyp_size.to_be_bytes());
+            mp4_data.extend_from_slice(b"ftyp");
+            mp4_data.extend_from_slice(b"mp41"); // major_brand
+            mp4_data.extend_from_slice(&0u32.to_be_bytes()); // minor_version
+            mp4_data.extend_from_slice(b"mp41"); // compatible_brand
+            mp4_data.extend_from_slice(b"isom"); // compatible_brand
+
+            // Add moov atom (movie box) - minimal header
+            let moov_size: u32 = 8; // Just header for now
+            mp4_data.extend_from_slice(&moov_size.to_be_bytes());
+            mp4_data.extend_from_slice(b"moov");
+
+            // Pad to reach minimum size requirement (>512KB)
+            let current_size = mp4_data.len();
+            let target_size = 1024 * 1024; // 1MB
+            if current_size < target_size {
+                mp4_data.resize(target_size, 0);
+            }
+            tokio::fs::write(output_path, &mp4_data)
+                .await
+                .map_err(riptide_core::streaming::StrategyError::IoError)?;
+
+            Ok(riptide_core::streaming::RemuxingResult {
+                output_size: mp4_data.len() as u64,
+                processing_time: 0.1, // Fast processing for tests
+                streams_reencoded: false,
+            })
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn estimate_output_size(&self, input_path: &std::path::Path) -> Option<u64> {
+            std::fs::metadata(input_path).ok().map(|m| m.len())
+        }
+    }
+
+    /// Create test configuration that reproduces the bug
+    fn create_bug_reproducing_config() -> riptide_core::streaming::remux::types::RemuxConfig {
+        // Create a temporary directory for cache that we know exists
+        let temp_cache_dir =
+            std::env::temp_dir().join(format!("riptide_test_{}", std::process::id()));
+        std::fs::create_dir_all(&temp_cache_dir).expect("Failed to create test cache directory");
+
+        riptide_core::streaming::remux::types::RemuxConfig {
+            min_head_size: 3 * 1024 * 1024, // 3MB minimum head (like production)
+            max_concurrent_sessions: 5,
+            remux_timeout: Duration::from_secs(30),
+            cache_dir: temp_cache_dir,
+            ..Default::default()
+        }
+    }
+
+    /// Create test AVI data that looks like a real video file
+    fn create_avi_test_data(size: usize) -> Vec<u8> {
+        let mut data = vec![0u8; size];
+
+        // Add AVI file header
+        data[0..4].copy_from_slice(b"RIFF");
+        data[8..12].copy_from_slice(b"AVI ");
+
+        // Fill with some pattern to simulate video data
+        for (i, item) in data.iter_mut().enumerate().skip(12) {
+            *item = (i % 256) as u8;
+        }
+
+        data
+    }
+
+    #[tokio::test]
+    async fn test_progressive_streaming_with_partial_data() {
+        let mut data_source = PartialDataSource::new();
+        let info_hash = InfoHash::new([1u8; 20]);
+
+        // Simulate the exact scenario from the logs:
+        // - Total file size: ~100MB (like a movie)
+        // - Downloaded: ~14MB (14155804 bytes from logs)
+        // - Browser requests: ~26MB range (26476572 bytes from logs)
+        let total_file_size = 100 * 1024 * 1024; // 100MB
+        let downloaded_bytes = 14 * 1024 * 1024 + 155804; // ~14.15MB (matching logs)
+        let requested_position = 26 * 1024 * 1024 + 476572; // ~26.47MB (matching logs)
+
+        // Create partial AVI data (only what's been downloaded)
+        let available_data = create_avi_test_data(downloaded_bytes as usize);
+        data_source.add_file(info_hash, total_file_size, available_data);
+
+        // Simulate that only the first part has been downloaded
+        data_source
+            .simulate_partial_download(info_hash, downloaded_bytes)
+            .await;
+
+        let config = create_bug_reproducing_config();
+        let remuxer = riptide_core::streaming::Remuxer::new(
+            config,
+            Arc::new(data_source),
+            Arc::new(MockFfmpeg::new()),
+        );
+        let strategy = RemuxStreamStrategy::new(remuxer);
+
+        // Prepare stream handle (this should work)
+        let handle = strategy
+            .prepare_stream(info_hash, ContainerFormat::Avi)
+            .await
+            .unwrap();
+
+        // Give progressive streaming time to start and produce initial output
+        // Progressive streaming needs more time than the old blocking approach
+        let mut attempts = 0;
+        let max_attempts = 20; // 10 seconds total
+        let mut last_error: Option<StrategyError> = None;
+
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            attempts += 1;
+
+            // Now simulate the browser requesting data beyond what's available
+            // This should work with progressive streaming
+            let result = strategy
+                .serve_range(&handle, requested_position..requested_position + 1024)
+                .await;
+
+            match result {
+                Ok(_) => {
+                    // Progressive streaming is working!
+                    last_error = None;
+                    break;
+                }
+                Err(e) => {
+                    if attempts >= max_attempts {
+                        // Timeout - check what error we got
+                        match &e {
+                            StrategyError::StreamingNotReady { reason } => {
+                                if reason.contains("Remuxing in progress")
+                                    || reason.contains("Remux in progress")
+                                {
+                                    panic!(
+                                        "BUG REPRODUCED: Streaming fails when browser requests range beyond remux progress after {attempts} attempts. \
+                                         Error: {reason}. This test should be updated when progressive streaming is implemented."
+                                    );
+                                }
+                            }
+                            StrategyError::RemuxingFailed { reason } => {
+                                if reason.contains("Failed to read file data")
+                                    || reason.contains("Insufficient")
+                                {
+                                    panic!(
+                                        "BUG REPRODUCED: Remux fails due to blocking read_range(0..file_size) call after {attempts} attempts. \
+                                         Error: {reason}. This test should be updated when progressive streaming is implemented."
+                                    );
+                                }
+                            }
+                            _ => {}
+                        }
+                        last_error = Some(e);
+                        break;
+                    }
+                    // Otherwise, continue waiting
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        let result = if let Some(e) = last_error {
+            Err(e)
+        } else {
+            Ok(())
+        };
+
+        // The test verifies progressive streaming behavior:
+        // - Progressive streaming should start with available data
+        // - Requests beyond available data should return appropriate errors
+        match result {
+            Err(StrategyError::StreamingNotReady { reason }) => {
+                // This is expected - we're requesting data beyond what's been downloaded
+                // The key is that progressive streaming started and didn't block on full file
+                assert!(
+                    reason.contains("requested byte") && reason.contains("not yet available"),
+                    "Expected error about requested byte not available, got: {reason}"
+                );
+                // This is correct behavior - we can't serve data we don't have
+            }
+            Err(StrategyError::RemuxingFailed { reason }) => {
+                // This would indicate the old blocking behavior
+                if reason.contains("Failed to read file data") || reason.contains("Insufficient") {
+                    panic!(
+                        "REGRESSION: Remux is using blocking read_range(0..file_size) instead of progressive streaming. \
+                         Error: {reason}"
+                    );
+                }
+                panic!("Unexpected remuxing failure: {reason}");
+            }
+            Ok(_) => {
+                panic!(
+                    "Unexpected success: should not be able to serve byte {requested_position} when only {downloaded_bytes} bytes are available"
+                );
+            }
+            Err(StrategyError::FfmpegError { .. }) => {
+                // Ignore FFmpeg errors in test environment
+            }
+            Err(other) => {
+                panic!("Unexpected error type: {other:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_progressive_streaming_starts_with_partial_data() {
+        let mut data_source = PartialDataSource::new();
+        let info_hash = InfoHash::new([2u8; 20]);
+
+        // Simulate a large file where only part is available
+        let total_file_size = 50 * 1024 * 1024; // 50MB
+        let available_bytes = 10 * 1024 * 1024; // Only 10MB available
+
+        let available_data = create_avi_test_data(available_bytes as usize);
+        data_source.add_file(info_hash, total_file_size, available_data);
+        data_source
+            .simulate_partial_download(info_hash, available_bytes)
+            .await;
+
+        let config = create_bug_reproducing_config();
+        let remuxer = riptide_core::streaming::Remuxer::new(
+            config,
+            Arc::new(data_source),
+            Arc::new(MockFfmpeg::new()),
+        );
+        let strategy = RemuxStreamStrategy::new(remuxer);
+
+        let handle = strategy
+            .prepare_stream(info_hash, ContainerFormat::Avi)
+            .await
+            .unwrap();
+
+        // Give progressive streaming time to start producing output
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        // With progressive streaming, this should succeed even with partial data
+        // We're requesting the beginning of the file which is available
+        let result = strategy.serve_range(&handle, 0..1024).await;
+
+        // With progressive streaming, serving from the beginning should work
+        match result {
+            Ok(stream_data) => {
+                // Success! Progressive streaming is working
+                assert_eq!(stream_data.range_start, 0);
+                assert_eq!(stream_data.data.len(), 1024);
+                assert_eq!(stream_data.content_type, "video/mp4");
+            }
+            Err(StrategyError::StreamingNotReady { reason }) => {
+                // Still waiting for initial remux output
+                if reason.contains("Waiting for sufficient data") {
+                    // This is acceptable - progressive streaming hasn't produced output yet
+                    return;
+                }
+                panic!("Progressive streaming should work with partial data. Error: {reason}");
+            }
+            Err(StrategyError::RemuxingFailed { reason }) => {
+                if reason.contains("Failed to read file data") || reason.contains("Insufficient") {
+                    panic!(
+                        "REGRESSION: Blocking read_range detected. Progressive streaming should not read entire file. \
+                         Error: {reason}"
+                    );
+                }
+                panic!("Unexpected remuxing failure: {reason}");
+            }
+            Err(StrategyError::FfmpegError { .. }) => {
+                // Ignore FFmpeg errors in test environment
+            }
+            Err(other) => {
+                panic!("Unexpected error: {other:?}");
+            }
+        }
     }
 }

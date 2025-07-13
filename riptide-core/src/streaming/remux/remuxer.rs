@@ -13,6 +13,7 @@ use tracing::{debug, error, info, warn};
 use super::state::{RemuxError, RemuxState};
 use super::types::{RemuxConfig, RemuxSession, StreamHandle, StreamReadiness, StreamingStatus};
 use crate::storage::DataSource;
+use crate::streaming::progressive::{ProgressiveFeeder, ProgressiveState};
 use crate::streaming::{Ffmpeg, RemuxingOptions, StrategyError, StreamingResult};
 use crate::torrent::InfoHash;
 
@@ -312,8 +313,13 @@ impl Remuxer {
         Ok(())
     }
 
-    /// Feed data to FFmpeg process and monitor completion
+    /// Feed data to FFmpeg process progressively as it becomes available
     async fn feed_ffmpeg_data(&self, info_hash: InfoHash) -> StreamingResult<()> {
+        debug!(
+            "feed_ffmpeg_data: Starting progressive streaming for {}",
+            info_hash
+        );
+
         // Get file size and output path
         let (file_size, output_path) = {
             let sessions = self.sessions.read().await;
@@ -338,29 +344,21 @@ impl Remuxer {
             (file_size, output_path)
         };
 
-        // Create temporary input file by assembling all data
-        let temp_input = output_path.with_extension("tmp_input");
+        // Create temporary input file path
+        let temp_input = output_path.with_extension("progressive_input");
 
-        // Read all file data from data source
-        let file_data = self
-            .data_source
-            .read_range(info_hash, 0..file_size)
-            .await
-            .map_err(|e| StrategyError::RemuxingFailed {
-                reason: format!("Failed to read file data: {e}"),
-            })?;
-
-        // Check if this is an AVI file by reading the header before writing
+        // Check if this is an AVI file by reading minimal header
+        let header_size = 16u64.min(file_size);
         let is_avi_file =
-            file_data.len() >= 12 && file_data.starts_with(b"RIFF") && &file_data[8..12] == b"AVI ";
-
-        // Write to temporary input file
-        std::fs::write(&temp_input, file_data).map_err(|e| StrategyError::RemuxingFailed {
-            reason: format!("Failed to write temporary input file: {e}"),
-        })?;
+            if let Ok(header_data) = self.data_source.read_range(info_hash, 0..header_size).await {
+                header_data.len() >= 12
+                    && header_data.starts_with(b"RIFF")
+                    && &header_data[8..12] == b"AVI "
+            } else {
+                false
+            };
 
         // Configure FFmpeg options for streaming
-
         let video_codec = if is_avi_file {
             // For AVI files, transcode video to H.264 for better browser compatibility
             // AVI files often have DivX/Xvid codecs that don't work well in MP4
@@ -375,49 +373,127 @@ impl Remuxer {
             faststart: true,
             timeout_seconds: Some(300),
             ignore_index: false,
-            allow_partial: false,
+            allow_partial: true, // Allow partial data for progressive streaming
         };
 
-        // Run FFmpeg remuxing
-        let result = self
-            .ffmpeg
-            .remux_to_mp4(&temp_input, &output_path, &remux_options)
-            .await;
+        debug!(
+            "feed_ffmpeg_data: Creating progressive feeder for {} with file_size={}",
+            info_hash, file_size
+        );
 
-        // Clean up temporary input file
-        let _ = std::fs::remove_file(&temp_input);
+        // Create and start progressive feeder
+        let mut feeder = ProgressiveFeeder::new(
+            info_hash,
+            self.data_source.clone(),
+            temp_input,
+            output_path.clone(),
+            file_size,
+        );
 
-        match result {
-            Ok(_remux_result) => {
-                info!("FFmpeg remuxing completed successfully for {}", info_hash);
-                self.mark_completed(info_hash, output_path).await;
-                Ok(())
-            }
-            Err(e) => {
-                error!("FFmpeg remuxing failed for {}: {}", info_hash, e);
-                Err(StrategyError::RemuxingFailed {
-                    reason: format!("FFmpeg remuxing failed: {e}"),
-                })
+        // Start progressive streaming
+        debug!(
+            "feed_ffmpeg_data: Starting progressive feeder for {}",
+            info_hash
+        );
+        feeder.start(&remux_options).await?;
+        debug!(
+            "feed_ffmpeg_data: Progressive feeder started successfully for {}",
+            info_hash
+        );
+
+        // Store feeder reference in session for monitoring
+        {
+            let mut sessions = self.sessions.write().await;
+            if let Some(session) = sessions.get_mut(&info_hash) {
+                // We'll monitor the feeder state in the background
+                session.touch();
             }
         }
-    }
 
-    /// Mark a session as completed
-    async fn mark_completed(&self, info_hash: InfoHash, output_path: PathBuf) {
-        let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(&info_hash) {
-            session.state = RemuxState::Completed {
-                output_path: output_path.clone(),
-            };
-            session.ffmpeg_handle = None; // Process has finished
-            session.touch();
+        // Start monitoring task
+        let sessions = self.sessions.clone();
+        let info_hash_copy = info_hash;
+        let output_path_copy = output_path.clone();
 
-            info!(
-                "Remuxing completed for {} -> {}",
-                info_hash,
-                output_path.display()
-            );
-        }
+        tokio::spawn(async move {
+            let mut check_interval = tokio::time::interval(std::time::Duration::from_secs(1));
+            let mut consecutive_ready_checks = 0;
+
+            loop {
+                check_interval.tick().await;
+
+                // Check feeder state
+                let state = feeder.state().await;
+
+                match state {
+                    ProgressiveState::Completed { total_bytes } => {
+                        info!(
+                            "Progressive streaming completed for {} ({} bytes processed)",
+                            info_hash_copy, total_bytes
+                        );
+
+                        // Mark session as completed
+                        let mut sessions = sessions.write().await;
+                        if let Some(session) = sessions.get_mut(&info_hash_copy) {
+                            session.state = RemuxState::Completed {
+                                output_path: output_path_copy.clone(),
+                            };
+                            session.touch();
+                        }
+                        break;
+                    }
+                    ProgressiveState::Failed { error } => {
+                        error!(
+                            "Progressive streaming failed for {}: {}",
+                            info_hash_copy, error
+                        );
+
+                        // Mark session as failed
+                        let mut sessions = sessions.write().await;
+                        if let Some(session) = sessions.get_mut(&info_hash_copy) {
+                            session.state = RemuxState::Failed {
+                                error: RemuxError::FfmpegFailed {
+                                    reason: error.clone(),
+                                },
+                                can_retry: true,
+                            };
+                            session.touch();
+                        }
+                        break;
+                    }
+                    ProgressiveState::Feeding { bytes_fed, .. } => {
+                        // Check if output file is ready for streaming
+                        if feeder.is_output_ready().await {
+                            consecutive_ready_checks += 1;
+
+                            // After a few successful checks, mark as ready
+                            if consecutive_ready_checks >= 3 {
+                                debug!(
+                                    "Progressive output ready for streaming: {} ({} bytes fed)",
+                                    info_hash_copy, bytes_fed
+                                );
+                            }
+                        } else {
+                            consecutive_ready_checks = 0;
+                        }
+                    }
+                    ProgressiveState::WaitingForData { bytes_needed } => {
+                        debug!(
+                            "Waiting for {} bytes to start progressive streaming for {}",
+                            bytes_needed, info_hash_copy
+                        );
+                    }
+                }
+            }
+        });
+
+        info!(
+            "Started progressive streaming for {} -> {}",
+            info_hash,
+            output_path.display()
+        );
+
+        Ok(())
     }
 
     /// Mark a session as failed
@@ -450,13 +526,15 @@ impl Remuxer {
         // Check if this is an AVI file to determine data requirements
         let is_avi_file = self.is_avi_file(info_hash).await;
 
-        // For AVI files that need transcoding, we can start with much less data
+        // For progressive streaming, we can start with much less data
         let required_head_size = if is_avi_file {
-            // For AVI transcoding, only need 1MB to start - we're re-encoding anyway
-            (1024 * 1024).min(file_size)
+            // For AVI transcoding, only need 512KB to start - progressive feeder handles the rest
+            (512 * 1024).min(file_size)
         } else {
-            // For other formats (copy operations), use full min_head_size
-            self.config.min_head_size.min(file_size)
+            // For other formats, still use less data for progressive streaming
+            (2 * 1024 * 1024)
+                .min(file_size)
+                .min(self.config.min_head_size)
         };
 
         debug!(
@@ -481,15 +559,16 @@ impl Remuxer {
             })
             .unwrap_or(false);
 
-        // For small files (< 10MB), require the full file
-        if file_size < 10 * 1024 * 1024 {
+        // For very small files (< 5MB), require more data, but still allow progressive streaming
+        if file_size < 5 * 1024 * 1024 {
             debug!(
-                "Small file detected ({}MB), requiring full file",
+                "Small file detected ({}MB), requiring more data but allowing progressive",
                 file_size / 1024 / 1024
             );
-            let full_file_available = self
+            let target_size = (file_size * 3 / 4).max(required_head_size); // Require 75% of small files
+            let sufficient_data_available = self
                 .data_source
-                .check_range_availability(info_hash, 0..file_size)
+                .check_range_availability(info_hash, 0..target_size)
                 .await
                 .map(|availability| {
                     debug!(
@@ -501,7 +580,7 @@ impl Remuxer {
                     availability.available
                 })
                 .unwrap_or(false);
-            return Ok(full_file_available);
+            return Ok(sufficient_data_available);
         }
 
         // For streaming optimization, start remuxing with just head data
@@ -557,35 +636,66 @@ impl Remuxer {
 
     /// Check if a partially transcoded file is ready for streaming
     async fn is_partial_file_ready(&self, info_hash: InfoHash) -> bool {
+        debug!(
+            "is_partial_file_ready: Checking readiness for {}",
+            info_hash
+        );
         let sessions = self.sessions.read().await;
         let session = match sessions.get(&info_hash) {
             Some(session) => session,
-            None => return false,
+            None => {
+                debug!("is_partial_file_ready: No session found for {}", info_hash);
+                return false;
+            }
         };
 
         let output_path = match &session.output_path {
             Some(path) => path,
-            None => return false,
+            None => {
+                debug!("is_partial_file_ready: No output path for {}", info_hash);
+                return false;
+            }
         };
 
         // Check if the output file exists and has valid MP4 headers
         if !output_path.exists() {
+            debug!(
+                "is_partial_file_ready: Output file does not exist: {}",
+                output_path.display()
+            );
             return false;
         }
 
-        // Check file size - we need at least 256KB for basic streaming
+        // Check file size - we need at least 64KB for basic streaming
         if let Ok(metadata) = std::fs::metadata(output_path) {
             let file_size = metadata.len();
-            if file_size < 256 * 1024 {
+            debug!(
+                "is_partial_file_ready: Output file size for {}: {} bytes",
+                info_hash, file_size
+            );
+
+            if file_size < 64 * 1024 {
+                debug!(
+                    "is_partial_file_ready: File too small (< 64KB) for {}",
+                    info_hash
+                );
                 return false;
             }
 
-            // For fragmented MP4 progressive streaming, we need at least 512KB to start
+            // For fragmented MP4 progressive streaming, we need at least 128KB to start
             // This is much less than traditional faststart MP4
-            if file_size < 512 * 1024 {
+            if file_size < 128 * 1024 {
+                debug!(
+                    "is_partial_file_ready: File too small (< 128KB) for progressive streaming for {}",
+                    info_hash
+                );
                 return false;
             }
         } else {
+            debug!(
+                "is_partial_file_ready: Failed to get metadata for {}",
+                info_hash
+            );
             return false;
         }
 
@@ -596,7 +706,16 @@ impl Remuxer {
             use std::io::Read;
             let mut buffer = vec![0u8; HEADER_CHECK_SIZE];
             if let Ok(bytes_read) = file.read(&mut buffer) {
+                debug!(
+                    "is_partial_file_ready: Read {} bytes from output file for {}",
+                    bytes_read, info_hash
+                );
+
                 if bytes_read < 32 {
+                    debug!(
+                        "is_partial_file_ready: Too few bytes read (< 32) for {}",
+                        info_hash
+                    );
                     return false;
                 }
 
@@ -609,6 +728,11 @@ impl Remuxer {
                 let has_moov = buffer.windows(4).any(|window| window == b"moov");
                 let has_moof = buffer.windows(4).any(|window| window == b"moof");
 
+                debug!(
+                    "is_partial_file_ready: MP4 validation for {}: has_ftyp={}, has_moov={}, has_moof={}",
+                    info_hash, has_ftyp, has_moov, has_moof
+                );
+
                 if has_ftyp && (has_moov || has_moof) {
                     let file_size = std::fs::metadata(output_path).map(|m| m.len()).unwrap_or(0);
                     tracing::info!(
@@ -617,8 +741,23 @@ impl Remuxer {
                         file_size
                     );
                     return true;
+                } else {
+                    debug!(
+                        "is_partial_file_ready: MP4 validation failed for {}",
+                        info_hash
+                    );
                 }
+            } else {
+                debug!(
+                    "is_partial_file_ready: Failed to read from output file for {}",
+                    info_hash
+                );
             }
+        } else {
+            debug!(
+                "is_partial_file_ready: Failed to open output file for {}",
+                info_hash
+            );
         }
 
         false

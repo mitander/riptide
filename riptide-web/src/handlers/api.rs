@@ -65,7 +65,7 @@ pub struct SeekRequest {
 pub async fn api_stats(State(state): State<AppState>) -> axum::response::Json<Stats> {
     // Add timeout to prevent hanging
     let stats_result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(10),
         state.engine().download_statistics(),
     )
     .await;
@@ -103,7 +103,7 @@ pub async fn api_torrents(
     State(state): State<AppState>,
 ) -> axum::response::Json<serde_json::Value> {
     let sessions_result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(10),
         state.engine().active_sessions(),
     )
     .await;
@@ -196,7 +196,7 @@ pub async fn api_add_torrent(
     }
 
     let add_result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+        std::time::Duration::from_secs(15),
         state.engine().add_magnet(&request.magnet_link),
     )
     .await;
@@ -205,7 +205,7 @@ pub async fn api_add_torrent(
         Ok(Ok(info_hash)) => {
             // Start downloading immediately after adding
             let start_result = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
+                std::time::Duration::from_secs(10),
                 state.engine().start_download(info_hash),
             )
             .await;
@@ -385,7 +385,7 @@ pub async fn api_search_movies(
 /// Panics if the torrent engine fails to return active sessions.
 pub async fn api_library(State(state): State<AppState>) -> axum::response::Json<serde_json::Value> {
     let sessions_result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(10),
         state.engine().active_sessions(),
     )
     .await;
@@ -508,7 +508,7 @@ pub async fn api_download_torrent(
     }
 
     let add_result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+        std::time::Duration::from_secs(15),
         state.engine().add_magnet(&payload.magnet_link),
     )
     .await;
@@ -517,7 +517,7 @@ pub async fn api_download_torrent(
         Ok(Ok(info_hash)) => {
             // Start downloading immediately after adding
             let start_result = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
+                std::time::Duration::from_secs(10),
                 state.engine().start_download(info_hash),
             )
             .await;
@@ -779,7 +779,7 @@ pub async fn api_dashboard_activity(
     State(state): State<AppState>,
 ) -> axum::response::Json<Vec<ActivityItem>> {
     let sessions_result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(10),
         state.engine().active_sessions(),
     )
     .await;
@@ -828,7 +828,7 @@ pub async fn api_dashboard_downloads(
     State(state): State<AppState>,
 ) -> axum::response::Json<Vec<DownloadItem>> {
     let sessions_result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(10),
         state.engine().active_sessions(),
     )
     .await;
@@ -904,7 +904,7 @@ pub async fn api_system_status(
 
     // Determine network status based on active sessions and peer connections
     let sessions_result = tokio::time::timeout(
-        std::time::Duration::from_secs(1),
+        std::time::Duration::from_secs(5),
         state.engine().active_sessions(),
     )
     .await;

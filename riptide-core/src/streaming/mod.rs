@@ -9,6 +9,7 @@ pub mod mp4_validation;
 pub mod performance_tests;
 
 pub mod piece_reader;
+pub mod progressive;
 pub mod range;
 pub mod remux;
 
