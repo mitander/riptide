@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use riptide_core::torrent::PieceStore;
 
-use crate::peers::{DeterministicConfig, DeterministicPeers, DevelopmentPeers};
+use crate::peers::{SimulatedConfig, SimulatedPeers};
 
 /// Simulation mode configuration for different testing scenarios.
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ pub enum SimulationMode {
         /// Network conditions to simulate
         network_conditions: NetworkConditions,
         /// Peer behavior configuration
-        peer_config: DeterministicConfig,
+        peer_config: SimulatedConfig,
     },
 
     /// Fast development mode for streaming performance.
@@ -130,7 +130,7 @@ impl SimulationMode {
         SimulationMode::Deterministic {
             seed,
             network_conditions: NetworkConditions::default(),
-            peer_config: DeterministicConfig::default(),
+            peer_config: SimulatedConfig::default(),
         }
     }
 
@@ -139,7 +139,7 @@ impl SimulationMode {
         SimulationMode::Deterministic {
             seed,
             network_conditions: conditions,
-            peer_config: DeterministicConfig::default(),
+            peer_config: SimulatedConfig::default(),
         }
     }
 
@@ -209,17 +209,17 @@ impl SimulationPeersBuilder {
     ) -> Box<dyn riptide_core::torrent::PeerManager> {
         match mode {
             SimulationMode::Deterministic { peer_config, .. } => {
-                tracing::info!("Creating DeterministicPeers for deterministic simulation");
-                Box::new(DeterministicPeers::new(peer_config.clone(), piece_store))
+                tracing::info!("Creating SimulatedPeers for deterministic simulation");
+                Box::new(SimulatedPeers::new(peer_config.clone(), piece_store))
             }
             SimulationMode::Development { .. } => {
-                tracing::info!("Creating DevelopmentPeers for realistic streaming speed");
-                Box::new(DevelopmentPeers::new(piece_store))
+                tracing::info!("Creating SimulatedPeers for realistic streaming speed");
+                Box::new(SimulatedPeers::new_instant(piece_store))
             }
             SimulationMode::Hybrid { .. } => {
                 // For now, start with fast mode. In future, implement actual hybrid logic.
-                tracing::info!("Creating DevelopmentPeers for hybrid mode (fast phase)");
-                Box::new(DevelopmentPeers::new(piece_store))
+                tracing::info!("Creating SimulatedPeers for hybrid mode (fast phase)");
+                Box::new(SimulatedPeers::new_instant(piece_store))
             }
         }
     }
@@ -273,7 +273,7 @@ impl SimulationConfigBuilder {
     }
 
     /// Configure peer behavior for deterministic mode.
-    pub fn with_peer_config(mut self, config: DeterministicConfig) -> Self {
+    pub fn with_peer_config(mut self, config: SimulatedConfig) -> Self {
         if let SimulationMode::Deterministic { peer_config, .. } = &mut self.mode {
             *peer_config = config;
         }

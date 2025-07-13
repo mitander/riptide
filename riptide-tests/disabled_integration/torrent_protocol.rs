@@ -11,12 +11,12 @@ use riptide_core::storage::FileStorage;
 use riptide_core::torrent::downloader::PieceDownloader;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
 use riptide_core::torrent::{InfoHash, PeerId, PieceIndex, PieceStore, TorrentPiece};
-use riptide_sim::{DeterministicConfig, DeterministicPeers, InMemoryPieceStore};
+use riptide_sim::{SimulatedConfig, SimulatedPeers, InMemoryPieceStore};
 use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
+#[ignore = "Needs API updates for new SimulatedPeers interface"]
 async fn test_simple_piece_download() {
     println!("SIMPLE_TEST: Starting simple piece download test");
 
@@ -87,8 +87,8 @@ async fn test_simple_piece_download() {
     );
 
     // Create peer manager
-    let config = DeterministicConfig::default();
-    let mut peers = DeterministicPeers::new(config, piece_store.clone());
+    let config = SimulatedConfig::default();
+    let mut peers = SimulatedPeers::new(config, piece_store.clone());
 
     println!("SIMPLE_TEST: Created peer manager");
 
@@ -187,7 +187,7 @@ async fn test_simple_piece_download() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
+#[ignore = "Needs API updates for new SimulatedPeers interface"]
 async fn test_peers_basic_functionality() {
     println!("BASIC_TEST: Testing peer manager basic functionality");
 
@@ -209,8 +209,8 @@ async fn test_peers_basic_functionality() {
     }];
     piece_store.add_torrent_pieces(info_hash, pieces).await;
 
-    let config = DeterministicConfig::default();
-    let mut peers = DeterministicPeers::new(config, piece_store.clone());
+    let config = SimulatedConfig::default();
+    let mut peers = SimulatedPeers::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
 

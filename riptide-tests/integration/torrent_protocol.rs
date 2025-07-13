@@ -12,7 +12,7 @@ use riptide_core::torrent::downloader::PieceDownloader;
 use riptide_core::torrent::parsing::types::{TorrentFile, TorrentMetadata};
 use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PieceIndex, PieceStore, TorrentPiece};
 use riptide_core::torrent::test_data::{create_test_piece_store, create_test_torrent_metadata};
-use riptide_sim::{DeterministicConfig, DeterministicPeers, InMemoryPieceStore};
+use riptide_sim::{SimulatedConfig, SimulatedPeers, InMemoryPieceStore};
 use sha1::{Digest, Sha1};
 use tokio::sync::RwLock;
 
@@ -94,7 +94,7 @@ async fn test_peer_manager_integration() {
     piece_store.add_torrent_pieces(info_hash, test_pieces).await;
 
     // Create peer manager with ideal conditions
-    let config = DeterministicConfig::ideal();
+    let config = SimulatedConfig::ideal();
     let mut peers = DeterministicPeers::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
@@ -119,7 +119,7 @@ async fn test_piece_downloader_creation() {
 
     let info_hash = InfoHash::new([3u8; 20]);
     let piece_store = Arc::new(InMemoryPieceStore::new());
-    let config = DeterministicConfig::ideal();
+    let config = SimulatedConfig::ideal();
     let peers = Arc::new(RwLock::new(DeterministicPeers::new(config, piece_store.clone())));
 
     // Create test metadata
@@ -198,7 +198,7 @@ async fn test_multiple_peer_scenario() {
     let piece_store = create_test_piece_store();
     
     // Use default config which allows some failures for realistic testing
-    let config = DeterministicConfig::default();
+    let config = SimulatedConfig::default();
     let mut peers = DeterministicPeers::new(config, piece_store);
 
     // Try to connect multiple peers

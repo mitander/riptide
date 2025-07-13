@@ -17,45 +17,76 @@ use riptide_core::torrent::{
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::sleep;
 
-/// Configuration for deterministic peer simulation.
+/// Simulation speed configuration for controlling peer behavior timing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimulationSpeed {
+    /// Instant responses with minimal delays for fast development iteration
+    Instant,
+    /// Realistic network timing with delays and failures for comprehensive testing
+    Realistic,
+}
+
+/// Configuration for simulated peer simulation.
 #[derive(Debug, Clone)]
-pub struct DeterministicConfig {
-    /// Base delay for message responses in milliseconds
+pub struct SimulatedConfig {
+    /// Speed mode controlling delays and failure rates
+    pub simulation_speed: SimulationSpeed,
+    /// Base delay for message responses in milliseconds (used in Realistic mode)
     pub message_delay_ms: u64,
-    /// Probability of connection failure (0.0 to 1.0)
+    /// Probability of connection failure (0.0 to 1.0, used in Realistic mode)
     pub connection_failure_rate: f64,
-    /// Probability of message loss (0.0 to 1.0)
+    /// Probability of message loss (0.0 to 1.0, used in Realistic mode)
     pub message_loss_rate: f64,
     /// Maximum number of simultaneous connections
     pub max_connections: usize,
     /// Upload rate per peer in bytes per second
     pub upload_rate_bps: u64,
+    /// Target streaming rate for development mode (bytes per second)
+    pub streaming_rate_bps: u64,
     /// Random seed for deterministic behavior
     pub seed: u64,
 }
 
-impl Default for DeterministicConfig {
+impl Default for SimulatedConfig {
     fn default() -> Self {
         Self {
+            simulation_speed: SimulationSpeed::Realistic,
             message_delay_ms: 50,          // Realistic internet delay
             connection_failure_rate: 0.05, // 5% connection failures
             message_loss_rate: 0.01,       // 1% message loss
             max_connections: 50,
-            upload_rate_bps: 1024 * 1024, // 1 MB/s
-            seed: 12345,                  // Fixed seed for reproducibility
+            upload_rate_bps: 1024 * 1024,        // 1 MB/s
+            streaming_rate_bps: 8 * 1024 * 1024, // 8 MB/s for development
+            seed: 12345,                         // Fixed seed for reproducibility
         }
     }
 }
 
-impl DeterministicConfig {
-    /// Configuration for ideal network conditions (no failures, minimal delay).
-    pub fn ideal() -> Self {
+impl SimulatedConfig {
+    /// Configuration for instant responses (development mode).
+    pub fn instant() -> Self {
         Self {
+            simulation_speed: SimulationSpeed::Instant,
             message_delay_ms: 1,
             connection_failure_rate: 0.0,
             message_loss_rate: 0.0,
             max_connections: 100,
-            upload_rate_bps: 10 * 1024 * 1024, // 10 MB/s
+            upload_rate_bps: 10 * 1024 * 1024,   // 10 MB/s
+            streaming_rate_bps: 8 * 1024 * 1024, // 8 MB/s for development
+            seed: 12345,
+        }
+    }
+
+    /// Configuration for ideal network conditions (no failures, minimal delay).
+    pub fn ideal() -> Self {
+        Self {
+            simulation_speed: SimulationSpeed::Realistic,
+            message_delay_ms: 1,
+            connection_failure_rate: 0.0,
+            message_loss_rate: 0.0,
+            max_connections: 100,
+            upload_rate_bps: 10 * 1024 * 1024,   // 10 MB/s
+            streaming_rate_bps: 8 * 1024 * 1024, // 8 MB/s for development
             seed: 12345,
         }
     }
@@ -63,11 +94,13 @@ impl DeterministicConfig {
     /// Configuration for poor network conditions (high latency, failures).
     pub fn poor() -> Self {
         Self {
+            simulation_speed: SimulationSpeed::Realistic,
             message_delay_ms: 200,
             connection_failure_rate: 0.15, // 15% connection failures
             message_loss_rate: 0.05,       // 5% message loss
             max_connections: 20,
-            upload_rate_bps: 256 * 1024, // 256 KB/s
+            upload_rate_bps: 256 * 1024,    // 256 KB/s
+            streaming_rate_bps: 512 * 1024, // 512 KB/s for poor conditions
             seed: 12345,
         }
     }
@@ -81,16 +114,17 @@ impl DeterministicConfig {
     }
 }
 
-/// Deterministic peer implementation for simulation testing.
+/// Simulated peer implementation for simulation testing.
 ///
 /// Provides fully reproducible peer behavior for:
 /// - Bug reproduction with identical conditions
 /// - Regression testing with deterministic scenarios
 /// - Performance testing with controlled network conditions
 /// - Edge case testing with failure injection
-pub struct DeterministicPeers<P: PieceStore> {
+/// - Fast development iteration with instant responses
+pub struct SimulatedPeers<P: PieceStore> {
     /// Configuration parameters for simulation behavior
-    config: DeterministicConfig,
+    config: SimulatedConfig,
     /// Storage backend for piece data
     piece_store: Arc<P>,
     /// Active simulated peers indexed by address
@@ -105,6 +139,60 @@ pub struct DeterministicPeers<P: PieceStore> {
     rng_state: Arc<Mutex<u64>>,
     /// Counter for generating unique peer IDs
     next_peer_id: Arc<Mutex<u32>>,
+    /// Rate limiting for development mode streaming
+    rate_limiter: Arc<Mutex<StreamingRateLimiter>>,
+    /// Current streaming position for each torrent (development mode)
+    streaming_positions: Arc<RwLock<HashMap<InfoHash, u64>>>,
+}
+
+/// Realistic streaming rate limiter for development mode.
+///
+/// Simulates real-world BitTorrent performance for development testing
+/// while maintaining fast iteration speeds.
+#[derive(Debug)]
+struct StreamingRateLimiter {
+    /// Target transfer rate in bytes per second
+    target_bytes_per_second: u64,
+    /// Timestamp of last data transfer
+    last_transfer_time: Instant,
+    /// Bytes transferred in the current second
+    bytes_this_second: u64,
+}
+
+impl StreamingRateLimiter {
+    /// Creates rate limiter with configurable streaming rate.
+    fn new(target_bytes_per_second: u64) -> Self {
+        Self {
+            target_bytes_per_second,
+            last_transfer_time: Instant::now(),
+            bytes_this_second: 0,
+        }
+    }
+
+    /// Applies rate limiting for realistic streaming simulation.
+    async fn apply_rate_limit(&mut self, bytes_transferred: u64) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_transfer_time);
+
+        // Reset counter every second
+        if elapsed >= Duration::from_secs(1) {
+            self.bytes_this_second = 0;
+            self.last_transfer_time = now;
+        }
+
+        self.bytes_this_second += bytes_transferred;
+
+        // Apply gentle throttling if exceeding target rate
+        if self.bytes_this_second > self.target_bytes_per_second {
+            let delay_ms = 50; // Light throttling for realism
+            sleep(Duration::from_millis(delay_ms)).await;
+        }
+    }
+
+    /// Updates the target transfer rate.
+    fn update_target_rate(&mut self, bytes_per_second: u64) {
+        self.target_bytes_per_second = bytes_per_second;
+    }
 }
 
 /// Simulated peer for deterministic testing.
@@ -211,9 +299,9 @@ impl SimulatedPeer {
     }
 }
 
-impl<P: PieceStore> DeterministicPeers<P> {
-    /// Creates a new deterministic peer manager with specified configuration.
-    pub fn new(config: DeterministicConfig, piece_store: Arc<P>) -> Self {
+impl<P: PieceStore> SimulatedPeers<P> {
+    /// Creates new simulated peer manager with specified configuration.
+    pub fn new(config: SimulatedConfig, piece_store: Arc<P>) -> Self {
         let (message_sender, message_receiver) = mpsc::unbounded_channel();
 
         Self {
@@ -228,17 +316,26 @@ impl<P: PieceStore> DeterministicPeers<P> {
             })),
             rng_state: Arc::new(Mutex::new(config.seed)),
             next_peer_id: Arc::new(Mutex::new(1)),
+            rate_limiter: Arc::new(Mutex::new(StreamingRateLimiter::new(
+                config.streaming_rate_bps,
+            ))),
+            streaming_positions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    /// Creates deterministic peers with ideal network conditions.
-    pub fn new_ideal(piece_store: Arc<P>) -> Self {
-        Self::new(DeterministicConfig::ideal(), piece_store)
+    /// Creates simulated peer manager with instant responses for development.
+    pub fn new_instant(piece_store: Arc<P>) -> Self {
+        Self::new(SimulatedConfig::instant(), piece_store)
     }
 
-    /// Creates deterministic peers with poor network conditions.
+    /// Creates simulated peer manager with ideal network conditions.
+    pub fn new_ideal(piece_store: Arc<P>) -> Self {
+        Self::new(SimulatedConfig::ideal(), piece_store)
+    }
+
+    /// Creates simulated peer manager with poor network conditions.
     pub fn new_poor(piece_store: Arc<P>) -> Self {
-        Self::new(DeterministicConfig::poor(), piece_store)
+        Self::new(SimulatedConfig::poor(), piece_store)
     }
 
     /// Returns current simulation statistics.
@@ -247,7 +344,7 @@ impl<P: PieceStore> DeterministicPeers<P> {
     }
 
     /// Returns configuration used for this simulation.
-    pub fn config(&self) -> &DeterministicConfig {
+    pub fn config(&self) -> &SimulatedConfig {
         &self.config
     }
 
@@ -289,8 +386,13 @@ impl<P: PieceStore> DeterministicPeers<P> {
 
     /// Checks if connection should fail based on configuration.
     async fn should_connection_fail(&self) -> bool {
-        let random = self.next_random().await;
-        random < self.config.connection_failure_rate
+        match self.config.simulation_speed {
+            SimulationSpeed::Instant => false,
+            SimulationSpeed::Realistic => {
+                let random = self.next_random().await;
+                random < self.config.connection_failure_rate
+            }
+        }
     }
 
     /// Checks if message should be lost based on configuration.
@@ -306,8 +408,8 @@ impl<P: PieceStore> DeterministicPeers<P> {
 }
 
 #[async_trait]
-impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P> {
-    /// Connects to a peer with deterministic behavior and failure simulation.
+impl<P: PieceStore + Send + Sync + 'static> PeerManager for SimulatedPeers<P> {
+    /// Connects to a peer with simulated behavior and failure simulation.
     async fn connect_peer(
         &mut self,
         peer_address: SocketAddr,
@@ -498,6 +600,12 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
                     }
                 }
 
+                // Apply rate limiting for development mode (Instant)
+                if self.config.simulation_speed == SimulationSpeed::Instant {
+                    let mut rate_limiter = self.rate_limiter.lock().await;
+                    rate_limiter.apply_rate_limit(bytes_transferred).await;
+                }
+
                 // Send piece data through message channel
                 let event = PeerMessageEvent {
                     peer_address,
@@ -581,7 +689,7 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
         // Log final statistics
         let stats = self.stats.read().await;
         tracing::info!(
-            "DeterministicPeers: Simulation complete - {} connections, {} messages, {} pieces served",
+            "SimulatedPeers: Simulation complete - {} connections, {} messages, {} pieces served",
             stats.connections_successful,
             stats.messages_sent,
             stats.pieces_served
@@ -590,24 +698,45 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for DeterministicPeers<P
         Ok(())
     }
 
-    /// Configure upload manager (no-op for simulation).
+    /// Configure upload manager with rate limiting support for development mode.
     async fn configure_upload(
         &mut self,
-        _info_hash: InfoHash,
-        _piece_size: u64,
-        _total_bandwidth: u64,
+        info_hash: InfoHash,
+        piece_size: u64,
+        total_bandwidth: u64,
     ) -> Result<(), TorrentError> {
-        // No-op for deterministic simulation
+        // Update rate limiter in Instant mode (development)
+        if self.config.simulation_speed == SimulationSpeed::Instant {
+            let mut rate_limiter = self.rate_limiter.lock().await;
+            rate_limiter.update_target_rate(total_bandwidth.min(50 * 1024 * 1024)); // Cap at 50 MB/s
+
+            tracing::debug!(
+                "SimulatedPeers: Configure upload for {} - piece_size: {}, bandwidth: {}",
+                info_hash,
+                piece_size,
+                total_bandwidth
+            );
+        }
         Ok(())
     }
 
-    /// Update streaming position (no-op for simulation).
+    /// Update streaming position with tracking support for development mode.
     async fn update_streaming_position(
         &mut self,
-        _info_hash: InfoHash,
-        _byte_position: u64,
+        info_hash: InfoHash,
+        byte_position: u64,
     ) -> Result<(), TorrentError> {
-        // No-op for deterministic simulation
+        // Track streaming position in Instant mode (development)
+        if self.config.simulation_speed == SimulationSpeed::Instant {
+            let mut positions = self.streaming_positions.write().await;
+            positions.insert(info_hash, byte_position);
+
+            tracing::debug!(
+                "SimulatedPeers: Update streaming position for {} to byte {}",
+                info_hash,
+                byte_position
+            );
+        }
         Ok(())
     }
 }
@@ -621,8 +750,8 @@ mod tests {
     #[tokio::test]
     async fn test_deterministic_peer_creation() {
         let piece_store = create_test_piece_store();
-        let config = DeterministicConfig::default();
-        let peers = DeterministicPeers::new(config, piece_store);
+        let config = SimulatedConfig::default();
+        let peers = SimulatedPeers::new(config, piece_store);
 
         assert_eq!(peers.config().seed, 12345);
         assert_eq!(peers.config().message_delay_ms, 50);
@@ -631,7 +760,7 @@ mod tests {
     #[tokio::test]
     async fn test_ideal_network_conditions() {
         let piece_store = create_test_piece_store();
-        let peers = DeterministicPeers::new_ideal(piece_store);
+        let peers = SimulatedPeers::new_ideal(piece_store);
 
         assert_eq!(peers.config().connection_failure_rate, 0.0);
         assert_eq!(peers.config().message_loss_rate, 0.0);
@@ -641,7 +770,7 @@ mod tests {
     #[tokio::test]
     async fn test_poor_network_conditions() {
         let piece_store = create_test_piece_store();
-        let peers = DeterministicPeers::new_poor(piece_store);
+        let peers = SimulatedPeers::new_poor(piece_store);
 
         assert_eq!(peers.config().connection_failure_rate, 0.15);
         assert_eq!(peers.config().message_loss_rate, 0.05);
@@ -651,18 +780,15 @@ mod tests {
     #[tokio::test]
     async fn test_deterministic_randomness() {
         let piece_store = create_test_piece_store();
-        let config = DeterministicConfig::with_seed(42);
-        let peers = DeterministicPeers::new(config, piece_store);
+        let config = SimulatedConfig::with_seed(42);
+        let peers = SimulatedPeers::new(config, piece_store);
 
         // Same seed should produce same random sequence
         let random1 = peers.next_random().await;
         let random2 = peers.next_random().await;
 
         // Create new instance with same seed
-        let peers2 = DeterministicPeers::new(
-            DeterministicConfig::with_seed(42),
-            create_test_piece_store(),
-        );
+        let peers2 = SimulatedPeers::new(SimulatedConfig::with_seed(42), create_test_piece_store());
         let random1_repeat = peers2.next_random().await;
         let random2_repeat = peers2.next_random().await;
 
@@ -673,8 +799,8 @@ mod tests {
     #[tokio::test]
     async fn test_peer_connection_success() {
         let piece_store = create_test_piece_store();
-        let config = DeterministicConfig::ideal(); // No failures
-        let mut peers = DeterministicPeers::new(config, piece_store);
+        let config = SimulatedConfig::ideal(); // No failures
+        let mut peers = SimulatedPeers::new(config, piece_store);
 
         let peer_addr = "127.0.0.1:8080".parse().unwrap();
         let info_hash = InfoHash::new([1u8; 20]);

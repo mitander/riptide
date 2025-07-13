@@ -93,8 +93,8 @@ pub use network::{NetworkSimulator, NetworkSimulatorBuilder};
 pub use peer::{MockPeer, MockPeerBuilder};
 pub use peer_server::{BitTorrentPeerServer, spawn_peer_servers_for_torrent};
 pub use peers::{
-    DeterministicConfig, DeterministicPeers, DevelopmentPeers, DevelopmentStats,
-    InMemoryPieceStore, PeersBuilder, PeersMode, SimulationStats,
+    InMemoryPieceStore, PeersBuilder, PeersMode, SimulatedConfig, SimulatedPeers, SimulationSpeed,
+    SimulationStats,
 };
 // Re-export config from core for convenience
 pub use riptide_core::config::SimulationConfig;
@@ -469,7 +469,7 @@ pub async fn create_fast_development_components(
     tracing::info!(
         "Fast development components: Using DevPeers for realistic streaming performance"
     );
-    let peers_sim = DevelopmentPeers::new(piece_store_sim.clone());
+    let peers_sim = SimulatedPeers::new_instant(piece_store_sim.clone());
 
     let tracker_sim = tracker::SimulatedTracker::with_peer_registry(
         tracker::ResponseConfig::default(),
@@ -501,16 +501,18 @@ pub async fn create_deterministic_development_components(
     let peer_registry = Arc::new(Mutex::new(HashMap::<InfoHash, Vec<SocketAddr>>::new()));
 
     tracing::info!("Deterministic development components: Using SimPeers for testing");
-    let realistic_peer_config = DeterministicConfig {
+    let realistic_peer_config = SimulatedConfig {
+        simulation_speed: SimulationSpeed::Realistic,
         message_delay_ms: 1,          // Minimal delay for development
         connection_failure_rate: 0.0, // No failures for development
         message_loss_rate: 0.0,       // No loss for development
         max_connections: 100,
-        upload_rate_bps: 10 * 1024 * 1024, // 10 MB/s
+        upload_rate_bps: 10 * 1024 * 1024,   // 10 MB/s
+        streaming_rate_bps: 8 * 1024 * 1024, // 8 MB/s for development
         seed: 12345,
     };
 
-    let peers_sim = DeterministicPeers::new(realistic_peer_config, piece_store_sim.clone());
+    let peers_sim = SimulatedPeers::new(realistic_peer_config, piece_store_sim.clone());
 
     let tracker_sim = tracker::SimulatedTracker::with_peer_registry(
         tracker::ResponseConfig::default(),

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PeerMessage, PieceIndex, TorrentPiece};
 use riptide_core::torrent::test_data::create_test_piece_store;
-use riptide_sim::{DeterministicConfig, DeterministicPeers, InMemoryPieceStore};
+use riptide_sim::{SimulatedConfig, SimulatedPeers, InMemoryPieceStore};
 
 #[tokio::test]
 async fn test_basic_peer_connection() {
@@ -18,7 +18,7 @@ async fn test_basic_peer_connection() {
     let piece_store = create_test_piece_store();
 
     // Create peer manager with ideal conditions for testing
-    let config = DeterministicConfig::ideal(); // No failures for reliable testing
+    let config = SimulatedConfig::ideal(); // No failures for reliable testing
     let mut peers = DeterministicPeers::new(config, piece_store);
 
     let peer_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
@@ -55,7 +55,7 @@ async fn test_message_passing() {
     println!("MSG_TEST: Added test piece to store");
 
     // Create peer manager with ideal conditions
-    let config = DeterministicConfig::ideal();
+    let config = SimulatedConfig::ideal();
     let mut peers = DeterministicPeers::new(config, piece_store);
 
     let peer_addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
@@ -106,7 +106,7 @@ async fn test_peer_statistics() {
     let info_hash = InfoHash::new([3u8; 20]);
     let piece_store = create_test_piece_store();
 
-    let config = DeterministicConfig::default();
+    let config = SimulatedConfig::default();
     let mut peers = DeterministicPeers::new(config, piece_store);
 
     let peer_addr1: SocketAddr = "127.0.0.1:8082".parse().unwrap();
@@ -137,7 +137,7 @@ async fn test_poor_network_conditions() {
     let piece_store = create_test_piece_store();
 
     // Use poor network conditions config
-    let config = DeterministicConfig::poor();
+    let config = SimulatedConfig::poor();
     let mut peers = DeterministicPeers::new(config, piece_store);
 
     let peer_addr: SocketAddr = "127.0.0.1:8084".parse().unwrap();

@@ -1,4 +1,4 @@
-//! Minimal test to isolate message passing issues in DeterministicPeers
+//! Minimal test to isolate message passing issues in SimulatedPeers
 
 #![allow(clippy::uninlined_format_args)]
 
@@ -7,11 +7,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use riptide_core::torrent::{InfoHash, PeerId, PeerManager, PeerMessage, PieceIndex, TorrentPiece};
-use riptide_sim::{DeterministicConfig, DeterministicPeers, InMemoryPieceStore};
+use riptide_sim::{SimulatedConfig, SimulatedPeers, InMemoryPieceStore};
 use tokio::sync::RwLock;
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
+#[ignore = "Needs API updates for new SimulatedPeers interface"]
 async fn test_basic_message_send_receive() {
     println!("MSG_TEST: Starting basic message send/receive test");
 
@@ -29,8 +29,8 @@ async fn test_basic_message_send_receive() {
     println!("MSG_TEST: Added piece to store");
 
     // Create peer manager
-    let config = DeterministicConfig::default();
-    let mut peers = DeterministicPeers::new(config, piece_store.clone());
+    let config = SimulatedConfig::default();
+    let mut peers = SimulatedPeers::new(config, piece_store.clone());
 
     let peer_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let peer_id = PeerId::generate();
@@ -127,7 +127,7 @@ async fn test_basic_message_send_receive() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
+#[ignore = "Needs API updates for new SimulatedPeers interface"]
 async fn test_message_queue_behavior() {
     println!("QUEUE_TEST: Testing message queue behavior");
 
@@ -149,8 +149,8 @@ async fn test_message_queue_behavior() {
     ];
     piece_store.add_torrent_pieces(info_hash, pieces).await;
 
-    let config = DeterministicConfig::default();
-    let mut peers = DeterministicPeers::new(config, piece_store);
+    let config = SimulatedConfig::default();
+    let mut peers = SimulatedPeers::new(config, piece_store);
 
     let peer1: SocketAddr = "127.0.0.1:8081".parse().unwrap();
     let peer2: SocketAddr = "127.0.0.1:8082".parse().unwrap();
@@ -239,16 +239,16 @@ async fn test_message_queue_behavior() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
+#[ignore = "Needs API updates for new SimulatedPeers interface"]
 async fn test_peers_in_isolation() {
     println!("ISO_TEST: Testing peer manager in complete isolation");
 
     let info_hash = InfoHash::new([3u8; 20]);
     let piece_store = Arc::new(InMemoryPieceStore::new());
-    let config = DeterministicConfig::default();
+    let config = SimulatedConfig::default();
 
     // Use Arc<RwLock> wrapper like PieceDownloader does
-    let peers = Arc::new(RwLock::new(DeterministicPeers::new(
+    let peers = Arc::new(RwLock::new(SimulatedPeers::new(
         config,
         piece_store.clone(),
     )));
