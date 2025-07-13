@@ -59,6 +59,15 @@ pub enum StrategyError {
         range: std::ops::Range<u64>,
     },
 
+    /// HTTP range request exceeds file size
+    #[error("Range not satisfiable: requested start {requested_start} >= file size {file_size}")]
+    RangeNotSatisfiable {
+        /// The byte position that was requested
+        requested_start: u64,
+        /// The actual size of the file
+        file_size: u64,
+    },
+
     /// FFmpeg process encountered an error
     #[error("FFmpeg error: {reason}")]
     FfmpegError {

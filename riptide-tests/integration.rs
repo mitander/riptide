@@ -33,3 +33,6 @@ mod torrent_integration;
 mod torrent_protocol;
 #[path = "integration/upload_rate_limiting.rs"]
 mod upload_rate_limiting;
+
+#[path = "integration/range_validation.rs"]
+mod range_validation;

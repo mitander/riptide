@@ -112,21 +112,43 @@ impl StreamingStrategy for RemuxStreamStrategy {
                 // Get the output file path and serve from it
                 let output_path = self.remuxer.output_path(handle.info_hash).await?;
 
-                // For progressive streaming, check if we're requesting beyond available data
-                let file_size = tokio::fs::metadata(&output_path)
+                // Get original file size from data source (not partial remux file size)
+                let original_file_size = self
+                    .remuxer
+                    .data_source()
+                    .file_size(handle.info_hash)
                     .await
                     .map_err(|e| StrategyError::RemuxingFailed {
-                        reason: format!("Failed to get file metadata: {e}"),
+                        reason: format!("Failed to get original file size: {e}"),
+                    })?;
+
+                // Get current remux file size for range validation
+                let current_remux_size = tokio::fs::metadata(&output_path)
+                    .await
+                    .map_err(|e| StrategyError::RemuxingFailed {
+                        reason: format!("Failed to get remux file metadata: {e}"),
                     })?
                     .len();
 
-                // If request is beyond available data, return what we have
-                let actual_end = range.end.min(file_size);
-                if range.start >= file_size {
-                    return Err(StrategyError::InvalidRange {
-                        range: range.clone(),
+                // Check if requested range is beyond current remux progress
+                // range.start >= current_remux_size means no data available at that position
+                if range.start >= current_remux_size {
+                    tracing::debug!(
+                        "Range request {}..{} beyond current remux progress ({}), waiting for more data",
+                        range.start,
+                        range.end,
+                        current_remux_size
+                    );
+                    return Err(StrategyError::StreamingNotReady {
+                        reason: format!(
+                            "Remux in progress: requested byte {} not yet available (current size: {})",
+                            range.start, current_remux_size
+                        ),
                     });
                 }
+
+                // If request is beyond available remux data, use what's available
+                let actual_end = range.end.min(current_remux_size);
 
                 // Read only the requested range, not the entire file
                 let mut file = tokio::fs::File::open(&output_path).await.map_err(|e| {
@@ -153,7 +175,7 @@ impl StreamingStrategy for RemuxStreamStrategy {
                 Ok(StreamData {
                     data: file_data,
                     content_type: "video/mp4".to_string(),
-                    total_size: Some(file_size),
+                    total_size: Some(original_file_size),
                     range_start: range.start,
                     range_end: actual_end,
                 })

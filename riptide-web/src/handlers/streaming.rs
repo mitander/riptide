@@ -82,11 +82,31 @@ pub async fn stream_torrent(
             builder.body(Body::from(response.body)).unwrap()
         }
         Err(err) => {
-            error!("Streaming error for {}: {:?}", info_hash, err);
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from("Streaming error"))
-                .unwrap()
+            use riptide_core::streaming::StrategyError;
+
+            match &err {
+                StrategyError::RangeNotSatisfiable {
+                    requested_start,
+                    file_size,
+                } => {
+                    info!(
+                        "Range not satisfiable for {}: requested {} >= file size {}",
+                        info_hash, requested_start, file_size
+                    );
+                    Response::builder()
+                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                        .header("Content-Range", format!("bytes */{file_size}"))
+                        .body(Body::from("Range Not Satisfiable"))
+                        .unwrap()
+                }
+                _ => {
+                    error!("Streaming error for {}: {:?}", info_hash, err);
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from("Streaming error"))
+                        .unwrap()
+                }
+            }
         }
     }
 }

@@ -97,18 +97,48 @@ impl PieceDataSource {
             });
         };
 
-        // Calculate total size - handle last piece potentially being smaller
-        let mut total_size = 0u64;
-        for i in 0..piece_count {
+        // Calculate total size efficiently - only need to check the last piece
+        // Most pieces are full size, only the last piece might be smaller
+        let total_size = if piece_count == 0 {
+            0
+        } else if piece_count == 1 {
+            // Single piece - get its actual size
             let piece_data = self
                 .piece_store
-                .piece_data(info_hash, PieceIndex::new(i))
+                .piece_data(info_hash, PieceIndex::new(0))
                 .await
                 .map_err(|e| DataError::Storage {
-                    reason: format!("Failed to get piece {i} for size calculation: {e}"),
+                    reason: format!("Failed to get first piece for size calculation: {e}"),
                 })?;
-            total_size += piece_data.len() as u64;
-        }
+            piece_data.len() as u64
+        } else {
+            // Multiple pieces - try to get last piece to determine actual file size
+            let last_piece_index = piece_count - 1;
+
+            // Check if last piece is available
+            if self
+                .piece_store
+                .has_piece(info_hash, PieceIndex::new(last_piece_index))
+            {
+                let last_piece_data = self
+                    .piece_store
+                    .piece_data(info_hash, PieceIndex::new(last_piece_index))
+                    .await
+                    .map_err(|e| DataError::Storage {
+                        reason: format!("Failed to get last piece for size calculation: {e}"),
+                    })?;
+                let last_piece_size = last_piece_data.len() as u64;
+
+                // All pieces except last are full size
+                let full_pieces_size = (piece_count - 1) as u64 * piece_size as u64;
+                full_pieces_size + last_piece_size
+            } else {
+                // Last piece not available yet - estimate file size
+                // This is a conservative estimate assuming the last piece is full size
+                // The actual file size will be determined when the last piece becomes available
+                piece_count as u64 * piece_size as u64
+            }
+        };
 
         let layout = TorrentLayout::new(piece_size, piece_count, total_size);
         let calculator = RangeCalculator::new(layout.clone());

@@ -624,6 +624,11 @@ impl Remuxer {
         false
     }
 
+    /// Get access to the underlying data source
+    pub fn data_source(&self) -> &Arc<dyn DataSource> {
+        &self.data_source
+    }
+
     /// Clean up stale sessions
     pub async fn cleanup_stale_sessions(&self) {
         let mut sessions = self.sessions.write().await;

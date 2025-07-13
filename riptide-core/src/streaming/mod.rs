@@ -274,23 +274,23 @@ impl HttpStreaming {
             return None;
         }
 
-        let start = if parts[0].is_empty() {
+        let (start, end) = if parts[0].is_empty() {
             // Suffix range: bytes=-500 (last 500 bytes)
             if let Ok(suffix_length) = parts[1].parse::<u64>() {
-                file_size.saturating_sub(suffix_length)
+                let start = file_size.saturating_sub(suffix_length);
+                (start, None) // No explicit end for suffix ranges
             } else {
                 return None;
             }
         } else if let Ok(start_pos) = parts[0].parse::<u64>() {
-            start_pos
-        } else {
-            return None;
-        };
-
-        let end = if parts[1].is_empty() {
-            None // bytes=200- (from 200 to end)
-        } else if let Ok(end_pos) = parts[1].parse::<u64>() {
-            Some(end_pos)
+            let end = if parts[1].is_empty() {
+                None // bytes=200- (from 200 to end)
+            } else if let Ok(end_pos) = parts[1].parse::<u64>() {
+                Some(end_pos)
+            } else {
+                return None;
+            };
+            (start_pos, end)
         } else {
             return None;
         };
@@ -344,14 +344,38 @@ impl HttpStreaming {
         // Prepare stream handle
         let handle = strategy.prepare_stream(info_hash, format).await?;
 
-        // Get file size first
+        // Get file size first - debug which source provides the size
         let total_size = match strategy.serve_range(&handle, 0..1).await {
-            Ok(sample) => sample.total_size.unwrap_or(0),
-            Err(_) => {
-                // If we can't get a sample, try to get size from data source
-                self.data_source.file_size(info_hash).await.unwrap_or(0)
+            Ok(sample) => {
+                let strategy_size = sample.total_size.unwrap_or(0);
+                tracing::debug!(
+                    "File size from strategy sample: {} bytes for {}",
+                    strategy_size,
+                    info_hash
+                );
+                strategy_size
+            }
+            Err(strategy_err) => {
+                tracing::debug!(
+                    "Strategy sample failed ({}), falling back to data source for {}",
+                    strategy_err,
+                    info_hash
+                );
+                let data_source_size = self.data_source.file_size(info_hash).await.unwrap_or(0);
+                tracing::debug!(
+                    "File size from data source: {} bytes for {}",
+                    data_source_size,
+                    info_hash
+                );
+                data_source_size
             }
         };
+
+        tracing::info!(
+            "Final file size determined: {} bytes for {}",
+            total_size,
+            info_hash
+        );
 
         // Parse range request
         let (start, end, status) = if let Some(range_str) = range_header {
@@ -365,14 +389,38 @@ impl HttpStreaming {
             (0, total_size.saturating_sub(1), StatusCode::OK)
         };
 
-        // Ensure end doesn't exceed file size and start is valid
-        let actual_end = end.min(total_size.saturating_sub(1));
-        let actual_start = start.min(total_size.saturating_sub(1));
+        tracing::debug!(
+            "Processing range request: start={}, end={}, total_size={}, range_header={:?}",
+            start,
+            end,
+            total_size,
+            range_header
+        );
 
-        // Validate range before serving
-        if actual_start >= actual_end {
-            return Err(StrategyError::InvalidRange { range: start..end });
+        // Validate range first - return 416 if start is beyond file size
+        if start >= total_size && total_size > 0 {
+            tracing::warn!(
+                "Range not satisfiable: start={} >= total_size={}",
+                start,
+                total_size
+            );
+            return Err(StrategyError::RangeNotSatisfiable {
+                requested_start: start,
+                file_size: total_size,
+            });
         }
+
+        // Clamp end position to file boundaries
+        // Start position is already validated above, no clamping needed for valid ranges
+        let actual_end = end.min(total_size.saturating_sub(1));
+        let actual_start = start;
+
+        tracing::debug!(
+            "Range calculation: actual_start={}, actual_end={}, range_size={}",
+            actual_start,
+            actual_end,
+            actual_end.saturating_sub(actual_start) + 1
+        );
 
         // Update piece picker position for sequential downloading
         // This ensures pieces are downloaded in streaming order relative to playback position
@@ -445,4 +493,34 @@ pub struct StreamingStats {
     pub total_bytes_streamed: u64,
     /// Number of concurrent remux operations
     pub concurrent_remux_sessions: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_range_header_suffix_range() {
+        let file_size = 1048576; // 1MB
+
+        // Test suffix range: last 100 bytes
+        let range = HttpStreaming::parse_range_header("bytes=-100", file_size).unwrap();
+        assert_eq!(range.start, 1048476); // file_size - 100
+        assert_eq!(range.end, None); // Should be None for suffix ranges
+
+        // Test suffix range: last 1000 bytes
+        let range = HttpStreaming::parse_range_header("bytes=-1000", file_size).unwrap();
+        assert_eq!(range.start, 1047576); // file_size - 1000
+        assert_eq!(range.end, None);
+
+        // Test normal range for comparison
+        let range = HttpStreaming::parse_range_header("bytes=100-199", file_size).unwrap();
+        assert_eq!(range.start, 100);
+        assert_eq!(range.end, Some(199));
+
+        // Test open-ended range
+        let range = HttpStreaming::parse_range_header("bytes=100-", file_size).unwrap();
+        assert_eq!(range.start, 100);
+        assert_eq!(range.end, None);
+    }
 }
