@@ -425,7 +425,7 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for SimulatedPeers<P> {
         sleep(self.message_delay()).await;
 
         let peer_id = self.generate_peer_id().await;
-        let piece_count = 100; // Default piece count for simulation
+        let piece_count = self.piece_store.piece_count(info_hash).unwrap_or(100);
 
         let mut peer = SimulatedPeer::new(peer_address, info_hash, peer_id, piece_count);
         peer.connect();

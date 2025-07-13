@@ -1,8 +1,6 @@
 //! HTTP request handlers organized by functionality
 
 pub mod api;
-pub mod htmx;
-pub mod pages;
 pub mod range;
 
 pub mod streaming;
@@ -10,15 +8,10 @@ pub mod streaming_readiness;
 
 // Re-export handler functions
 pub use api::{
-    AddTorrentQuery, DownloadRequest, MovieSearchQuery, SeekRequest, Stats, api_add_torrent,
+    ActivityItem, AddTorrentQuery, DownloadItem, DownloadRequest, MovieSearchQuery, SeekRequest,
+    Stats, SystemStatus, api_add_torrent, api_dashboard_activity, api_dashboard_downloads,
     api_download_torrent, api_library, api_search, api_search_movies, api_seek_torrent,
-    api_settings, api_stats, api_torrents,
-};
-pub use htmx::{
-    add_torrent_htmx, dashboard_activity, dashboard_downloads, dashboard_stats, torrents_list,
-};
-pub use pages::{
-    DownloadStats, dashboard_page, library_page, search_page, torrents_page, video_player_page,
+    api_settings, api_stats, api_system_status, api_torrents,
 };
 pub use range::{
     build_range_response, extract_range_header, parse_range_header, validate_range_bounds,

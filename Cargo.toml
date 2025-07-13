@@ -58,6 +58,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 lru = "0.12"
 num_cpus = "1.0"
+sysinfo = "0.30"
 regex = "1.0"
 
 # CLI and configuration

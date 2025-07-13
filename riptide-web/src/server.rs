@@ -1,7 +1,7 @@
-//! Modern HTMX + Tailwind web server for Riptide
+//! Modern JSON API server for Riptide
 //!
-//! Provides both HTMX partial updates and JSON API endpoints.
-//! All pages use server-side rendering with real-time updates.
+//! Provides a comprehensive REST API for torrent management and streaming.
+//! Serves a single-page application for the web interface.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,7 +16,6 @@ use riptide_core::{FileLibrary, HttpStreaming, RuntimeMode};
 use riptide_search::MediaSearch;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
 
 /// Type alias for conversion progress tracking
 type ConversionProgressRef = Arc<RwLock<HashMap<String, ConversionProgress>>>;
@@ -27,15 +26,10 @@ use crate::handlers::streaming::{
 };
 use crate::handlers::streaming_readiness::streaming_readiness_handler;
 use crate::handlers::{
-    api_add_torrent, api_download_torrent, api_library, api_search, api_search_movies,
-    api_seek_torrent, api_settings, api_stats, api_torrents, video_player_page,
+    api_add_torrent, api_dashboard_activity, api_dashboard_downloads, api_download_torrent,
+    api_library, api_search, api_search_movies, api_seek_torrent, api_settings, api_stats,
+    api_system_status, api_torrents,
 };
-use crate::htmx::{
-    add_torrent, dashboard_activity, dashboard_downloads, dashboard_stats, system_status,
-    torrent_list,
-};
-// Import new architecture modules
-use crate::pages::{dashboard_page, library_page, search_page, torrents_page};
 
 // Removed PieceStoreType enum - using trait objects instead
 
@@ -155,25 +149,19 @@ pub async fn run_server(
     };
 
     let app = Router::new()
-        // Main pages (HTMX + Tailwind)
-        .route("/", axum::routing::get(dashboard_page))
-        .route("/torrents", axum::routing::get(torrents_page))
-        .route("/library", axum::routing::get(library_page))
-        .route("/search", axum::routing::get(search_page))
-        .route("/player/{info_hash}", axum::routing::get(video_player_page))
-        // HTMX partial update endpoints
-        .route("/htmx/dashboard/stats", axum::routing::get(dashboard_stats))
+        // Single page application entry point
+        .route("/", axum::routing::get(serve_spa))
+        // JSON API endpoints
+        .route("/api/dashboard/stats", axum::routing::get(api_stats))
         .route(
-            "/htmx/dashboard/activity",
-            axum::routing::get(dashboard_activity),
+            "/api/dashboard/activity",
+            axum::routing::get(api_dashboard_activity),
         )
         .route(
-            "/htmx/dashboard/downloads",
-            axum::routing::get(dashboard_downloads),
+            "/api/dashboard/downloads",
+            axum::routing::get(api_dashboard_downloads),
         )
-        .route("/htmx/torrents/list", axum::routing::get(torrent_list))
-        .route("/htmx/torrents/add", axum::routing::post(add_torrent))
-        .route("/htmx/system/status", axum::routing::get(system_status))
+        .route("/api/system/status", axum::routing::get(api_system_status))
         // Streaming endpoints
         .route("/stream/{info_hash}", axum::routing::get(stream_torrent))
         .route(
@@ -194,7 +182,7 @@ pub async fn run_server(
         // JSON API endpoints (for external clients)
         .route("/api/stats", axum::routing::get(api_stats))
         .route("/api/torrents", axum::routing::get(api_torrents))
-        .route("/api/torrents/add", axum::routing::get(api_add_torrent))
+        .route("/api/torrents/add", axum::routing::post(api_add_torrent))
         .route("/api/download", axum::routing::post(api_download_torrent))
         .route("/api/library", axum::routing::get(api_library))
         .route("/api/search", axum::routing::get(api_search))
@@ -208,7 +196,6 @@ pub async fn run_server(
             "/api/conversions/progress",
             axum::routing::get(api_conversion_progress),
         )
-        .nest_service("/static", ServeDir::new("riptide-web/static"))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -232,4 +219,12 @@ async fn api_conversion_progress(
         }
         Err(_) => axum::Json(HashMap::new()),
     }
+}
+
+/// Serves the single page application index.html file.
+///
+/// Returns the main SPA entry point that will handle all frontend routing
+/// and API communication via JavaScript.
+async fn serve_spa() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../static/index.html"))
 }

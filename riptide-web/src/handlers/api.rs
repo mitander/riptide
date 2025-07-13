@@ -2,11 +2,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Json, Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::Json;
+use chrono;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sysinfo::{Disks, System};
 
 use crate::server::AppState;
 
@@ -28,6 +29,13 @@ pub struct Stats {
 pub struct AddTorrentQuery {
     /// Magnet link URL to add
     pub magnet: String,
+}
+
+/// Request body for adding a torrent via JSON POST.
+#[derive(Deserialize)]
+pub struct AddTorrentRequest {
+    /// Magnet link for the torrent to add
+    pub magnet_link: String,
 }
 
 /// Request body for initiating a torrent download.
@@ -54,10 +62,28 @@ pub struct SeekRequest {
 /// # Panics
 ///
 /// Panics if engine communication fails or statistics are unavailable.
-pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
-    let stats = state.engine().download_statistics().await.unwrap();
+pub async fn api_stats(State(state): State<AppState>) -> axum::response::Json<Stats> {
+    // Add timeout to prevent hanging
+    let stats_result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        state.engine().download_statistics(),
+    )
+    .await;
 
-    Json(Stats {
+    let stats = match stats_result {
+        Ok(Ok(stats)) => stats,
+        Ok(Err(_)) | Err(_) => {
+            // Return default stats if engine call fails or times out
+            return axum::response::Json(Stats {
+                total_torrents: 0,
+                active_downloads: 0,
+                upload_speed: 0.0,
+                download_speed: 0.0,
+            });
+        }
+    };
+
+    axum::response::Json(Stats {
         total_torrents: stats.active_torrents as u32,
         active_downloads: stats.active_torrents as u32,
         upload_speed: (stats.bytes_uploaded as f64) / 1_048_576.0,
@@ -73,8 +99,22 @@ pub async fn api_stats(State(state): State<AppState>) -> Json<Stats> {
 /// # Panics
 ///
 /// Panics if engine active sessions cannot be retrieved
-pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let sessions = state.engine().active_sessions().await.unwrap();
+pub async fn api_torrents(
+    State(state): State<AppState>,
+) -> axum::response::Json<serde_json::Value> {
+    let sessions_result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        state.engine().active_sessions(),
+    )
+    .await;
+
+    let sessions = match sessions_result {
+        Ok(Ok(sessions)) => sessions,
+        Ok(Err(_)) | Err(_) => {
+            // Return empty array if engine call fails or times out
+            return axum::response::Json(json!([]));
+        }
+    };
 
     // Get movie manager data once outside the loop
     let movie_titles: HashMap<_, _> = if let Ok(movie_manager) = state.file_library() {
@@ -97,14 +137,14 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
         json!({
             "name": name,
             "progress": (session.progress * 100.0) as u32,
-            "speed": session.download_speed_formatted(),
+            "speed": (session.download_speed_bps as f64 / 1_048_576.0).round() as u32,
             "size": format!("{:.1} GB", (session.piece_count as u64 * session.piece_size as u64) as f64 / 1_073_741_824.0),
             "status": if session.progress >= 1.0 { "completed" } else { "downloading" },
             "info_hash": session.info_hash.to_string(),
             "pieces": format!("{}/{}", session.completed_pieces.iter().filter(|&&x| x).count(), session.piece_count),
             "is_local": false, // BitTorrent torrents should use piece-based streaming
             "eta": calculate_eta(session.progress, session.download_speed_bps, session.total_size),
-            "upload_speed": session.upload_speed_formatted(),
+            "upload_speed": (session.upload_speed_bps as f64 / 1_048_576.0).round() as u32,
             "bytes_downloaded": session.bytes_downloaded,
             "bytes_uploaded": session.bytes_uploaded
         })
@@ -136,10 +176,7 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
         display_torrents
     };
 
-    Json(json!({
-        "torrents": final_torrents,
-        "total": final_torrents.len()
-    }))
+    axum::response::Json(json!(final_torrents))
 }
 
 /// Adds a new torrent from magnet link.
@@ -152,30 +189,42 @@ pub async fn api_torrents(State(state): State<AppState>) -> Json<serde_json::Val
 /// - `StatusCode::BAD_REQUEST` - If magnet link is empty.
 pub async fn api_add_torrent(
     State(state): State<AppState>,
-    Query(params): Query<AddTorrentQuery>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    if params.magnet.is_empty() {
+    Json(request): Json<AddTorrentRequest>,
+) -> Result<axum::response::Json<serde_json::Value>, StatusCode> {
+    if request.magnet_link.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    match state.engine().add_magnet(&params.magnet).await {
-        Ok(info_hash) => {
+    let add_result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        state.engine().add_magnet(&request.magnet_link),
+    )
+    .await;
+
+    match add_result {
+        Ok(Ok(info_hash)) => {
             // Start downloading immediately after adding
-            match state.engine().start_download(info_hash).await {
-                Ok(()) => Ok(Json(json!({
+            let start_result = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                state.engine().start_download(info_hash),
+            )
+            .await;
+
+            match start_result {
+                Ok(Ok(())) => Ok(axum::response::Json(json!({
                     "success": true,
                     "message": "Torrent added and download started",
                     "info_hash": info_hash.to_string()
                 }))),
-                Err(e) => Ok(Json(json!({
+                Ok(Err(_)) | Err(_) => Ok(axum::response::Json(json!({
                     "success": false,
-                    "message": format!("Added but failed to start download: {e}")
+                    "message": "Added but failed to start download"
                 }))),
             }
         }
-        Err(e) => Ok(Json(json!({
+        Ok(Err(_)) | Err(_) => Ok(axum::response::Json(json!({
             "success": false,
-            "message": format!("Failed: {e}")
+            "message": "Failed to add magnet link"
         }))),
     }
 }
@@ -200,7 +249,7 @@ pub struct MovieSearchQuery {
 pub async fn api_search(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
-) -> Json<serde_json::Value> {
+) -> axum::response::Json<serde_json::Value> {
     let query = params.get("q").map(|s| s.as_str()).unwrap_or("");
 
     if query.is_empty() {
@@ -224,11 +273,11 @@ pub async fn api_search(
                 }
             }
 
-            Json(json!({"results": individual_torrents}))
+            axum::response::Json(json!({"results": individual_torrents}))
         }
         Err(e) => {
             tracing::error!("Search failed for query '{}': {}", query, e);
-            Json(json!({"results": []}))
+            axum::response::Json(json!({"results": []}))
         }
     }
 }
@@ -241,9 +290,9 @@ pub async fn api_search(
 pub async fn api_search_movies(
     State(state): State<AppState>,
     Query(params): Query<MovieSearchQuery>,
-) -> Json<serde_json::Value> {
+) -> axum::response::Json<serde_json::Value> {
     if params.q.trim().is_empty() {
-        return Json(json!({
+        return axum::response::Json(json!({
             "movies": [],
             "total": 0,
             "query": params.q,
@@ -303,7 +352,7 @@ pub async fn api_search_movies(
                 })
                 .collect();
 
-            Json(json!({
+            axum::response::Json(json!({
                 "movies": movie_results,
                 "total": movie_results.len(),
                 "query": params.q,
@@ -314,7 +363,7 @@ pub async fn api_search_movies(
         }
         Err(e) => {
             tracing::error!("Enhanced search failed for query '{}': {}", params.q, e);
-            Json(json!({
+            axum::response::Json(json!({
                 "movies": [],
                 "total": 0,
                 "query": params.q,
@@ -334,11 +383,22 @@ pub async fn api_search_movies(
 /// # Panics
 ///
 /// Panics if the torrent engine fails to return active sessions.
-pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let sessions = state.engine().active_sessions().await.unwrap();
+pub async fn api_library(State(state): State<AppState>) -> axum::response::Json<serde_json::Value> {
+    let sessions_result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        state.engine().active_sessions(),
+    )
+    .await;
+
+    let sessions = match sessions_result {
+        Ok(Ok(sessions)) => sessions,
+        Ok(Err(_)) | Err(_) => {
+            // Return empty array if engine call fails or times out
+            return axum::response::Json(json!([]));
+        }
+    };
 
     let mut library_items = Vec::new();
-    let mut total_size = 0u64;
 
     // Collect info_hashes from local movies to avoid duplicates
     let mut local_info_hashes = HashSet::new();
@@ -360,7 +420,6 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
                 "info_hash": movie.info_hash.to_string(),
                 "is_local": true
             }));
-            total_size += movie.size;
         }
     }
 
@@ -381,7 +440,6 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
                 "info_hash": session.info_hash.to_string(),
                 "is_torrent": true
             }));
-            total_size += estimated_size;
         }
     }
 
@@ -409,21 +467,19 @@ pub async fn api_library(State(state): State<AppState>) -> Json<serde_json::Valu
                 "rating": 8.8
             }),
         ];
-        total_size = 4_300_000_000;
     }
 
-    Json(json!({
-        "items": library_items,
-        "total_size": total_size
-    }))
+    axum::response::Json(json!(library_items))
 }
 
 /// Returns application settings as JSON.
 ///
 /// Provides current configuration settings including download directory,
 /// connection limits, and feature toggles.
-pub async fn api_settings(State(_state): State<AppState>) -> Json<serde_json::Value> {
-    Json(json!({
+pub async fn api_settings(
+    State(_state): State<AppState>,
+) -> axum::response::Json<serde_json::Value> {
+    axum::response::Json(json!({
         "download_dir": "./downloads",
         "max_connections": 50,
         "dht_enabled": true
@@ -443,24 +499,36 @@ pub async fn api_settings(State(_state): State<AppState>) -> Json<serde_json::Va
 pub async fn api_download_torrent(
     State(state): State<AppState>,
     Json(payload): Json<DownloadRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<axum::response::Json<serde_json::Value>, StatusCode> {
     if payload.magnet_link.is_empty() {
-        return Ok(Json(json!({
+        return Ok(axum::response::Json(json!({
             "success": false,
             "error": "Empty magnet link"
         })));
     }
 
-    match state.engine().add_magnet(&payload.magnet_link).await {
-        Ok(info_hash) => {
+    let add_result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        state.engine().add_magnet(&payload.magnet_link),
+    )
+    .await;
+
+    match add_result {
+        Ok(Ok(info_hash)) => {
             // Start downloading immediately after adding
-            match state.engine().start_download(info_hash).await {
-                Ok(()) => Ok(Json(json!({
+            let start_result = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                state.engine().start_download(info_hash),
+            )
+            .await;
+
+            match start_result {
+                Ok(Ok(())) => Ok(axum::response::Json(json!({
                     "success": true,
                     "message": "Download started successfully",
                     "info_hash": info_hash.to_string()
                 }))),
-                Err(e) => {
+                Ok(Err(e)) => {
                     use riptide_core::torrent::TorrentError;
 
                     let error_msg = match &e {
@@ -491,16 +559,20 @@ pub async fn api_download_torrent(
                         _ => format!("Download failed: {e}")
                     };
 
-                    Ok(Json(json!({
+                    Ok(axum::response::Json(json!({
                         "success": false,
                         "error": error_msg
                     })))
                 }
+                Err(_) => Ok(axum::response::Json(json!({
+                    "success": false,
+                    "error": "Download request timed out"
+                }))),
             }
         }
-        Err(e) => Ok(Json(json!({
+        Ok(Err(_)) | Err(_) => Ok(axum::response::Json(json!({
             "success": false,
-            "error": format!("Failed to add torrent: {e}")
+            "error": "Failed to add torrent"
         }))),
     }
 }
@@ -520,7 +592,7 @@ pub async fn api_seek_torrent(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
     Json(payload): Json<SeekRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<axum::response::Json<serde_json::Value>, StatusCode> {
     // Parse info hash
     let info_hash = match riptide_core::torrent::InfoHash::from_hex(&info_hash_str) {
         Ok(hash) => hash,
@@ -576,7 +648,7 @@ pub async fn api_seek_torrent(
                 Err(e) => tracing::warn!("Failed to prioritize pieces for seek: {:?}", e),
             }
 
-            Ok(Json(json!({
+            Ok(axum::response::Json(json!({
                 "success": true,
                 "message": format!("Seek request received for position {:.1}s (byte position: {:.0})",
                     payload.position, byte_position),
@@ -586,7 +658,7 @@ pub async fn api_seek_torrent(
                 "estimated_duration": estimated_duration_seconds
             })))
         }
-        Err(_) => Ok(Json(json!({
+        Err(_) => Ok(axum::response::Json(json!({
             "success": false,
             "error": "Torrent not found or not currently downloading"
         }))),
@@ -642,4 +714,223 @@ fn calculate_eta(progress: f32, download_speed_bps: u64, total_size: u64) -> Opt
         // Less than a minute
         Some(format!("{eta_seconds:.0}s"))
     }
+}
+
+/// Response structure for dashboard activity endpoint.
+#[derive(Serialize)]
+pub struct ActivityItem {
+    /// Timestamp of the activity
+    pub timestamp: String,
+    /// Type of activity (download, upload, error, etc.)
+    pub activity_type: String,
+    /// Human-readable description of the activity
+    pub message: String,
+    /// Optional torrent name associated with activity
+    pub torrent_name: Option<String>,
+}
+
+/// Response structure for dashboard downloads endpoint.
+#[derive(Serialize)]
+pub struct DownloadItem {
+    /// Info hash of the torrent
+    pub info_hash: String,
+    /// Display name of the torrent
+    pub name: String,
+    /// Download progress as percentage (0-100)
+    pub progress: u32,
+    /// Current download speed in MB/s
+    pub speed: f64,
+    /// Estimated time to completion
+    pub eta: Option<String>,
+    /// Total size in bytes
+    pub size: u64,
+    /// Downloaded bytes
+    pub downloaded: u64,
+    /// Number of connected peers
+    pub peers: u32,
+}
+
+/// Response structure for system status endpoint.
+#[derive(Serialize)]
+pub struct SystemStatus {
+    /// Server uptime in seconds
+    pub uptime_seconds: u64,
+    /// Memory usage in MB
+    pub memory_usage_mb: f64,
+    /// CPU usage percentage
+    pub cpu_usage_percent: f64,
+    /// Disk usage for downloads directory
+    pub disk_usage_percent: f64,
+    /// Network connectivity status
+    pub network_status: String,
+    /// Version information
+    pub version: String,
+}
+
+/// Returns recent activity items for dashboard display.
+///
+/// Provides a chronological list of recent torrent activities including
+/// downloads started, completed, errors, and other significant events.
+///
+/// # Panics
+///
+/// Panics if engine communication fails or activity data is unavailable.
+pub async fn api_dashboard_activity(
+    State(state): State<AppState>,
+) -> axum::response::Json<Vec<ActivityItem>> {
+    let sessions_result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        state.engine().active_sessions(),
+    )
+    .await;
+
+    let sessions = match sessions_result {
+        Ok(Ok(sessions)) => sessions,
+        Ok(Err(_)) | Err(_) => {
+            // Return empty array if engine call fails or times out
+            return axum::response::Json(vec![]);
+        }
+    };
+
+    // Generate activity items from current session state
+    let mut activities = Vec::new();
+
+    for session in sessions.iter().take(10) {
+        // Latest 10 activities
+        let activity_type = if session.progress >= 1.0 {
+            "completed"
+        } else if session.progress > 0.0 {
+            "downloading"
+        } else {
+            "started"
+        };
+
+        activities.push(ActivityItem {
+            timestamp: chrono::Utc::now().format("%H:%M:%S").to_string(),
+            activity_type: activity_type.to_string(),
+            message: format!("{} - {:.1}%", session.filename, session.progress * 100.0),
+            torrent_name: Some(session.filename.clone()),
+        });
+    }
+
+    axum::response::Json(activities)
+}
+
+/// Returns current downloads for dashboard display.
+///
+/// Provides detailed information about active downloads including progress,
+/// speed, ETA, and peer connection status.
+///
+/// # Panics
+///
+/// Panics if engine communication fails or download data is unavailable.
+pub async fn api_dashboard_downloads(
+    State(state): State<AppState>,
+) -> axum::response::Json<Vec<DownloadItem>> {
+    let sessions_result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        state.engine().active_sessions(),
+    )
+    .await;
+
+    let sessions = match sessions_result {
+        Ok(Ok(sessions)) => sessions,
+        Ok(Err(_)) | Err(_) => {
+            // Return empty array if engine call fails or times out
+            return axum::response::Json(vec![]);
+        }
+    };
+
+    let downloads: Vec<DownloadItem> = sessions
+        .iter()
+        .filter(|session| session.progress < 1.0) // Only active downloads
+        .map(|session| {
+            let eta = calculate_eta(
+                session.progress,
+                session.download_speed_bps,
+                session.total_size,
+            );
+
+            DownloadItem {
+                info_hash: session.info_hash.to_string(),
+                name: session.filename.clone(),
+                progress: (session.progress * 100.0) as u32,
+                speed: session.bytes_downloaded as f64 / 1_048_576.0, // MB/s approximation
+                eta,
+                size: session.total_size,
+                downloaded: (session.total_size as f32 * session.progress) as u64,
+                peers: 0, // TODO: Add peer count tracking to TorrentSession
+            }
+        })
+        .collect();
+
+    axum::response::Json(downloads)
+}
+
+/// Returns system status information.
+///
+/// Provides server health metrics including uptime, resource usage,
+/// and operational status for monitoring and debugging.
+pub async fn api_system_status(
+    State(state): State<AppState>,
+) -> axum::response::Json<SystemStatus> {
+    let uptime = state.server_started_at.elapsed();
+
+    let mut system = System::new_all();
+    system.refresh_all();
+
+    // Calculate memory usage in MB
+    let memory_usage_mb = (system.used_memory() as f64) / 1_048_576.0;
+
+    // Calculate average CPU usage across all cores
+    let cpu_usage_percent = system
+        .cpus()
+        .iter()
+        .map(|cpu| cpu.cpu_usage() as f64)
+        .sum::<f64>()
+        / system.cpus().len() as f64;
+
+    // Calculate disk usage for downloads directory
+    let downloads_path = std::path::Path::new("./downloads");
+    let disks = Disks::new_with_refreshed_list();
+    let disk_usage_percent = disks
+        .iter()
+        .find(|disk| downloads_path.starts_with(disk.mount_point()))
+        .map(|disk| {
+            let used = disk.total_space() - disk.available_space();
+            (used as f64 / disk.total_space() as f64) * 100.0
+        })
+        .unwrap_or(0.0);
+
+    // Determine network status based on active sessions and peer connections
+    let sessions_result = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        state.engine().active_sessions(),
+    )
+    .await;
+
+    let network_status = match sessions_result {
+        Ok(Ok(sessions)) => {
+            let active_count = sessions.len();
+            let downloading_count = sessions.iter().filter(|s| s.is_downloading).count();
+
+            if active_count == 0 {
+                "idle".to_string()
+            } else if downloading_count > 0 {
+                "connected".to_string()
+            } else {
+                "connecting".to_string()
+            }
+        }
+        Ok(Err(_)) | Err(_) => "error".to_string(),
+    };
+
+    axum::response::Json(SystemStatus {
+        uptime_seconds: uptime.as_secs(),
+        memory_usage_mb,
+        cpu_usage_percent,
+        disk_usage_percent,
+        network_status,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
 }

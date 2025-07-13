@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Riptide Media Server</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    sans-serif;
+                background: #0f0f23;
+                color: #cccccc;
+                line-height: 1.6;
+            }
+
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 0 20px;
+            }
+
+            header {
+                background: #10101a;
+                border-bottom: 1px solid #333;
+                padding: 1rem 0;
+            }
+
+            .header-content {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .logo {
+                font-size: 1.5rem;
+                font-weight: bold;
+                color: #00d4aa;
+            }
+
+            nav {
+                display: flex;
+                gap: 2rem;
+            }
+
+            nav button {
+                background: none;
+                border: none;
+                color: #cccccc;
+                padding: 0.5rem 1rem;
+                cursor: pointer;
+                border-radius: 4px;
+                transition: background-color 0.2s;
+            }
+
+            nav button:hover {
+                background: #333;
+            }
+
+            nav button.active {
+                background: #00d4aa;
+                color: #0f0f23;
+            }
+
+            main {
+                padding: 2rem 0;
+            }
+
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 1rem;
+                margin-bottom: 2rem;
+            }
+
+            .stat-card {
+                background: #1a1a2e;
+                padding: 1.5rem;
+                border-radius: 8px;
+                border: 1px solid #333;
+            }
+
+            .stat-value {
+                font-size: 2rem;
+                font-weight: bold;
+                color: #00d4aa;
+            }
+
+            .stat-label {
+                color: #999;
+                margin-top: 0.5rem;
+            }
+
+            .section {
+                background: #1a1a2e;
+                border-radius: 8px;
+                border: 1px solid #333;
+                margin-bottom: 2rem;
+                overflow: hidden;
+            }
+
+            .section-header {
+                background: #16213e;
+                padding: 1rem 1.5rem;
+                border-bottom: 1px solid #333;
+                font-weight: bold;
+            }
+
+            .section-content {
+                padding: 1.5rem;
+            }
+
+            .torrent-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 1rem;
+                border-bottom: 1px solid #333;
+            }
+
+            .torrent-item:last-child {
+                border-bottom: none;
+            }
+
+            .torrent-name {
+                font-weight: 500;
+            }
+
+            .torrent-progress {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+            }
+
+            .progress-bar {
+                width: 100px;
+                height: 6px;
+                background: #333;
+                border-radius: 3px;
+                overflow: hidden;
+            }
+
+            .progress-fill {
+                height: 100%;
+                background: #00d4aa;
+                transition: width 0.3s;
+            }
+
+            .form-group {
+                margin-bottom: 1rem;
+            }
+
+            label {
+                display: block;
+                margin-bottom: 0.5rem;
+                color: #ccc;
+            }
+
+            input[type="text"],
+            input[type="url"] {
+                width: 100%;
+                padding: 0.75rem;
+                background: #0f0f23;
+                border: 1px solid #333;
+                border-radius: 4px;
+                color: #ccc;
+            }
+
+            input[type="text"]:focus,
+            input[type="url"]:focus {
+                outline: none;
+                border-color: #00d4aa;
+            }
+
+            button {
+                background: #00d4aa;
+                color: #0f0f23;
+                border: none;
+                padding: 0.75rem 1.5rem;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 500;
+                transition: background-color 0.2s;
+            }
+
+            button:hover {
+                background: #00c299;
+            }
+
+            button:disabled {
+                background: #666;
+                cursor: not-allowed;
+            }
+
+            .activity-item {
+                padding: 0.75rem;
+                border-bottom: 1px solid #333;
+            }
+
+            .activity-item:last-child {
+                border-bottom: none;
+            }
+
+            .activity-time {
+                color: #999;
+                font-size: 0.875rem;
+            }
+
+            .error {
+                background: #2d1b1b;
+                border: 1px solid #ff4444;
+                color: #ff6666;
+                padding: 1rem;
+                border-radius: 4px;
+                margin-bottom: 1rem;
+            }
+
+            .loading {
+                text-align: center;
+                color: #999;
+                padding: 2rem;
+            }
+
+            .hidden {
+                display: none;
+            }
+
+            .torrent-actions {
+                margin-top: 0.5rem;
+                display: flex;
+                gap: 0.5rem;
+            }
+
+            .torrent-actions button {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.8rem;
+                background: #00d4aa;
+                color: #0f0f23;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+
+            .torrent-actions button:hover {
+                background: #00b894;
+            }
+
+            .video-player {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.9);
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .video-container {
+                width: 90%;
+                max-width: 1200px;
+                position: relative;
+            }
+
+            .video-container video {
+                width: 100%;
+                height: auto;
+            }
+
+            .close-player {
+                position: absolute;
+                top: -40px;
+                right: 0;
+                background: #ff6b6b;
+                color: white;
+                border: none;
+                padding: 0.5rem 1rem;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div class="container">
+                <div class="header-content">
+                    <div class="logo">Riptide</div>
+                    <nav>
+                        <button id="nav-dashboard" class="active">
+                            Dashboard
+                        </button>
+                        <button id="nav-torrents">Torrents</button>
+                        <button id="nav-library">Library</button>
+                        <button id="nav-search">Search</button>
+                    </nav>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="container">
+                <!-- Dashboard View -->
+                <div id="view-dashboard">
+                    <div class="stats-grid" id="dashboard-stats">
+                        <div class="loading">Loading stats...</div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-header">Recent Activity</div>
+                        <div class="section-content" id="dashboard-activity">
+                            <div class="loading">Loading activity...</div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-header">Active Downloads</div>
+                        <div class="section-content" id="dashboard-downloads">
+                            <div class="loading">Loading downloads...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Torrents View -->
+                <div id="view-torrents" class="hidden">
+                    <div class="section">
+                        <div class="section-header">Add Torrent</div>
+                        <div class="section-content">
+                            <form id="add-torrent-form">
+                                <div class="form-group">
+                                    <label for="magnet-input"
+                                        >Magnet Link</label
+                                    >
+                                    <input
+                                        type="url"
+                                        id="magnet-input"
+                                        placeholder="magnet:?xt=urn:btih:..."
+                                        required
+                                    />
+                                </div>
+                                <button type="submit">Add Torrent</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-header">All Torrents</div>
+                        <div class="section-content" id="torrents-list">
+                            <div class="loading">Loading torrents...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Library View -->
+                <div id="view-library" class="hidden">
+                    <div class="section">
+                        <div class="section-header">Media Library</div>
+                        <div class="section-content" id="library-content">
+                            <div class="loading">Loading library...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search View -->
+                <div id="view-search" class="hidden">
+                    <div class="section">
+                        <div class="section-header">Search Media</div>
+                        <div class="section-content">
+                            <form id="search-form">
+                                <div class="form-group">
+                                    <label for="search-input"
+                                        >Search Query</label
+                                    >
+                                    <input
+                                        type="text"
+                                        id="search-input"
+                                        placeholder="Enter movie or show name..."
+                                        required
+                                    />
+                                </div>
+                                <button type="submit">Search</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-header">Search Results</div>
+                        <div class="section-content" id="search-results">
+                            <div class="loading hidden">Searching...</div>
+                            <p>Enter a search query above to find media.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <script>
+            // Navigation handling
+            const views = ["dashboard", "torrents", "library", "search"];
+            const navButtons = {};
+            const viewElements = {};
+
+            views.forEach((view) => {
+                navButtons[view] = document.getElementById(`nav-${view}`);
+                viewElements[view] = document.getElementById(`view-${view}`);
+
+                navButtons[view].addEventListener("click", () =>
+                    showView(view),
+                );
+            });
+
+            function showView(activeView) {
+                views.forEach((view) => {
+                    if (view === activeView) {
+                        viewElements[view].classList.remove("hidden");
+                        navButtons[view].classList.add("active");
+                    } else {
+                        viewElements[view].classList.add("hidden");
+                        navButtons[view].classList.remove("active");
+                    }
+                });
+
+                // Load data for the active view
+                switch (activeView) {
+                    case "dashboard":
+                        loadDashboard();
+                        break;
+                    case "torrents":
+                        loadTorrents();
+                        break;
+                    case "library":
+                        loadLibrary();
+                        break;
+                    case "search":
+                        // Search is triggered by form submission
+                        break;
+                }
+            }
+
+            // API helper functions
+            async function apiCall(endpoint) {
+                try {
+                    const response = await fetch(endpoint);
+                    if (!response.ok) {
+                        throw new Error(`API call failed: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.error("API call error:", error);
+                    throw error;
+                }
+            }
+
+            function showError(container, message) {
+                container.innerHTML = `<div class="error">Error: ${message}</div>`;
+            }
+
+            // Dashboard functions
+            async function loadDashboard() {
+                await Promise.all([
+                    loadDashboardStats(),
+                    loadDashboardActivity(),
+                    loadDashboardDownloads(),
+                ]);
+            }
+
+            async function loadDashboardStats() {
+                const container = document.getElementById("dashboard-stats");
+                try {
+                    const stats = await apiCall("/api/dashboard/stats");
+                    container.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value">${stats.total_torrents}</div>
+                        <div class="stat-label">Total Torrents</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${stats.active_downloads}</div>
+                        <div class="stat-label">Active Downloads</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${stats.download_speed.toFixed(1)} MB/s</div>
+                        <div class="stat-label">Download Speed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${stats.upload_speed.toFixed(1)} MB/s</div>
+                        <div class="stat-label">Upload Speed</div>
+                    </div>
+                `;
+                } catch (error) {
+                    showError(container, "Failed to load stats");
+                }
+            }
+
+            async function loadDashboardActivity() {
+                const container = document.getElementById("dashboard-activity");
+                try {
+                    const activities = await apiCall("/api/dashboard/activity");
+                    if (activities.length === 0) {
+                        container.innerHTML = "<p>No recent activity</p>";
+                        return;
+                    }
+
+                    container.innerHTML = activities
+                        .map(
+                            (activity) => `
+                    <div class="activity-item">
+                        <div class="activity-time">${activity.timestamp}</div>
+                        <div>${activity.message}</div>
+                    </div>
+                `,
+                        )
+                        .join("");
+                } catch (error) {
+                    showError(container, "Failed to load activity");
+                }
+            }
+
+            async function loadDashboardDownloads() {
+                const container = document.getElementById(
+                    "dashboard-downloads",
+                );
+                try {
+                    const downloads = await apiCall("/api/dashboard/downloads");
+                    if (downloads.length === 0) {
+                        container.innerHTML = "<p>No active downloads</p>";
+                        return;
+                    }
+
+                    container.innerHTML = downloads
+                        .map(
+                            (download) => `
+                    <div class="torrent-item">
+                        <div class="torrent-name">${download.name}</div>
+                        <div class="torrent-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${download.progress}%"></div>
+                            </div>
+                            <span>${download.progress}%</span>
+                            <span>${download.speed.toFixed(1)} MB/s</span>
+                            ${download.eta ? `<span>ETA: ${download.eta}</span>` : ""}
+                        </div>
+                    </div>
+                `,
+                        )
+                        .join("");
+                } catch (error) {
+                    showError(container, "Failed to load downloads");
+                }
+            }
+
+            // Torrents functions
+            async function loadTorrents() {
+                const container = document.getElementById("torrents-list");
+                try {
+                    const torrents = await apiCall("/api/torrents");
+                    if (torrents.length === 0) {
+                        container.innerHTML = "<p>No torrents found</p>";
+                        return;
+                    }
+
+                    container.innerHTML = torrents
+                        .map(
+                            (torrent) => `
+                    <div class="torrent-item">
+                        <div class="torrent-name">${torrent.name}</div>
+                        <div class="torrent-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${torrent.progress}%"></div>
+                            </div>
+                            <span>${torrent.progress}%</span>
+                            <span>${torrent.speed} MB/s</span>
+                        </div>
+                        <div class="torrent-actions">
+                            ${torrent.progress > 0 ? `<button onclick="streamTorrent('${torrent.info_hash}', '${torrent.name}')">Stream</button>` : ""}
+                            <button onclick="showTorrentDetails('${torrent.info_hash}')">Details</button>
+                        </div>
+                    </div>
+                `,
+                        )
+                        .join("");
+                } catch (error) {
+                    showError(container, "Failed to load torrents");
+                }
+            }
+
+            // Library functions
+            async function loadLibrary() {
+                const container = document.getElementById("library-content");
+                try {
+                    const library = await apiCall("/api/library");
+                    if (library.length === 0) {
+                        container.innerHTML = "<p>No media in library</p>";
+                        return;
+                    }
+
+                    container.innerHTML = library
+                        .map(
+                            (item) => `
+                    <div class="torrent-item">
+                        <div class="torrent-name">${item.title}</div>
+                        <div>${item.year || "Unknown year"}</div>
+                    </div>
+                `,
+                        )
+                        .join("");
+                } catch (error) {
+                    showError(container, "Failed to load library");
+                }
+            }
+
+            // Form handlers
+            document
+                .getElementById("add-torrent-form")
+                .addEventListener("submit", async (e) => {
+                    e.preventDefault();
+                    const magnetInput = document.getElementById("magnet-input");
+                    const magnetLink = magnetInput.value.trim();
+
+                    if (!magnetLink) return;
+
+                    try {
+                        const response = await fetch("/api/torrents/add", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({ magnet_link: magnetLink }),
+                        });
+
+                        if (response.ok) {
+                            magnetInput.value = "";
+                            loadTorrents(); // Refresh torrent list
+                            alert("Torrent added successfully!");
+                        } else {
+                            alert("Failed to add torrent");
+                        }
+                    } catch (error) {
+                        alert("Error adding torrent: " + error.message);
+                    }
+                });
+
+            document
+                .getElementById("search-form")
+                .addEventListener("submit", async (e) => {
+                    e.preventDefault();
+                    const searchInput = document.getElementById("search-input");
+                    const query = searchInput.value.trim();
+                    const resultsContainer =
+                        document.getElementById("search-results");
+
+                    if (!query) return;
+
+                    resultsContainer.innerHTML =
+                        '<div class="loading">Searching...</div>';
+
+                    try {
+                        const results = await apiCall(
+                            `/api/search?q=${encodeURIComponent(query)}`,
+                        );
+                        if (results.length === 0) {
+                            resultsContainer.innerHTML =
+                                "<p>No results found</p>";
+                            return;
+                        }
+
+                        resultsContainer.innerHTML = results
+                            .map(
+                                (result) => `
+                    <div class="torrent-item">
+                        <div class="torrent-name">${result.title}</div>
+                        <div>${result.year || "Unknown year"}</div>
+                    </div>
+                `,
+                            )
+                            .join("");
+                    } catch (error) {
+                        showError(resultsContainer, "Search failed");
+                    }
+                });
+
+            // Streaming functions
+            function streamTorrent(infoHash, name) {
+                const playerHtml = `
+                <div class="video-player" id="video-player">
+                    <div class="video-container">
+                        <button class="close-player" onclick="closePlayer()">Close</button>
+                        <video controls autoplay>
+                            <source src="/stream/${infoHash}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <h3 style="color: white; margin-top: 1rem;">${name}</h3>
+                    </div>
+                </div>
+            `;
+                document.body.insertAdjacentHTML("beforeend", playerHtml);
+            }
+
+            function closePlayer() {
+                const player = document.getElementById("video-player");
+                if (player) {
+                    player.remove();
+                }
+            }
+
+            function showTorrentDetails(infoHash) {
+                alert(
+                    `Torrent details for: ${infoHash}\n\nThis would show detailed information about the torrent.`,
+                );
+            }
+
+            // Auto-refresh dashboard every 5 seconds
+            setInterval(() => {
+                if (!viewElements.dashboard.classList.contains("hidden")) {
+                    loadDashboard();
+                }
+            }, 5000);
+
+            // Auto-refresh torrents every 10 seconds
+            setInterval(() => {
+                if (!viewElements.torrents.classList.contains("hidden")) {
+                    loadTorrents();
+                }
+            }, 10000);
+
+            // Initial load
+            loadDashboard();
+        </script>
+    </body>
+</html>
