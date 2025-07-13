@@ -410,10 +410,9 @@ impl HttpStreaming {
             });
         }
 
-        // Clamp end position to file boundaries
-        // Start position is already validated above, no clamping needed for valid ranges
+        // Clamp both start and end position to file boundaries
         let actual_end = end.min(total_size.saturating_sub(1));
-        let actual_start = start;
+        let actual_start = start.min(total_size.saturating_sub(1));
 
         tracing::debug!(
             "Range calculation: actual_start={}, actual_end={}, range_size={}",

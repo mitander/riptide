@@ -303,6 +303,46 @@ async fn test_start_position_clamping_edge_case() {
 }
 
 #[tokio::test]
+async fn test_full_file_streaming_without_truncation() {
+    // This test specifically catches the regression where removing start position clamping
+    // caused video streaming to truncate at ~70% completion instead of serving full content
+    let file_size = 1000000; // 1MB test file
+    let (http_streaming, info_hash) = setup_test_streaming_with_size(file_size).await;
+
+    // Test full file request (no range header)
+    let result = http_streaming.serve_http_stream(info_hash, None).await;
+
+    assert!(
+        result.is_ok(),
+        "Full file streaming should succeed: {result:?}"
+    );
+
+    let response = result.unwrap();
+    assert_eq!(
+        response.body.len(),
+        file_size,
+        "Full file streaming should return complete file without truncation"
+    );
+
+    // Test large open-ended range from beginning
+    let result = http_streaming
+        .serve_http_stream(info_hash, Some("bytes=0-"))
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Open range from start should succeed: {result:?}"
+    );
+
+    let response = result.unwrap();
+    assert_eq!(
+        response.body.len(),
+        file_size,
+        "Open range from start should return complete file without truncation"
+    );
+}
+
+#[tokio::test]
 async fn test_movie_length_streaming_no_truncation() {
     // Test full movie-length file to catch 7-11 minute truncation issues
     // Simulates a 16-minute movie (~100MB at typical bitrates)
