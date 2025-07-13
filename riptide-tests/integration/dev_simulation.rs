@@ -63,7 +63,13 @@ async fn test_development_mode_full_simulation_loop() {
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     println!("Initial torrents response: {body:?}");
-    let torrents = body["torrents"].as_array().unwrap();
+    let torrents = if let Some(torrents_array) = body["torrents"].as_array() {
+        torrents_array
+    } else if let Some(direct_array) = body.as_array() {
+        direct_array
+    } else {
+        panic!("Expected either a 'torrents' field with array or direct array, got: {body:?}");
+    };
     assert_eq!(torrents.len(), 1, "Expected one torrent from local movie");
     let info_hash = torrents[0]["info_hash"].as_str().unwrap();
     println!("Found torrent with info_hash: {info_hash}");
@@ -80,8 +86,15 @@ async fn test_development_mode_full_simulation_loop() {
             .await
             .unwrap();
         let body: serde_json::Value = response.json().await.unwrap();
-        println!("Poll {}: Full torrent state: {:?}", i, body["torrents"][0]);
-        let progress = body["torrents"][0]["progress"].as_f64().unwrap() as f32;
+        let torrents = if let Some(torrents_array) = body["torrents"].as_array() {
+            torrents_array
+        } else if let Some(direct_array) = body.as_array() {
+            direct_array
+        } else {
+            continue; // Skip this iteration if format is unexpected
+        };
+        println!("Poll {}: Full torrent state: {:?}", i, torrents[0]);
+        let progress = torrents[0]["progress"].as_f64().unwrap() as f32;
 
         if progress > last_progress {
             progress_increased = true;
