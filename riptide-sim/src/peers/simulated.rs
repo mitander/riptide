@@ -212,9 +212,6 @@ struct SimulatedPeer {
     last_activity: Instant,
     /// Bitfield of which pieces this peer has available
     available_pieces: Vec<bool>,
-    /// Upload rate limit in bytes per second (for future bandwidth throttling)
-    #[allow(dead_code)]
-    upload_rate_bps: u64,
     /// Total bytes downloaded from this peer
     bytes_downloaded: u64,
     /// Total bytes uploaded to this peer
@@ -244,13 +241,7 @@ pub struct SimulationStats {
 
 impl SimulatedPeer {
     /// Creates a new simulated peer with specified configuration.
-    fn new(
-        address: SocketAddr,
-        info_hash: InfoHash,
-        peer_id: PeerId,
-        piece_count: u32,
-        upload_rate_bps: u64,
-    ) -> Self {
+    fn new(address: SocketAddr, info_hash: InfoHash, peer_id: PeerId, piece_count: u32) -> Self {
         // In simulation, peers have all pieces available (seeders)
         let available_pieces = (0..piece_count).map(|_| true).collect();
 
@@ -262,7 +253,6 @@ impl SimulatedPeer {
             connected_at: None,
             last_activity: Instant::now(),
             available_pieces,
-            upload_rate_bps,
             bytes_downloaded: 0,
             bytes_uploaded: 0,
         }
@@ -436,10 +426,8 @@ impl<P: PieceStore + Send + Sync + 'static> PeerManager for SimulatedPeers<P> {
 
         let peer_id = self.generate_peer_id().await;
         let piece_count = 100; // Default piece count for simulation
-        let upload_rate = self.config.upload_rate_bps;
 
-        let mut peer =
-            SimulatedPeer::new(peer_address, info_hash, peer_id, piece_count, upload_rate);
+        let mut peer = SimulatedPeer::new(peer_address, info_hash, peer_id, piece_count);
         peer.connect();
 
         {

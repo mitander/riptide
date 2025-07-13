@@ -12,7 +12,7 @@ use futures::future;
 use riptide_core::config::RiptideConfig;
 use riptide_core::storage::{DataError, DataResult, DataSource, RangeAvailability};
 use riptide_core::streaming::{Ffmpeg, HttpStreaming, RemuxingOptions, RemuxingResult};
-use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore, TorrentError};
+use riptide_core::torrent::InfoHash;
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::sync::RwLock;
@@ -97,79 +97,15 @@ impl DataSource for TestDataSource {
     }
 }
 
-/// Storage for pieces indexed by info hash and piece index
-type PieceStorage = Arc<RwLock<HashMap<InfoHash, HashMap<PieceIndex, Vec<u8>>>>>;
-
-/// Mock piece store for testing
-#[allow(dead_code)]
-struct MockPieceStore {
-    pieces: PieceStorage,
-}
-
-impl MockPieceStore {
-    #[allow(dead_code)]
-    fn new() -> Self {
-        Self {
-            pieces: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
-    #[allow(dead_code)]
-    async fn add_piece(&self, info_hash: InfoHash, index: PieceIndex, data: Vec<u8>) {
-        let mut pieces = self.pieces.write().await;
-        pieces.entry(info_hash).or_default().insert(index, data);
-    }
-}
-
-#[async_trait]
-impl PieceStore for MockPieceStore {
-    async fn piece_data(
-        &self,
-        info_hash: InfoHash,
-        index: PieceIndex,
-    ) -> Result<Vec<u8>, TorrentError> {
-        let pieces = self.pieces.read().await;
-        pieces
-            .get(&info_hash)
-            .and_then(|torrent_pieces| torrent_pieces.get(&index))
-            .cloned()
-            .ok_or_else(|| TorrentError::PieceHashMismatch { index })
-    }
-
-    fn has_piece(&self, info_hash: InfoHash, index: PieceIndex) -> bool {
-        if let Ok(pieces) = self.pieces.try_read() {
-            pieces
-                .get(&info_hash)
-                .map(|torrent_pieces| torrent_pieces.contains_key(&index))
-                .unwrap_or(false)
-        } else {
-            false
-        }
-    }
-
-    fn piece_count(&self, info_hash: InfoHash) -> Result<u32, TorrentError> {
-        if let Ok(pieces) = self.pieces.try_read() {
-            let count = pieces
-                .get(&info_hash)
-                .map(|torrent_pieces| torrent_pieces.len())
-                .unwrap_or(0);
-            Ok(count as u32)
-        } else {
-            Ok(0)
-        }
-    }
-}
-
 /// Mock FFmpeg processor for testing
-#[allow(dead_code)]
 struct MockFfmpeg {
-    temp_dir: TempDir,
+    _temp_dir: TempDir,
 }
 
 impl MockFfmpeg {
     fn new() -> Self {
         Self {
-            temp_dir: TempDir::new().expect("Failed to create temp dir"),
+            _temp_dir: TempDir::new().expect("Failed to create temp dir"),
         }
     }
 }

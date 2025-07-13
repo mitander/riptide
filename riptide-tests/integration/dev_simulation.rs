@@ -35,7 +35,15 @@ async fn test_development_mode_full_simulation_loop() {
             let media_search = MediaSearch::from_runtime_mode(RuntimeMode::Development);
 
             // The server will run in the background. We don't need to await its completion
-            let _ = run_server(config, components, media_search, RuntimeMode::Development).await;
+            let _ = run_server(
+                config,
+                components,
+                media_search,
+                RuntimeMode::Development,
+                "127.0.0.1".to_string(),
+                3000,
+            )
+            .await;
         });
     });
 

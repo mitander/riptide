@@ -798,29 +798,6 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
         }
     }
 
-    /// Connects to a peer for a specific torrent.
-    ///
-    /// Establishes a connection to the given peer and initiates the BitTorrent
-    /// handshake process. This method is used during the peer discovery phase.
-    ///
-    /// # Errors
-    ///
-    /// - `TorrentError::PeerConnectionError` - If could not connect to peer
-    #[allow(dead_code)]
-    pub async fn connect_peer(
-        &self,
-        info_hash: InfoHash,
-        peer_address: SocketAddr,
-    ) -> Result<(), TorrentError> {
-        let mut peers = self.peers.write().await;
-        peers
-            .connect_peer(peer_address, info_hash, self.peer_id)
-            .await
-            .map_err(|e| TorrentError::PeerConnectionError {
-                reason: format!("Failed to connect to {peer_address}: {e}"),
-            })
-    }
-
     /// Gets all active torrent sessions.
     ///
     /// Returns a reference to all torrent sessions currently managed by the engine.
@@ -873,16 +850,6 @@ impl<P: PeerManager + 'static, T: TrackerManager + 'static> TorrentEngine<P, T> 
             bytes_uploaded: total_uploaded,
             average_progress,
         }
-    }
-
-    /// Performs maintenance tasks on the engine.
-    ///
-    /// Cleans up completed torrents, updates statistics, and performs
-    /// other housekeeping operations. This should be called periodically.
-    #[allow(dead_code)]
-    pub async fn maintenance(&mut self) {
-        // Remove completed torrents that are no longer needed
-        // TODO: Implement based on configuration
     }
 
     /// Configures upload manager for streaming-optimized behavior.

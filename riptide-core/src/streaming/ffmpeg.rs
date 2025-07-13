@@ -82,15 +82,12 @@ pub struct RemuxingResult {
 }
 
 /// Production FFmpeg implementation using ffmpeg-next crate
-pub struct ProductionFfmpeg {
-    #[allow(dead_code)]
-    ffmpeg_path: Option<std::path::PathBuf>,
-}
+pub struct ProductionFfmpeg {}
 
 impl ProductionFfmpeg {
-    /// Create new FFmpeg processor with optional custom binary path
-    pub fn new(ffmpeg_path: Option<std::path::PathBuf>) -> Self {
-        Self { ffmpeg_path }
+    /// Create new FFmpeg processor
+    pub fn new() -> Self {
+        Self {}
     }
 
     /// Verify FFmpeg installation and codecs
@@ -109,6 +106,12 @@ impl ProductionFfmpeg {
                 reason: "FFmpeg binary not found in PATH".to_string(),
             }),
         }
+    }
+}
+
+impl Default for ProductionFfmpeg {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -369,7 +372,7 @@ impl SimulationFfmpeg {
     /// Create new simulation processor
     pub fn new() -> Self {
         Self {
-            base_processor: ProductionFfmpeg::new(None),
+            base_processor: ProductionFfmpeg::new(),
             processing_speed_mb_per_sec: 100.0, // Simulate 100 MB/s (faster than real)
             is_available: true,
         }

@@ -22,9 +22,6 @@ pub struct MediaStreamingSimulation {
     piece_size: u32,
     /// Maps torrent pieces to file indices in movie folder
     piece_to_file_map: HashMap<PieceIndex, usize>,
-    /// Current playback position for simulation tracking
-    #[allow(dead_code)]
-    playback_position: Duration,
 }
 
 impl MediaStreamingSimulation {
@@ -61,7 +58,6 @@ impl MediaStreamingSimulation {
             movie_folder,
             piece_size,
             piece_to_file_map,
-            playback_position: Duration::ZERO,
         })
     }
 

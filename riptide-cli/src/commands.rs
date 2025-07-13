@@ -83,8 +83,7 @@ pub async fn create_server_components(
             let tracker = Tracker::new(config.network.clone());
             let engine = spawn_torrent_engine(config, peers, tracker);
 
-            let ffmpeg: std::sync::Arc<dyn Ffmpeg> =
-                std::sync::Arc::new(ProductionFfmpeg::new(None));
+            let ffmpeg: std::sync::Arc<dyn Ffmpeg> = std::sync::Arc::new(ProductionFfmpeg::new());
 
             Ok(ServerComponents {
                 torrent_engine: engine,
@@ -397,30 +396,6 @@ async fn show_all_torrents_status(engine: &TorrentEngineHandle) -> Result<()> {
     Ok(())
 }
 
-/// Start the simplified web server
-///
-/// # Errors
-///
-/// - `anyhow::Error` - If server binding fails
-/// - `anyhow::Error` - If configuration is invalid
-#[allow(dead_code)]
-pub async fn start_simple_server() -> Result<()> {
-    println!("Starting Riptide media server...");
-    println!("{:-<50}", "");
-
-    let config = RiptideConfig::default();
-
-    let components =
-        create_server_components(config.clone(), RuntimeMode::Development, None).await?;
-    let media_search = MediaSearch::from_runtime_mode(RuntimeMode::Development);
-
-    riptide_web::run_server(config, components, media_search, RuntimeMode::Development)
-        .await
-        .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
-
-    Ok(())
-}
-
 /// Start the web server
 ///
 /// # Errors
@@ -428,12 +403,12 @@ pub async fn start_simple_server() -> Result<()> {
 /// - `anyhow::Error` - If info hash parsing fails
 /// - `anyhow::Error` - If server startup fails
 pub async fn start_server(
-    _host: String,
-    _port: u16,
+    host: String,
+    port: u16,
     mode: RuntimeMode,
     movies_dir: Option<PathBuf>,
 ) -> Result<()> {
-    println!("Starting Riptide media server...");
+    println!("Starting Riptide media server on {host}:{port}...");
     println!("{:-<50}", "");
 
     let config = if mode.is_development() {
@@ -457,7 +432,7 @@ pub async fn start_server(
     let components = create_server_components(config.clone(), mode, movies_dir).await?;
     let media_search = MediaSearch::from_runtime_mode(mode);
 
-    riptide_web::run_server(config, components, media_search, mode)
+    riptide_web::run_server(config, components, media_search, mode, host, port)
         .await
         .map_err(|e| RiptideError::Io(std::io::Error::other(e.to_string())))?;
 

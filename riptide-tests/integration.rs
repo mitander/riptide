@@ -7,14 +7,17 @@
 //! ensure that the system works correctly as a whole.
 
 // TODO: Re-enable tests one by one after fixing API imports
+
+#[path = "style.rs"]
+mod style;
+
 #[path = "integration/dev_simulation.rs"]
 mod dev_simulation;
 #[path = "integration/engine_integration.rs"]
 mod engine_integration;
 #[path = "integration/mp4_validation.rs"]
 mod mp4_validation;
-#[path = "integration/naming_violations.rs"]
-mod naming_violations;
+
 #[path = "integration/peer_communication.rs"]
 mod peer_communication;
 #[path = "integration/remux_pipeline.rs"]

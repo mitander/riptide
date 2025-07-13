@@ -16,8 +16,6 @@ pub struct SimulationNetworkLayer {
     timeout: Duration,
     responses: HashMap<String, HttpResponse>,
     failure_rate: f32,
-    #[allow(dead_code)]
-    request_count: usize,
 }
 
 impl SimulationNetworkLayer {
@@ -27,7 +25,6 @@ impl SimulationNetworkLayer {
             timeout: Duration::from_secs(5),
             responses: HashMap::new(),
             failure_rate: 0.0,
-            request_count: 0,
         }
     }
 
@@ -63,19 +60,6 @@ impl SimulationNetworkLayer {
         // Bencode response with no peers
         let bencode = b"d8:intervali1800e5:peers0:e";
         HttpResponse::new(200, bencode.to_vec())
-    }
-
-    #[allow(dead_code)]
-    fn should_fail(&mut self) -> bool {
-        self.request_count += 1;
-        let fail = rand::random::<f32>() < self.failure_rate;
-        if fail {
-            tracing::debug!(
-                "Simulating network failure for request {}",
-                self.request_count
-            );
-        }
-        fail
     }
 }
 

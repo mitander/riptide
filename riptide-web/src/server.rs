@@ -130,6 +130,8 @@ pub async fn run_server(
     components: ServerComponents,
     media_search: MediaSearch,
     _runtime_mode: RuntimeMode,
+    host: String,
+    port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conversion_cache = Arc::new(RwLock::new(HashMap::new()));
 
@@ -210,8 +212,8 @@ pub async fn run_server(
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    println!("Riptide media server running on http://127.0.0.1:3000");
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+    println!("Riptide media server running on http://{host}:{port}");
+    let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await?;
     axum::serve(listener, app).await?;
     Ok(())
 }

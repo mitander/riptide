@@ -17,10 +17,6 @@ use crate::types::{MediaSearchResult, TorrentResult};
 pub struct EnhancedMediaSearch {
     provider: Box<dyn TorrentSearchProvider>,
     metadata: ImdbMetadata,
-    #[allow(dead_code)]
-    fuzzy_threshold: f64,
-    #[allow(dead_code)]
-    is_development: bool,
 }
 
 /// Enhanced movie result with rich metadata and quality-sorted torrents.
@@ -79,8 +75,6 @@ impl EnhancedMediaSearch {
         Self {
             provider,
             metadata: ImdbMetadata::new(),
-            fuzzy_threshold: 0.6, // 60% similarity threshold
-            is_development: false,
         }
     }
 
@@ -88,12 +82,10 @@ impl EnhancedMediaSearch {
     ///
     /// # Arguments
     /// * `threshold` - Minimum similarity score (0.0-1.0) for fuzzy matching
-    pub fn with_fuzzy_threshold(provider: Box<dyn TorrentSearchProvider>, threshold: f64) -> Self {
+    pub fn with_fuzzy_threshold(provider: Box<dyn TorrentSearchProvider>, _threshold: f64) -> Self {
         Self {
             provider,
             metadata: ImdbMetadata::new(),
-            fuzzy_threshold: threshold.clamp(0.0, 1.0),
-            is_development: false,
         }
     }
 
@@ -107,8 +99,6 @@ impl EnhancedMediaSearch {
         Self {
             provider: Box::new(DevelopmentProvider::new()),
             metadata: ImdbMetadata::new(),
-            fuzzy_threshold: 0.5, // Lower threshold for development to show fuzzy matching
-            is_development: true,
         }
     }
 

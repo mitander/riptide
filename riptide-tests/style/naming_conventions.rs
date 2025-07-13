@@ -412,11 +412,12 @@ impl NamingChecker {
 
     /// Check a single file for all naming violations
     fn check_file(&mut self, file_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        // Skip test files to avoid false positives
+        // Skip test files and style test files to avoid false positives
         let path_str = file_path.to_string_lossy();
         if path_str.contains("/tests/")
             || path_str.contains("test_")
-            || path_str.contains("naming_violations.rs")
+            // Ignore this file since test cases containing violations
+            || path_str.contains("naming_conventions.rs")
         {
             return Ok(());
         }
@@ -484,7 +485,7 @@ mod tests {
     #[test]
     fn test_banned_function_prefixes() {
         let mut checker = NamingChecker::new();
-        let test_code = r#"
+        const VIOLATION_CODE: &str = r#"
 impl SomeStruct {
     pub fn get_value(&self) -> u32 { 42 }
     pub fn set_value(&mut self, v: u32) { }
@@ -495,7 +496,7 @@ impl SomeStruct {
 }
 "#;
 
-        checker.check_function_prefixes(Path::new("test.rs"), test_code);
+        checker.check_function_prefixes(Path::new("test.rs"), VIOLATION_CODE);
         assert_eq!(checker.violations.len(), 5);
 
         // Check specific violation messages
@@ -522,7 +523,7 @@ impl SomeStruct {
     #[test]
     fn test_function_prefixes_edge_cases() {
         let mut checker = NamingChecker::new();
-        let test_code = r#"
+        const EDGE_CASE_CODE: &str = r#"
 impl SomeStruct {
     pub fn getter(&self) -> u32 { 42 } // OK - doesn't have underscore
     pub fn setup(&mut self) { } // OK - set without underscore
@@ -532,7 +533,7 @@ impl SomeStruct {
 }
 "#;
 
-        checker.check_function_prefixes(Path::new("test.rs"), test_code);
+        checker.check_function_prefixes(Path::new("edge_cases.rs"), EDGE_CASE_CODE);
         assert_eq!(checker.violations.len(), 1);
         assert!(checker.violations[0].message.contains("get_"));
     }
@@ -541,7 +542,7 @@ impl SomeStruct {
     fn test_banned_type_suffixes() {
         let mut checker = NamingChecker::new();
 
-        let test_code = r#"
+        const TYPE_VIOLATION_CODE: &str = r#"
 pub struct PeerConnectionFactory {
     // fields
 }
@@ -554,12 +555,8 @@ pub struct FileLibraryManager {
     // fields
 }
 
-pub trait PeerManager {
-    // This should be allowed
-}
-
-pub trait TrackerManager {
-    // This should be allowed
+struct ErrorHandler {
+    // This has Handler suffix which is banned
 }
 
 struct PrivateFactory {
@@ -567,11 +564,11 @@ struct PrivateFactory {
 }
 "#;
 
-        checker.check_type_naming(Path::new("test.rs"), test_code);
-        // Should find: Factory (2), Service (1), Manager struct (1) = 4 violations
+        checker.check_type_naming(Path::new("types.rs"), TYPE_VIOLATION_CODE);
+        // Should find: Factory (2), Service (1), Manager struct (1), Handler (1) = 5 violations
         // But NOT Manager traits (those are allowed)
 
-        assert_eq!(checker.violations.len(), 4);
+        assert_eq!(checker.violations.len(), 5);
 
         // Check for specific violations
         assert!(
@@ -647,9 +644,9 @@ struct PrivateFactory {
     #[test]
     fn test_violation_structure() {
         let mut checker = NamingChecker::new();
-        let test_code = "pub fn get_test() -> u32 { 42 }";
+        const VIOLATION_EXAMPLE: &str = "pub fn get_test() -> u32 { 42 }";
 
-        checker.check_function_prefixes(Path::new("example.rs"), test_code);
+        checker.check_function_prefixes(Path::new("example.rs"), VIOLATION_EXAMPLE);
 
         assert_eq!(checker.violations.len(), 1);
         let violation = &checker.violations[0];

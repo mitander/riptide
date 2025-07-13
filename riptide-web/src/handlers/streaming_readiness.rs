@@ -35,9 +35,6 @@ enum ReadinessResult {
     Ready,
     /// Stream is not ready with reason
     NotReady(String),
-    /// Error occurred during readiness check
-    #[allow(dead_code)]
-    Error(String),
 }
 
 /// Checks if torrent stream is ready for playback.
@@ -122,7 +119,6 @@ pub async fn streaming_readiness_handler(
             let total_progress = (buffer_progress + health_progress + duration_progress).min(0.9);
             (false, msg, Some(total_progress.max(0.1)))
         }
-        ReadinessResult::Error(err) => (false, format!("Error: {err}"), None),
     };
 
     Ok(Json(StreamingReadinessResponse {
