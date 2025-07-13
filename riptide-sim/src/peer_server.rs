@@ -11,6 +11,28 @@ use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+/// Errors that can occur during peer server operations
+#[derive(Debug, thiserror::Error)]
+pub enum PeerServerError {
+    /// Failed to bind TCP listener to the specified address
+    #[error("Failed to bind TCP listener to {address}: {source}")]
+    BindFailed {
+        /// The address that failed to bind
+        address: SocketAddr,
+        /// The underlying I/O error
+        source: std::io::Error,
+    },
+    /// I/O error during peer communication
+    #[error("I/O error during peer communication: {0}")]
+    Io(#[from] std::io::Error),
+    /// Protocol violation or invalid message
+    #[error("Protocol violation: {message}")]
+    Protocol {
+        /// Description of the protocol violation
+        message: String,
+    },
+}
+
 /// Peer server that serves pieces from a PieceStore
 pub struct PeerServer<P: PieceStore> {
     /// Info hash of the torrent being served
@@ -37,9 +59,14 @@ impl<P: PieceStore + Send + Sync + 'static> PeerServer<P> {
     ///
     /// # Errors
     ///
-    /// - `std::io::Error` - If TCP listener cannot bind to the specified address
-    pub async fn start(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let listener = TcpListener::bind(self.listen_address).await?;
+    /// - `PeerServerError::BindFailed` - If TCP listener cannot bind to the specified address
+    pub async fn start(self) -> Result<(), PeerServerError> {
+        let listener = TcpListener::bind(self.listen_address).await.map_err(|e| {
+            PeerServerError::BindFailed {
+                address: self.listen_address,
+                source: e,
+            }
+        })?;
         tracing::info!(
             "Started BitTorrent peer server for {} on {}",
             self.info_hash,

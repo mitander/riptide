@@ -97,11 +97,13 @@ impl DataSource for TestDataSource {
     }
 }
 
+/// Storage for pieces indexed by info hash and piece index
+type PieceStorage = Arc<RwLock<HashMap<InfoHash, HashMap<PieceIndex, Vec<u8>>>>>;
+
 /// Mock piece store for testing
 #[allow(dead_code)]
 struct MockPieceStore {
-    #[allow(clippy::type_complexity)]
-    pieces: Arc<RwLock<HashMap<InfoHash, HashMap<PieceIndex, Vec<u8>>>>>,
+    pieces: PieceStorage,
 }
 
 impl MockPieceStore {
@@ -265,7 +267,6 @@ async fn setup_http_streaming(data_source: Arc<dyn DataSource>) -> HttpStreaming
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_direct_mp4_streaming() {
     let (info_hash, mp4_data, _, _) = create_test_files().await;
 
@@ -296,7 +297,6 @@ async fn test_direct_mp4_streaming() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_remux_avi_streaming() {
     let (info_hash, _, avi_data, _) = create_test_files().await;
 
@@ -323,7 +323,6 @@ async fn test_remux_avi_streaming() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_container_format_detection() {
     let (info_hash, mp4_data, avi_data, mkv_data) = create_test_files().await;
 
@@ -372,7 +371,6 @@ async fn test_container_format_detection() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_range_request_parsing() {
     let (info_hash, mp4_data, _, _) = create_test_files().await;
 
@@ -419,7 +417,6 @@ async fn test_range_request_parsing() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_concurrent_streaming_requests() {
     let (info_hash, mp4_data, _, _) = create_test_files().await;
 
@@ -458,7 +455,6 @@ async fn test_concurrent_streaming_requests() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_streaming_error_handling() {
     let http_streaming = setup_http_streaming(Arc::new(TestDataSource::new())).await;
 
@@ -489,7 +485,6 @@ async fn test_streaming_error_handling() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_streaming_statistics() {
     let data_source = Arc::new(TestDataSource::new());
     let http_streaming = setup_http_streaming(data_source).await;
@@ -503,7 +498,6 @@ async fn test_streaming_statistics() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_streaming_lifecycle_with_partial_data() {
     let (info_hash, _, avi_data, _) = create_test_files().await;
 
@@ -536,7 +530,6 @@ async fn test_streaming_lifecycle_with_partial_data() {
 }
 
 #[tokio::test]
-#[ignore = "Needs API updates for new DeterministicPeers interface"]
 async fn test_multiple_format_streaming() {
     let (_info_hash, mp4_data, avi_data, mkv_data) = create_test_files().await;
 
