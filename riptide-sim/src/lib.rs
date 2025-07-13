@@ -91,7 +91,7 @@ pub use magneto_provider::{
 pub use media::{MediaStreamingSimulation, MovieFolder, StreamingResult};
 pub use network::{NetworkSimulator, NetworkSimulatorBuilder};
 pub use peer::{MockPeer, MockPeerBuilder};
-pub use peer_server::{BitTorrentPeerServer, spawn_peer_servers_for_torrent};
+pub use peer_server::{PeerServer, spawn_peer_servers_for_torrent};
 pub use peers::{
     InMemoryPieceStore, PeersBuilder, PeersMode, SimulatedConfig, SimulatedPeers, SimulationSpeed,
     SimulationStats,

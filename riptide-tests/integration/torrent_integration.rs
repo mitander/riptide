@@ -62,13 +62,13 @@ fn create_test_torrent_metadata() -> TorrentMetadata {
 pub struct BitTorrentTestHarness {
     pub downloader: PieceDownloader<FileStorage, TcpPeers>,
     pub peers: Arc<RwLock<TcpPeers>>,
-    pub test_servers: Vec<TestPeerServer>,
+    pub test_servers: Vec<TestPeer>,
     pub metadata: TorrentMetadata,
     pub temp_dir: tempfile::TempDir,
 }
 
-/// Mock peer server that implements BitTorrent wire protocol
-pub struct TestPeerServer {
+/// Mock peer that implements BitTorrent wire protocol
+pub struct TestPeer {
     pub address: SocketAddr,
     pub listener: TcpListener,
     pub pieces: HashMap<PieceIndex, Vec<u8>>,
@@ -141,7 +141,7 @@ impl BitTorrentTestHarness {
             }
         }
 
-        let server = TestPeerServer {
+        let server = TestPeer {
             address,
             listener,
             pieces,

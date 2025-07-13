@@ -165,7 +165,15 @@ impl NamingChecker {
                     let words: Vec<&str> = trimmed.split_whitespace().collect();
                     let name_index = if words.first() == Some(&"pub") { 2 } else { 1 };
                     if let Some(name_part) = words.get(name_index) {
-                        name_part.split('{').next().unwrap_or("").trim()
+                        // Extract just the type name, handling generics and braces
+                        name_part
+                            .split('<')
+                            .next()
+                            .unwrap_or("") // Remove generic parameters
+                            .split('{')
+                            .next()
+                            .unwrap_or("") // Remove struct body
+                            .trim()
                     } else {
                         continue;
                     }

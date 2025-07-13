@@ -11,8 +11,8 @@ use riptide_core::torrent::{InfoHash, PieceIndex, PieceStore};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-/// BitTorrent peer server that serves pieces from a PieceStore
-pub struct BitTorrentPeerServer<P: PieceStore> {
+/// Peer server that serves pieces from a PieceStore
+pub struct PeerServer<P: PieceStore> {
     /// Info hash of the torrent being served
     info_hash: InfoHash,
     /// Storage backend containing piece data
@@ -21,7 +21,7 @@ pub struct BitTorrentPeerServer<P: PieceStore> {
     listen_address: SocketAddr,
 }
 
-impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
+impl<P: PieceStore + Send + Sync + 'static> PeerServer<P> {
     /// Creates a new peer server for the given torrent
     pub fn new(info_hash: InfoHash, piece_store: Arc<P>, listen_address: SocketAddr) -> Self {
         Self {
@@ -51,7 +51,7 @@ impl<P: PieceStore + Send + Sync + 'static> BitTorrentPeerServer<P> {
                 match listener.accept().await {
                     Ok((stream, peer_addr)) => {
                         tracing::debug!("Accepted connection from {}", peer_addr);
-                        let server = BitTorrentPeerServer {
+                        let server = PeerServer {
                             info_hash: self.info_hash,
                             piece_store: self.piece_store.clone(),
                             listen_address: self.listen_address,
@@ -351,7 +351,7 @@ pub async fn spawn_peer_servers_for_torrent<P: PieceStore + Send + Sync + 'stati
         let port = base_port + i as u16;
         let address = SocketAddr::new([127, 0, 0, 1].into(), port);
 
-        let server = BitTorrentPeerServer::new(info_hash, piece_store.clone(), address);
+        let server = PeerServer::new(info_hash, piece_store.clone(), address);
         server.start().await?;
 
         peer_addresses.push(address);
