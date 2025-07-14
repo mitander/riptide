@@ -221,19 +221,10 @@ impl StreamingStrategy for RemuxStreamStrategy {
                     }
                 })?;
 
-                // For progressive streaming, if we're still remuxing and serving partial data,
-                // we might want to indicate the actual remuxed file size instead of original
-                // Check if remuxing is still in progress by comparing sizes
-                let is_remuxing = current_remux_size < original_file_size;
-
-                let reported_total_size = if is_remuxing {
-                    // During remuxing, report the current size to help players understand
-                    // that more data is being produced
-                    Some(current_remux_size.max(actual_end))
-                } else {
-                    // For completed remux, report the original file size for compatibility
-                    Some(original_file_size)
-                };
+                // Always report original file size to enable proper video seeking
+                // Video players need the full duration immediately to show correct timeline
+                // and allow seeking to any position, even if not yet remuxed
+                let reported_total_size = Some(original_file_size);
 
                 Ok(StreamData {
                     data: file_data,
