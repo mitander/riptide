@@ -156,6 +156,11 @@ impl StreamPump {
         );
 
         // Now stream the rest of the file
+        let mut consecutive_failures = 0;
+        const MAX_CONSECUTIVE_FAILURES: u32 = 180; // Allow 3 minutes of consecutive failures (180 * 1s)
+        let mut last_progress_time = std::time::Instant::now();
+        const PROGRESS_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes without any progress
+
         while offset < self.file_size {
             let chunk_end = (offset + CHUNK_SIZE).min(self.file_size);
 
@@ -167,16 +172,20 @@ impl StreamPump {
                     offset += data.len() as u64;
                     self.bytes_pumped.store(offset, Ordering::Relaxed);
 
+                    // Reset failure tracking on successful read
+                    consecutive_failures = 0;
+                    last_progress_time = std::time::Instant::now();
+
                     // Update torrent engine streaming position
                     if let Some(engine) = &self.torrent_engine {
                         // TODO: Add streaming position update when API is available
                         let _ = engine;
                     }
 
-                    // Log progress every 10MB
-                    if offset % (10 * 1024 * 1024) == 0 {
-                        debug!(
-                            "Streaming progress: {}/{} bytes ({:.1}%)",
+                    // Log progress every 1MB to track streaming more closely
+                    if offset % (1024 * 1024) == 0 || offset > self.file_size - (10 * 1024 * 1024) {
+                        info!(
+                            "Streaming progress: {}/{} bytes ({:.1}%) - continuing...",
                             offset,
                             self.file_size,
                             (offset as f64 / self.file_size as f64) * 100.0
@@ -184,20 +193,89 @@ impl StreamPump {
                     }
                 }
                 Ok(_) => {
-                    // Empty data means it's not available yet
-                    thread::sleep(RETRY_DELAY);
+                    // Empty data means it's not available yet - wait longer for torrent pieces
+                    consecutive_failures += 1;
+                    info!(
+                        "No data available at offset {} ({:.1}%), waiting for download... (attempt {})",
+                        offset,
+                        (offset as f64 / self.file_size as f64) * 100.0,
+                        consecutive_failures
+                    );
+                    thread::sleep(Duration::from_millis(500)); // Increased from 100ms to 500ms
                 }
                 Err(e) => {
-                    warn!("Read error at offset {}: {}", offset, e);
-                    thread::sleep(RETRY_DELAY);
+                    consecutive_failures += 1;
+                    // Differentiate between different error types
+                    match e {
+                        DataError::InsufficientData { missing_count, .. } => {
+                            warn!(
+                                "STREAMING BLOCKED: Waiting for {} missing pieces at offset {} ({:.1}%) (attempt {})",
+                                missing_count,
+                                offset,
+                                (offset as f64 / self.file_size as f64) * 100.0,
+                                consecutive_failures
+                            );
+                            thread::sleep(Duration::from_secs(1)); // Wait longer for missing pieces
+                        }
+                        DataError::Storage { reason } if reason.contains("timeout") => {
+                            warn!(
+                                "STREAMING TIMEOUT: Read timeout at offset {} ({:.1}%), continuing to wait for data... (attempt {})",
+                                offset,
+                                (offset as f64 / self.file_size as f64) * 100.0,
+                                consecutive_failures
+                            );
+                            thread::sleep(Duration::from_secs(2)); // Longer wait for timeouts
+                        }
+                        _ => {
+                            error!(
+                                "STREAMING ERROR: Read error at offset {} ({:.1}%): {} (attempt {})",
+                                offset,
+                                (offset as f64 / self.file_size as f64) * 100.0,
+                                e,
+                                consecutive_failures
+                            );
+                            thread::sleep(RETRY_DELAY);
+                        }
+                    }
                 }
+            }
+
+            // Check for streaming stall conditions
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                error!(
+                    "STREAMING STALLED: {} consecutive failures at offset {} ({:.1}%) - stopping progressive streaming",
+                    consecutive_failures,
+                    offset,
+                    (offset as f64 / self.file_size as f64) * 100.0
+                );
+                break;
+            }
+
+            if last_progress_time.elapsed() > PROGRESS_TIMEOUT {
+                error!(
+                    "STREAMING TIMEOUT: No progress for {} seconds at offset {} ({:.1}%) - stopping progressive streaming",
+                    PROGRESS_TIMEOUT.as_secs(),
+                    offset,
+                    (offset as f64 / self.file_size as f64) * 100.0
+                );
+                break;
             }
         }
 
-        info!(
-            "Completed streaming {} bytes for {}",
-            offset, self.info_hash
-        );
+        if offset >= self.file_size {
+            info!(
+                "Successfully completed streaming {} bytes for {} (100%)",
+                offset, self.info_hash
+            );
+        } else {
+            warn!(
+                "Progressive streaming stopped early: {} bytes / {} bytes ({:.1}%) for {}",
+                offset,
+                self.file_size,
+                (offset as f64 / self.file_size as f64) * 100.0,
+                self.info_hash
+            );
+        }
         Ok(offset)
     }
 
@@ -206,12 +284,12 @@ impl StreamPump {
         // Use block_on to call async code from sync context
         self.runtime_handle.block_on(async {
             tokio::time::timeout(
-                Duration::from_secs(5),
+                Duration::from_secs(30), // Increased from 5s to 30s for torrent piece availability
                 self.source.read_range(self.info_hash, start..end),
             )
             .await
             .map_err(|_| DataError::Storage {
-                reason: "Read timeout".to_string(),
+                reason: "Read timeout after 30 seconds".to_string(),
             })?
         })
     }
