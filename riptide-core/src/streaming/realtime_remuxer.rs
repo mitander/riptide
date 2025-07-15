@@ -135,7 +135,7 @@ impl RemuxConfig {
             "-err_detect".to_string(),
             "ignore_err".to_string(),
             "-fflags".to_string(),
-            "+igndts+ignidx+genpts+discardcorrupt".to_string(),
+            "+igndts+ignidx+genpts+discardcorrupt+nobuffer".to_string(),
             "-avoid_negative_ts".to_string(),
             "make_zero".to_string(),
             "-thread_queue_size".to_string(),
@@ -164,9 +164,10 @@ impl RemuxConfig {
                 // For AVI files, use fragmented MP4 with larger fragments to minimize duration issues
                 args.extend([
                     "-movflags".to_string(),
-                    "frag_keyframe+empty_moov+default_base_moof".to_string(),
+                    "frag_keyframe+empty_moov+default_base_moof+flush_packets".to_string(),
                     "-frag_duration".to_string(),
                     "5000000".to_string(), // 5 seconds fragments for AVI to preserve duration
+                    "-copyts".to_string(), // Copy timestamps to preserve original timing
                 ]);
             } else {
                 // For other formats, use standard fragmented MP4 for streaming

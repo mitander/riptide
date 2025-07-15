@@ -555,6 +555,44 @@ impl Remuxer {
             return Ok(sufficient_data_available);
         }
 
+        // For AVI files, also check for tail data to avoid duration truncation issues
+        if is_avi_file && file_size > 50 * 1024 * 1024 {
+            // For larger AVI files, we need both head and tail data to preserve duration
+            let tail_size = (2 * 1024 * 1024).min(file_size / 10); // 2MB or 10% of file, whichever is smaller
+            let tail_start = file_size.saturating_sub(tail_size);
+
+            let tail_available = self
+                .data_source
+                .check_range_availability(info_hash, tail_start..file_size)
+                .await
+                .map(|availability| {
+                    debug!(
+                        "AVI tail data availability for {}: range={}..{}, available={}, missing_pieces={}",
+                        info_hash,
+                        tail_start,
+                        file_size,
+                        availability.available,
+                        availability.missing_pieces.len()
+                    );
+                    availability.available
+                })
+                .unwrap_or(false);
+
+            if head_available && tail_available {
+                debug!(
+                    "AVI file has both head and tail data, starting remux for {}",
+                    info_hash
+                );
+                return Ok(true);
+            } else {
+                debug!(
+                    "AVI file missing required data: head_available={}, tail_available={}",
+                    head_available, tail_available
+                );
+                return Ok(false);
+            }
+        }
+
         // CRITICAL: For progressive streaming, start remuxing immediately with head data
         // This is the key fix - we don't need tail data for real-time remuxing
         if head_available {
