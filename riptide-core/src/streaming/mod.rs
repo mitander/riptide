@@ -11,6 +11,7 @@ pub mod performance_tests;
 pub mod piece_reader;
 pub mod progressive;
 pub mod range;
+pub mod realtime_remuxer;
 pub mod remux;
 
 use std::collections::HashMap;
