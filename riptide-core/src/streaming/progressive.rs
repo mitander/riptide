@@ -328,25 +328,51 @@ impl FfmpegRunner {
         // Global options
         cmd.arg("-y"); // Overwrite output
 
-        // Input options
-        cmd.args([
-            "-analyzeduration",
-            "10000000", // 10 seconds
-            "-probesize",
-            "20971520", // 20MB
-            "-err_detect",
-            "ignore_err",
-            "-fflags",
-            "+igndts+ignidx+genpts+discardcorrupt",
-            "-avoid_negative_ts",
-            "make_zero",
-            "-thread_queue_size",
-            "2048",
-        ]);
+        // Input options - use AVI-specific settings for proper duration handling
+        if self.input_format.to_lowercase() == "avi" {
+            info!(
+                "Using AVI-specific FFmpeg parameters: analyzeduration=100000000, probesize=100000000"
+            );
+            // AVI files need extended analysis to prevent duration truncation
+            cmd.args([
+                "-analyzeduration",
+                "100000000", // 100 seconds for AVI files
+                "-probesize",
+                "100000000", // 100MB for AVI files
+                "-err_detect",
+                "ignore_err",
+                "-fflags",
+                "+igndts+ignidx+genpts+discardcorrupt",
+                "-avoid_negative_ts",
+                "make_zero",
+                "-thread_queue_size",
+                "2048",
+            ]);
+        } else {
+            info!("Using standard FFmpeg parameters: analyzeduration=10000000, probesize=20971520");
+            // Standard settings for other formats
+            cmd.args([
+                "-analyzeduration",
+                "10000000", // 10 seconds
+                "-probesize",
+                "20971520", // 20MB
+                "-err_detect",
+                "ignore_err",
+                "-fflags",
+                "+igndts+ignidx+genpts+discardcorrupt",
+                "-avoid_negative_ts",
+                "make_zero",
+                "-thread_queue_size",
+                "2048",
+            ]);
+        }
 
         // Only specify format if it's not "auto" - let FFmpeg auto-detect otherwise
         if self.input_format != "auto" {
+            info!("Setting FFmpeg input format to: {}", self.input_format);
             cmd.args(["-f", &self.input_format]);
+        } else {
+            info!("Using auto-detection for FFmpeg input format");
         }
 
         cmd.args(["-i", "pipe:0"]);

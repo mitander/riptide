@@ -11,6 +11,9 @@
 #[path = "style.rs"]
 mod style;
 
+#[path = "integration/avi_ffmpeg_duration_test.rs"]
+mod avi_ffmpeg_duration_test;
+
 #[path = "integration/dev_simulation.rs"]
 mod dev_simulation;
 #[path = "integration/engine_integration.rs"]

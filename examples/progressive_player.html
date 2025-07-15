@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riptide Progressive Streaming Player (AVI/MKV → MP4)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        video {
+            width: 100%;
+            height: auto;
+            background: #000;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        .info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+        .seek-input {
+            margin-top: 10px;
+        }
+        .seek-input input {
+            width: 60px;
+            padding: 5px;
+        }
+        .seek-input button {
+            padding: 5px 10px;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Riptide Progressive Streaming Player</h1>
+    <p><em>Supports AVI/MKV files with real-time transcoding to MP4 and progressive streaming</em></p>
+    
+    <video id="video" controls>
+        <source id="videoSource" src="" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+    
+    <div class="controls">
+        <div class="seek-input">
+            <label for="seekTime">Jump to time (seconds):</label>
+            <input type="number" id="seekTime" min="0" placeholder="0">
+            <button onclick="seekToTime()">Seek</button>
+        </div>
+    </div>
+    
+    <div class="info">
+        <div id="bufferInfo">Buffer: Loading...</div>
+        <div id="streamInfo">Stream: Initializing...</div>
+        <div id="durationInfo">Duration: Unknown</div>
+    </div>
+
+    <script>
+        // Configuration - Replace with your actual info hash
+        const INFO_HASH = 'YOUR_INFO_HASH_HERE';
+        const SERVER_URL = 'http://localhost:8080';
+        
+        const video = document.getElementById('video');
+        const videoSource = document.getElementById('videoSource');
+        const bufferInfo = document.getElementById('bufferInfo');
+        const streamInfo = document.getElementById('streamInfo');
+        const durationInfo = document.getElementById('durationInfo');
+        
+        let isProgressiveStream = false;
+        let estimatedDuration = null;
+        
+        // Initialize progressive streaming
+        function initializeStream() {
+            const streamUrl = `${SERVER_URL}/stream/${INFO_HASH}`;
+            videoSource.src = streamUrl;
+            video.load();
+            
+            // Start with progressive loading disabled
+            video.preload = 'none';
+            
+            // Check if this is a progressive stream
+            checkStreamType();
+        }
+        
+        // Check stream type and extract duration
+        async function checkStreamType() {
+            try {
+                const response = await fetch(`${SERVER_URL}/stream/${INFO_HASH}`, {
+                    method: 'HEAD'
+                });
+                
+                // Check for progressive streaming headers
+                isProgressiveStream = response.headers.get('transfer-encoding') === 'chunked' ||
+                                    response.headers.get('accept-ranges') === 'none';
+                
+                // Extract duration from custom header
+                const durationHeader = response.headers.get('x-content-duration');
+                if (durationHeader) {
+                    estimatedDuration = parseFloat(durationHeader);
+                    durationInfo.textContent = `Duration: ${formatTime(estimatedDuration)} (estimated)`;
+                }
+                
+                streamInfo.textContent = isProgressiveStream ? 
+                    'Stream: Progressive (transcoding in progress)' : 
+                    'Stream: Direct (complete file)';
+                    
+            } catch (error) {
+                console.error('Failed to check stream type:', error);
+                streamInfo.textContent = 'Stream: Error checking type';
+            }
+        }
+        
+        // Seek to specific time using server-side conversion
+        async function seekToTime() {
+            const seekTime = parseInt(document.getElementById('seekTime').value);
+            if (!seekTime && seekTime !== 0) return;
+            
+            if (isProgressiveStream) {
+                // For progressive streams, use server-side time-to-byte conversion
+                const seekUrl = `${SERVER_URL}/stream/${INFO_HASH}?t=${seekTime}`;
+                videoSource.src = seekUrl;
+                video.load();
+                
+                // Request server to prioritize this position
+                try {
+                    await fetch(`${SERVER_URL}/api/torrents/${INFO_HASH}/seek`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ position: seekTime })
+                    });
+                } catch (error) {
+                    console.warn('Failed to notify server of seek position:', error);
+                }
+            } else {
+                // For complete files, use normal video seeking
+                video.currentTime = seekTime;
+            }
+        }
+        
+        // Monitor buffer health
+        function updateBufferInfo() {
+            const buffered = video.buffered;
+            if (buffered.length > 0) {
+                const bufferedEnd = buffered.end(buffered.length - 1);
+                const currentTime = video.currentTime;
+                const duration = video.duration || estimatedDuration;
+                
+                bufferInfo.textContent = 
+                    `Buffer: ${formatTime(bufferedEnd)} / ${formatTime(duration || 0)} ` +
+                    `(${Math.round(bufferedEnd / (duration || 1) * 100)}%)`;
+            } else {
+                bufferInfo.textContent = 'Buffer: No data';
+            }
+        }
+        
+        // Format time in MM:SS format
+        function formatTime(seconds) {
+            if (!seconds || isNaN(seconds)) return '00:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        // Event listeners
+        video.addEventListener('loadedmetadata', () => {
+            if (video.duration && !isNaN(video.duration)) {
+                durationInfo.textContent = `Duration: ${formatTime(video.duration)} (exact)`;
+            }
+        });
+        
+        video.addEventListener('progress', updateBufferInfo);
+        video.addEventListener('timeupdate', updateBufferInfo);
+        
+        video.addEventListener('seeking', () => {
+            console.log('Player seeking to:', video.currentTime);
+        });
+        
+        video.addEventListener('error', (e) => {
+            console.error('Video error:', e);
+            streamInfo.textContent = 'Stream: Error loading video';
+        });
+        
+        // Handle stalling for progressive streams
+        video.addEventListener('stalled', () => {
+            if (isProgressiveStream) {
+                streamInfo.textContent = 'Stream: Waiting for more data...';
+            }
+        });
+        
+        video.addEventListener('playing', () => {
+            if (isProgressiveStream) {
+                streamInfo.textContent = 'Stream: Progressive (playing)';
+            }
+        });
+        
+        // Initialize when page loads
+        window.addEventListener('load', initializeStream);
+        
+        // Update buffer info every second
+        setInterval(updateBufferInfo, 1000);
+    </script>
+</body>
+</html>

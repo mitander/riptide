@@ -221,10 +221,15 @@ impl StreamingStrategy for RemuxStreamStrategy {
                     }
                 })?;
 
-                // Always report original file size to enable proper video seeking
-                // Video players need the full duration immediately to show correct timeline
-                // and allow seeking to any position, even if not yet remuxed
-                let reported_total_size = Some(original_file_size);
+                // For progressive streaming, don't report total size if we don't have the complete file
+                // This prevents seekbar issues where player thinks it can seek to any position
+                let reported_total_size = if current_remux_size < original_file_size {
+                    // Progressive stream - don't report total size
+                    None
+                } else {
+                    // Complete remux - report actual size
+                    Some(original_file_size)
+                };
 
                 Ok(StreamData {
                     data: file_data,

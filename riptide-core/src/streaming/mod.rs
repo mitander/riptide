@@ -4,7 +4,7 @@
 //! peer management system for streaming performance.
 
 pub mod ffmpeg;
-
+pub mod mp4_parser;
 pub mod mp4_validation;
 pub mod performance_tests;
 
@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 pub use ffmpeg::{Ffmpeg, ProductionFfmpeg, RemuxingOptions, RemuxingResult, SimulationFfmpeg};
+pub use mp4_parser::extract_duration_from_media;
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
 };
@@ -70,7 +71,7 @@ pub struct HttpStreaming {
     /// Handle to the torrent engine for piece management
     torrent_engine: TorrentEngineHandle,
     /// Data source for reading torrent piece data
-    data_source: Arc<dyn DataSource>,
+    pub data_source: Arc<dyn DataSource>,
 }
 
 impl Clone for HttpStreaming {
@@ -433,26 +434,51 @@ impl HttpStreaming {
         // Build HTTP headers
         let mut headers = HeaderMap::new();
 
-        // Content-Length
-        headers.insert(
-            "content-length",
-            HeaderValue::from_str(&stream_data.data.len().to_string()).unwrap(),
-        );
+        // Check if this is a progressive stream (remux in progress)
+        // Only consider it progressive if total_size is explicitly None (indicating partial remux)
+        let is_progressive = stream_data.total_size.is_none();
 
-        // Accept-Ranges
-        headers.insert("accept-ranges", HeaderValue::from_static("bytes"));
-
-        // Content-Range for partial content
-        if status == StatusCode::PARTIAL_CONTENT {
-            let content_range = format!("bytes {start}-{actual_end}/{total_size}");
+        if is_progressive {
+            // Progressive streaming headers - don't report total size
+            headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
             headers.insert(
-                "content-range",
-                HeaderValue::from_str(&content_range).unwrap(),
+                "cache-control",
+                HeaderValue::from_static("no-cache, no-store"),
             );
-        }
+            headers.insert("accept-ranges", HeaderValue::from_static("none"));
 
-        // Cache control for streaming
-        headers.insert("cache-control", HeaderValue::from_static("no-cache"));
+            // Content-Length for this chunk only
+            headers.insert(
+                "content-length",
+                HeaderValue::from_str(&stream_data.data.len().to_string()).unwrap(),
+            );
+
+            // Add duration header for progressive streams if available
+            if let Some(duration) = self.extract_duration(info_hash).await
+                && let Ok(duration_header) = HeaderValue::from_str(&duration.to_string())
+            {
+                headers.insert("x-content-duration", duration_header);
+            }
+        } else {
+            // Standard streaming headers for complete files
+            headers.insert(
+                "content-length",
+                HeaderValue::from_str(&stream_data.data.len().to_string()).unwrap(),
+            );
+            headers.insert("accept-ranges", HeaderValue::from_static("bytes"));
+
+            // Content-Range for partial content
+            if status == StatusCode::PARTIAL_CONTENT {
+                let content_range = format!("bytes {start}-{actual_end}/{total_size}");
+                headers.insert(
+                    "content-range",
+                    HeaderValue::from_str(&content_range).unwrap(),
+                );
+            }
+
+            // Cache control for streaming
+            headers.insert("cache-control", HeaderValue::from_static("no-cache"));
+        }
 
         Ok(HttpStreamingResponse {
             body: stream_data.data,
@@ -460,6 +486,21 @@ impl HttpStreaming {
             headers,
             content_type: stream_data.content_type,
         })
+    }
+
+    /// Extract duration from MP4 metadata for progressive streaming
+    pub async fn extract_duration(&self, info_hash: crate::torrent::InfoHash) -> Option<f64> {
+        // Try to read first 5MB to find moov atom
+        const METADATA_READ_SIZE: u64 = 5 * 1024 * 1024;
+
+        match self
+            .data_source
+            .read_range(info_hash, 0..METADATA_READ_SIZE)
+            .await
+        {
+            Ok(data) => extract_duration_from_media(&data),
+            Err(_) => None,
+        }
     }
 
     /// Get streaming statistics

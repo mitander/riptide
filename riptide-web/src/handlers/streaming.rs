@@ -56,7 +56,22 @@ pub async fn stream_torrent(
     let http_streaming = state.http_streaming();
 
     // Extract range header string
-    let range_header = extract_range_header(&headers);
+    let mut range_header = extract_range_header(&headers);
+
+    // Convert time-based seeking to byte range if requested
+    if let Some(time_offset) = query.t
+        && range_header.is_none()
+    {
+        // Only convert time to byte range if no explicit range is provided
+        if let Some(byte_offset) = time_to_byte_offset(http_streaming, info_hash, time_offset).await
+        {
+            range_header = Some(format!("bytes={byte_offset}-"));
+            info!(
+                "Converted time offset {}s to byte offset {} for {}",
+                time_offset, byte_offset, info_hash
+            );
+        }
+    }
 
     info!(
         "Streaming request for {}: range={:?}, time_offset={:?}",
@@ -160,6 +175,31 @@ pub async fn streaming_stats(State(state): State<AppState>) -> impl IntoResponse
 pub async fn cleanup_sessions(State(_state): State<AppState>) -> impl IntoResponse {
     // Core service manages cleanup automatically
     (StatusCode::OK, "Session cleanup completed")
+}
+
+/// Convert time offset to byte offset for seeking
+///
+/// Estimates byte position based on file size and duration metadata.
+/// This is a rough conversion suitable for progressive streams.
+async fn time_to_byte_offset(
+    http_streaming: &riptide_core::streaming::HttpStreaming,
+    info_hash: InfoHash,
+    time_offset: u64,
+) -> Option<u64> {
+    // Get file size from data source
+    let file_size = http_streaming.data_source.file_size(info_hash).await.ok()?;
+
+    // Extract duration from MP4 metadata
+    let duration = http_streaming.extract_duration(info_hash).await?;
+
+    // Calculate average bitrate
+    let avg_bitrate = (file_size as f64 * 8.0) / duration; // bits per second
+
+    // Convert time to byte position (rough estimate)
+    let byte_offset = (time_offset as f64 * avg_bitrate / 8.0) as u64;
+
+    // Clamp to file size
+    Some(byte_offset.min(file_size.saturating_sub(1)))
 }
 
 /// Debug endpoint to test streaming service health and basic functionality.

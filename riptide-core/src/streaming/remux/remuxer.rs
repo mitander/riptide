@@ -360,14 +360,25 @@ impl Remuxer {
 
         // Check if this is an AVI file by reading minimal header
         let header_size = 16u64.min(file_size);
-        let is_avi_file =
-            if let Ok(header_data) = self.data_source.read_range(info_hash, 0..header_size).await {
-                header_data.len() >= 12
-                    && header_data.starts_with(b"RIFF")
-                    && &header_data[8..12] == b"AVI "
-            } else {
-                false
-            };
+        let is_avi_file = if let Ok(header_data) =
+            self.data_source.read_range(info_hash, 0..header_size).await
+        {
+            let is_avi = header_data.len() >= 12
+                && header_data.starts_with(b"RIFF")
+                && &header_data[8..12] == b"AVI ";
+            debug!(
+                "AVI detection for {}: header_len={}, starts_with_RIFF={}, has_AVI_marker={}, result={}",
+                info_hash,
+                header_data.len(),
+                header_data.starts_with(b"RIFF"),
+                header_data.len() >= 12 && &header_data[8..12] == b"AVI ",
+                is_avi
+            );
+            is_avi
+        } else {
+            debug!("AVI detection for {}: failed to read header", info_hash);
+            false
+        };
 
         // Note: video codec configuration now handled directly by ProgressiveStreamer
 
@@ -382,6 +393,11 @@ impl Remuxer {
         } else {
             "auto".to_string()
         };
+
+        info!(
+            "Progressive streaming setup for {}: is_avi_file={}, input_format={}, file_size={}",
+            info_hash, is_avi_file, input_format, file_size
+        );
 
         // Create progressive streaming instance
         let progressive_streamer = ProgressiveStreamer::new(
@@ -453,8 +469,9 @@ impl Remuxer {
 
         // For progressive streaming, we can start with much less data
         let required_head_size = if is_avi_file {
-            // For AVI transcoding, only need 512KB to start - progressive feeder handles the rest
-            (512 * 1024).min(file_size)
+            // For AVI files, use larger head size to get better metadata
+            // but still use head/tail approach
+            (2 * 1024 * 1024).min(file_size)
         } else {
             // For other formats, still use less data for progressive streaming
             (2 * 1024 * 1024)

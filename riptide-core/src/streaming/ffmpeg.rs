@@ -153,6 +153,16 @@ impl Ffmpeg for ProductionFfmpeg {
                 cmd.arg("-max_muxing_queue_size").arg("9999"); // Handle complex streams
                 cmd.arg("-err_detect").arg("ignore_err"); // Ignore non-fatal errors
                 cmd.arg("-copy_unknown"); // Copy unknown streams (compatibility)
+
+                // Critical: Ensure full duration is preserved for AVI files
+                cmd.arg("-ignore_unknown"); // Ignore unknown chunks
+                cmd.arg("-vsync").arg("1"); // Use frame rate from input
+                cmd.arg("-async").arg("1"); // Audio sync method
+
+                // Force FFmpeg to read the entire AVI structure
+                cmd.arg("-analyzeduration").arg("100000000"); // 100 seconds of analysis
+                cmd.arg("-probesize").arg("100000000"); // 100MB probe size
+
                 // Note: movflags will be set later in the general faststart section
                 cmd.arg("-f").arg("mp4"); // Force MP4 format
             }
@@ -200,17 +210,21 @@ impl Ffmpeg for ProductionFfmpeg {
             cmd.arg("-c:a").arg(&config.audio_codec);
         }
 
-        // Add streaming optimization - use fragmented MP4 for progressive streaming
-        if config.faststart {
-            // For progressive streaming, use fragmented MP4 instead of faststart
-            // This allows headers to be written early without waiting for completion
-            cmd.arg("-movflags")
-                .arg("frag_keyframe+empty_moov+default_base_moof");
+        // Add streaming optimization for progressive playback
+        // For AVI files, use faststart to ensure proper duration handling
+        if input_extension.to_lowercase() == "avi" {
+            cmd.arg("-movflags").arg("faststart");
+            // Don't use fragmented MP4 for AVI - it can cause duration issues
         } else {
-            // Even without faststart config, we should use fragmented MP4 for streaming
+            // For other formats, use fragmented MP4
             cmd.arg("-movflags")
                 .arg("frag_keyframe+empty_moov+default_base_moof");
+            cmd.arg("-frag_duration").arg("2000000"); // 2 seconds fragments
         }
+
+        // Add additional streaming optimizations
+        cmd.arg("-avoid_negative_ts").arg("make_zero");
+        cmd.arg("-max_interleave_delta").arg("0");
 
         // Force MP4 output format
         cmd.arg("-f").arg("mp4");
