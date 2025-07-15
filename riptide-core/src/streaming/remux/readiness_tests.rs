@@ -343,11 +343,9 @@ mod tests {
         let info_hash = InfoHash::new([6u8; 20]);
         let file_size = 100 * 1024 * 1024; // 100MB file
 
-        // Add file with insufficient head data
+        // Add file with insufficient head data (less than 512KB minimum)
         data_source.add_file(info_hash, file_size).await;
-        data_source
-            .mark_head_available(info_hash, 1024 * 1024)
-            .await; // Only 1MB head
+        data_source.mark_head_available(info_hash, 256 * 1024).await; // Only 256KB head (insufficient for 512KB minimum)
         data_source
             .mark_tail_available(info_hash, file_size, 3 * 1024 * 1024)
             .await; // 3MB tail
@@ -359,7 +357,7 @@ mod tests {
         );
         let _handle = remuxer.find_or_create_session(info_hash).await.unwrap();
 
-        // Should be waiting because head data is insufficient
+        // Should be waiting because head data is insufficient (less than 512KB minimum)
         let readiness = remuxer.check_readiness(info_hash).await.unwrap();
         assert_eq!(readiness, StreamReadiness::WaitingForData);
     }
@@ -666,11 +664,9 @@ mod tests {
         let info_hash = InfoHash::new([19u8; 20]);
         let file_size = 100 * 1024 * 1024; // 100MB file
 
-        // Add file with insufficient head data (less than 3MB minimum)
+        // Add file with insufficient head data (less than 512KB minimum)
         data_source.add_file(info_hash, file_size).await;
-        data_source
-            .mark_head_available(info_hash, 1024 * 1024)
-            .await; // Only 1MB head (less than 3MB minimum)
+        data_source.mark_head_available(info_hash, 256 * 1024).await; // Only 256KB head (less than 512KB minimum)
 
         let remuxer = Remuxer::new(
             config,

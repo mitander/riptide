@@ -97,213 +97,116 @@ impl StreamingStrategy for RemuxStreamStrategy {
         handle: &StreamHandle,
         range: std::ops::Range<u64>,
     ) -> StreamingResult<StreamData> {
-        // Validate range request first
-        if range.start >= range.end {
+        // Validate the requested range is structurally valid
+        if range.start >= range.end && range.end != 0 {
             return Err(StrategyError::InvalidRange {
                 range: range.clone(),
             });
         }
 
-        // Check if remuxing is complete
         let readiness = self.remuxer.check_readiness(handle.info_hash).await?;
+        tracing::debug!(
+            "Serve range for {}: readiness={:?}, range={:?}",
+            handle.info_hash,
+            readiness,
+            range
+        );
 
         match readiness {
-            StreamReadiness::Ready => {
-                // Get the output file path and serve from it
+            StreamReadiness::Ready | StreamReadiness::Processing => {
+                // Remuxing is complete or in-progress. Serve what we can from the output file.
                 let output_path = self.remuxer.output_path(handle.info_hash).await?;
 
-                // Get original file size from data source (not partial remux file size)
-                let original_file_size = self
+                // CRITICAL: Get the final file size from the original data source for the Content-Range header.
+                // This is the source of truth for the total size, which the client needs for its timeline.
+                let total_size = self
                     .remuxer
                     .data_source()
                     .file_size(handle.info_hash)
                     .await
                     .map_err(|e| StrategyError::RemuxingFailed {
-                        reason: format!("Failed to get original file size: {e}"),
+                        reason: format!("Could not get original file size: {e}"),
                     })?;
 
-                // Get current remux file size for range validation
-                let mut current_remux_size = tokio::fs::metadata(&output_path)
-                    .await
-                    .map_err(|e| StrategyError::RemuxingFailed {
-                        reason: format!("Failed to get remux file metadata: {e}"),
-                    })?
-                    .len();
+                // Check the current size of the *remuxed file on disk*. This determines what is available to serve.
+                let metadata = match tokio::fs::metadata(&output_path).await {
+                    Ok(meta) => meta,
+                    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // This is expected during early remuxing. The file doesn't exist yet.
+                        tracing::debug!(
+                            "Remux file not yet created for {}. Returning not ready.",
+                            handle.info_hash
+                        );
+                        return Err(StrategyError::StreamingNotReady {
+                            reason: "Remuxing is starting, no data available yet".to_string(),
+                        });
+                    }
+                    Err(e) => {
+                        return Err(StrategyError::RemuxingFailed {
+                            reason: format!("Failed to get remux file metadata: {e}"),
+                        });
+                    }
+                };
+                let available_size = metadata.len();
 
-                // Check if requested range is beyond current remux progress
-                // Wait briefly for remux to catch up instead of immediate failure
-                if range.start >= current_remux_size {
-                    tracing::debug!(
-                        "Range request {}..{} at current remux progress ({}), waiting for more data",
+                // Validate the requested range against what is currently available
+                if range.start >= available_size {
+                    tracing::warn!(
+                        "Range not satisfiable: start {} is beyond available size {}",
                         range.start,
-                        range.end,
-                        current_remux_size
+                        available_size
                     );
-
-                    // Wait up to 30 seconds for remux to generate more data for progressive streaming
-                    let max_wait_ms = 30000;
-                    let check_interval_ms = 100;
-                    let mut waited_ms = 0;
-
-                    while waited_ms < max_wait_ms {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(check_interval_ms))
-                            .await;
-                        waited_ms += check_interval_ms;
-
-                        // Recheck file size
-                        if let Ok(metadata) = tokio::fs::metadata(&output_path).await {
-                            let updated_size = metadata.len();
-                            if range.start < updated_size {
-                                tracing::debug!(
-                                    "Remux caught up: size grew from {} to {} bytes after {}ms wait",
-                                    current_remux_size,
-                                    updated_size,
-                                    waited_ms
-                                );
-                                break;
-                            }
-                        }
-                    }
-
-                    // Final check after waiting
-                    let final_size = tokio::fs::metadata(&output_path)
-                        .await
-                        .map_err(|e| StrategyError::RemuxingFailed {
-                            reason: format!("Failed to get final remux file metadata: {e}"),
-                        })?
-                        .len();
-
-                    if range.start >= final_size {
-                        // Check if we have any partial data available
-                        if final_size > 0 {
-                            // We have some data, but not up to the requested start position
-                            // For progressive playback, we should indicate this properly
-                            return Err(StrategyError::StreamingNotReady {
-                                reason: format!(
-                                    "Remux in progress: requested byte {} not yet available after {}ms wait (current size: {})",
-                                    range.start, waited_ms, final_size
-                                ),
-                            });
-                        } else {
-                            // No data at all yet
-                            return Err(StrategyError::StreamingNotReady {
-                                reason: "Remux in progress: no data available yet".to_string(),
-                            });
-                        }
-                    }
-
-                    // Update current_remux_size for the next step
-                    current_remux_size = final_size;
+                    return Err(StrategyError::RangeNotSatisfiable {
+                        requested_start: range.start,
+                        file_size: available_size,
+                    });
                 }
 
-                // If request is beyond available remux data, use what's available
-                let actual_end = range.end.min(current_remux_size);
+                // Clamp the end of the range to what's available
+                let actual_end = range.end.min(available_size);
+                let read_len = actual_end - range.start;
 
-                // Read only the requested range, not the entire file
+                if read_len == 0 {
+                    // If there's no data to read in the requested range, it's not ready
+                    return Err(StrategyError::StreamingNotReady {
+                        reason: "Requested range has no available data yet".to_string(),
+                    });
+                }
+
+                // Read the available part of the requested range from the file
+                use tokio::io::{AsyncReadExt, AsyncSeekExt};
                 let mut file = tokio::fs::File::open(&output_path).await.map_err(|e| {
                     StrategyError::RemuxingFailed {
                         reason: format!("Failed to open remuxed file: {e}"),
                     }
                 })?;
-
-                use tokio::io::{AsyncReadExt, AsyncSeekExt};
                 file.seek(std::io::SeekFrom::Start(range.start))
                     .await
                     .map_err(|e| StrategyError::RemuxingFailed {
                         reason: format!("Failed to seek in remuxed file: {e}"),
                     })?;
 
-                let read_size = (actual_end - range.start) as usize;
-                let mut file_data = vec![0u8; read_size];
-                file.read_exact(&mut file_data).await.map_err(|e| {
-                    StrategyError::RemuxingFailed {
+                let mut data = vec![0u8; read_len as usize];
+                file.read_exact(&mut data)
+                    .await
+                    .map_err(|e| StrategyError::RemuxingFailed {
                         reason: format!("Failed to read remuxed file range: {e}"),
-                    }
-                })?;
+                    })?;
 
-                // For progressive streaming, don't report total size if we don't have the complete file
-                // This prevents seekbar issues where player thinks it can seek to any position
-                let reported_total_size = if current_remux_size < original_file_size {
-                    // Progressive stream - don't report total size
-                    None
-                } else {
-                    // Complete remux - report actual size
-                    Some(original_file_size)
-                };
-
+                // The total_size MUST be the final, complete file size for Content-Range
                 Ok(StreamData {
-                    data: file_data,
+                    data,
                     content_type: "video/mp4".to_string(),
-                    total_size: reported_total_size,
+                    total_size: Some(total_size),
                     range_start: range.start,
                     range_end: actual_end,
                 })
             }
-            StreamReadiness::Processing => {
-                // Wait for remux to start producing data instead of immediately failing
-                // This fixes the timing bug where browser gets HTTP 500 on immediate requests
-                tracing::debug!(
-                    "Remux in processing state, waiting for initial data to become available for {}",
-                    handle.info_hash
-                );
-
-                let max_wait_ms = 10000; // 10 seconds for initial remux startup
-                let check_interval_ms = 200;
-                let mut waited_ms = 0;
-
-                while waited_ms < max_wait_ms {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(check_interval_ms)).await;
-                    waited_ms += check_interval_ms;
-
-                    // Check if remux has started producing output
-                    match self.remuxer.check_readiness(handle.info_hash).await {
-                        Ok(StreamReadiness::Ready) => {
-                            // Remux is now ready, try serving the range
-                            tracing::debug!(
-                                "Remux became ready after {}ms wait, attempting to serve range",
-                                waited_ms
-                            );
-
-                            // Get the output file path and check if we have any data
-                            if let Ok(output_path) =
-                                self.remuxer.output_path(handle.info_hash).await
-                                && let Ok(metadata) = tokio::fs::metadata(&output_path).await
-                            {
-                                let current_size = metadata.len();
-                                if current_size > 0 {
-                                    // We have some data, recursively call serve_range now that it's ready
-                                    return self.serve_range(handle, range).await;
-                                }
-                            }
-                        }
-                        Ok(StreamReadiness::Processing) => {
-                            // Still processing, continue waiting
-                            continue;
-                        }
-                        Ok(StreamReadiness::Failed) => {
-                            return Err(StrategyError::RemuxingFailed {
-                                reason: "Remuxing failed during startup wait".to_string(),
-                            });
-                        }
-                        _ => {
-                            // Other states, continue waiting
-                            continue;
-                        }
-                    }
-                }
-
-                // Timeout reached, return appropriate error
-                Err(StrategyError::StreamingNotReady {
-                    reason: format!(
-                        "Remux startup timeout: no data available after {waited_ms}ms wait"
-                    ),
-                })
-            }
             StreamReadiness::WaitingForData => Err(StrategyError::StreamingNotReady {
-                reason: "Waiting for sufficient data".to_string(),
+                reason: "Waiting for sufficient data to start remuxing".to_string(),
             }),
             StreamReadiness::CanRetry => Err(StrategyError::StreamingNotReady {
-                reason: "Previous remuxing failed, retry available".to_string(),
+                reason: "Previous remuxing failed, a retry is available".to_string(),
             }),
             StreamReadiness::Failed => Err(StrategyError::RemuxingFailed {
                 reason: "Remuxing failed permanently".to_string(),

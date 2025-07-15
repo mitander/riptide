@@ -3,6 +3,8 @@
 //! Provides media streaming capabilities that integrate with the
 //! peer management system for streaming performance.
 
+pub mod chunk_server;
+pub mod download_manager;
 pub mod ffmpeg;
 pub mod mp4_parser;
 pub mod mp4_validation;
@@ -322,171 +324,103 @@ impl HttpStreaming {
         info_hash: crate::torrent::InfoHash,
         range_header: Option<&str>,
     ) -> StreamingResult<HttpStreamingResponse> {
-        // Check if there's a completed remux session first
-        let is_remuxed = self
-            .remuxer
-            .check_readiness(info_hash)
-            .await
-            .map(|readiness| readiness == StreamReadiness::Ready)
-            .unwrap_or(false);
-
         // Detect container format
         let format = self.detect_container_format(info_hash).await?;
 
-        // Get appropriate strategy based on format and remux status
-        let strategy = if is_remuxed {
-            // If remuxed, always use remux strategy (even if format is MP4)
-            self.strategies
-                .get(&ContainerFormat::Avi) // Use any remux strategy entry
-                .ok_or_else(|| StrategyError::UnsupportedFormat {
-                    format: "remux".to_string(),
-                })?
-        } else {
-            // Use normal strategy selection
+        let strategy =
             self.strategies
                 .get(&format)
                 .ok_or_else(|| StrategyError::UnsupportedFormat {
                     format: format!("{format:?}"),
-                })?
-        };
+                })?;
 
-        // Prepare stream handle
+        // Prepare stream handle (e.g., creates remux session if needed)
         let handle = strategy.prepare_stream(info_hash, format).await?;
 
-        // Always use data source as authoritative file size to ensure consistency
-        // This prevents file size inconsistency between different code paths
-        let total_size = self.data_source.file_size(info_hash).await.unwrap_or(0);
-        tracing::debug!(
-            "File size from data source: {} bytes for {}",
-            total_size,
-            info_hash
-        );
-
-        tracing::info!(
-            "Final file size determined: {} bytes for {}",
-            total_size,
-            info_hash
-        );
-
-        // Parse range request
-        let (start, end, status) = if let Some(range_str) = range_header {
-            if let Some(range_req) = Self::parse_range_header(range_str, total_size) {
-                let end = range_req.end.unwrap_or(total_size.saturating_sub(1));
-                (range_req.start, end, StatusCode::PARTIAL_CONTENT)
-            } else {
-                (0, total_size.saturating_sub(1), StatusCode::OK)
+        // Determine the total size of the final content
+        let total_size = match self.data_source.file_size(info_hash).await {
+            Ok(size) => size,
+            Err(_) => {
+                // If we can't determine file size, we can't properly handle ranges
+                return Err(StrategyError::StreamingNotReady {
+                    reason: "Could not determine file size".to_string(),
+                });
             }
-        } else {
-            (0, total_size.saturating_sub(1), StatusCode::OK)
         };
 
-        tracing::debug!(
-            "Processing range request: start={}, end={}, total_size={}, range_header={:?}",
-            start,
-            end,
-            total_size,
-            range_header
-        );
-
-        // Validate range first - return 416 if start is beyond file size
-        if start >= total_size && total_size > 0 {
-            tracing::warn!(
-                "Range not satisfiable: start={} >= total_size={}",
-                start,
-                total_size
-            );
-            return Err(StrategyError::RangeNotSatisfiable {
-                requested_start: start,
-                file_size: total_size,
-            });
-        }
-
-        // Clamp both start and end position to file boundaries
-        let actual_end = end.min(total_size.saturating_sub(1));
-        let actual_start = start.min(total_size.saturating_sub(1));
-
-        tracing::debug!(
-            "Range calculation: actual_start={}, actual_end={}, range_size={}",
-            actual_start,
-            actual_end,
-            actual_end.saturating_sub(actual_start) + 1
-        );
-
-        // Update piece picker position for sequential downloading
-        // This ensures pieces are downloaded in streaming order relative to playback position
-        if actual_start > 0
-            && let Err(e) = self
-                .torrent_engine
-                .update_streaming_position(info_hash, actual_start)
-                .await
-        {
-            tracing::warn!(
-                "Failed to update piece picker position for {}: {}",
-                info_hash,
-                e
-            );
-        }
-
-        // Serve the requested range
-        let stream_data = strategy
-            .serve_range(&handle, actual_start..actual_end + 1)
-            .await?;
-
-        // Build HTTP headers
-        let mut headers = HeaderMap::new();
-
-        // Check if this is a progressive stream (remux in progress)
-        // Only consider it progressive if total_size is explicitly None (indicating partial remux)
-        let is_progressive = stream_data.total_size.is_none();
-
-        if is_progressive {
-            // Progressive streaming headers - don't report total size
-            headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
-            headers.insert(
-                "cache-control",
-                HeaderValue::from_static("no-cache, no-store"),
-            );
-            headers.insert("accept-ranges", HeaderValue::from_static("none"));
-
-            // Content-Length for this chunk only
-            headers.insert(
-                "content-length",
-                HeaderValue::from_str(&stream_data.data.len().to_string()).unwrap(),
-            );
-
-            // Add duration header for progressive streams if available
-            if let Some(duration) = self.extract_duration(info_hash).await
-                && let Ok(duration_header) = HeaderValue::from_str(&duration.to_string())
-            {
-                headers.insert("x-content-duration", duration_header);
+        // Parse the range header. Default to the full file if no range is requested
+        let (start, end) = if let Some(range_str) = range_header {
+            if let Some(range_req) = Self::parse_range_header(range_str, total_size) {
+                (range_req.start, range_req.end.unwrap_or(total_size))
+            } else {
+                // Invalid range header, serve the whole file
+                (0, total_size)
             }
         } else {
-            // Standard streaming headers for complete files
-            headers.insert(
-                "content-length",
-                HeaderValue::from_str(&stream_data.data.len().to_string()).unwrap(),
-            );
-            headers.insert("accept-ranges", HeaderValue::from_static("bytes"));
+            // No range header, serve the whole file
+            (0, total_size)
+        };
 
-            // Content-Range for partial content
-            if status == StatusCode::PARTIAL_CONTENT {
-                let content_range = format!("bytes {start}-{actual_end}/{total_size}");
-                headers.insert(
-                    "content-range",
-                    HeaderValue::from_str(&content_range).unwrap(),
-                );
-            }
-
-            // Cache control for streaming
-            headers.insert("cache-control", HeaderValue::from_static("no-cache"));
+        // Update piece picker position to prioritize downloads around the current playback position
+        // This is essential for good streaming performance
+        if start > 0
+            && let Err(e) = self
+                .torrent_engine
+                .update_streaming_position(info_hash, start)
+                .await
+        {
+            tracing::warn!("Failed to update piece picker position: {}", e);
         }
 
-        Ok(HttpStreamingResponse {
-            body: stream_data.data,
-            status,
-            headers,
-            content_type: stream_data.content_type,
-        })
+        // Attempt to serve the requested range
+        match strategy.serve_range(&handle, start..end).await {
+            Ok(stream_data) => {
+                // We have data, build the HTTP response
+                let is_partial = range_header.is_some();
+                let mut headers = HeaderMap::new();
+
+                // The Content-Length is the size of the *chunk* we are sending now
+                headers.insert(
+                    "content-length",
+                    HeaderValue::from_str(&stream_data.data.len().to_string()).unwrap(),
+                );
+                headers.insert("accept-ranges", HeaderValue::from_static("bytes"));
+
+                // If it's a partial response, add the Content-Range header
+                if is_partial {
+                    let content_range = format!(
+                        "bytes {}-{}/{}",
+                        stream_data.range_start,
+                        // The end range is inclusive
+                        stream_data
+                            .range_end
+                            .saturating_sub(1)
+                            .max(stream_data.range_start),
+                        // This MUST be the total final size of the file
+                        stream_data.total_size.unwrap_or(total_size)
+                    );
+                    headers.insert(
+                        "content-range",
+                        HeaderValue::from_str(&content_range).unwrap(),
+                    );
+                }
+
+                Ok(HttpStreamingResponse {
+                    body: stream_data.data,
+                    status: if is_partial {
+                        StatusCode::PARTIAL_CONTENT
+                    } else {
+                        StatusCode::OK
+                    },
+                    headers,
+                    content_type: stream_data.content_type,
+                })
+            }
+            Err(e) => {
+                // Propagate the error so the caller can handle it (e.g., return 416 or 503)
+                Err(e)
+            }
+        }
     }
 
     /// Extract duration from MP4 metadata for progressive streaming

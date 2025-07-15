@@ -158,12 +158,25 @@ impl RemuxConfig {
             "copy".to_string(),
         ]);
 
-        // Fragmented MP4 for streaming
+        // MP4 container options - use fragmented MP4 for streaming (faststart doesn't work with pipes)
         if self.use_fragmented_mp4 {
-            args.extend([
-                "-movflags".to_string(),
-                "frag_keyframe+empty_moov+default_base_moof".to_string(),
-            ]);
+            if self.input_format.to_lowercase() == "avi" {
+                // For AVI files, use fragmented MP4 with larger fragments to minimize duration issues
+                args.extend([
+                    "-movflags".to_string(),
+                    "frag_keyframe+empty_moov+default_base_moof".to_string(),
+                    "-frag_duration".to_string(),
+                    "5000000".to_string(), // 5 seconds fragments for AVI to preserve duration
+                ]);
+            } else {
+                // For other formats, use standard fragmented MP4 for streaming
+                args.extend([
+                    "-movflags".to_string(),
+                    "frag_keyframe+empty_moov+default_base_moof".to_string(),
+                    "-frag_duration".to_string(),
+                    "2000000".to_string(), // 2 seconds fragments
+                ]);
+            }
         }
 
         // Output format and destination

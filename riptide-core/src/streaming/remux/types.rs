@@ -1,10 +1,12 @@
 //! Type definitions for the remux streaming system
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::streaming::chunk_server::ChunkServer;
 use crate::torrent::InfoHash;
 
 /// Container format for video files
@@ -241,10 +243,8 @@ pub struct RemuxSession {
     pub last_activity: Instant,
     /// Unique identifier for this session
     pub session_id: u64,
-    /// Streaming handle for progressive streaming (if active)
-    pub streaming_handle: Option<
-        tokio::task::JoinHandle<Result<(), crate::streaming::progressive::ProgressiveStreamError>>,
-    >,
+    /// Chunk server for real-time streaming (if active)
+    pub chunk_server: Option<Arc<ChunkServer>>,
 }
 
 impl RemuxSession {
@@ -260,7 +260,7 @@ impl RemuxSession {
             created_at: now,
             last_activity: now,
             session_id,
-            streaming_handle: None,
+            chunk_server: None,
         }
     }
 
