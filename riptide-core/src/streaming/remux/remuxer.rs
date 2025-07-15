@@ -599,6 +599,17 @@ impl Remuxer {
             }
         };
 
+        // Check if progressive streaming is still running
+        if let Some(streaming_handle) = &session.streaming_handle
+            && !streaming_handle.is_finished()
+        {
+            debug!(
+                "is_partial_file_ready: Progressive streaming still running for {}",
+                info_hash
+            );
+            return false;
+        }
+
         // Check if the output file exists and has valid MP4 headers
         if !output_path.exists() {
             debug!(

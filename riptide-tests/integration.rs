@@ -23,6 +23,8 @@ mod mp4_validation;
 
 #[path = "integration/peer_communication.rs"]
 mod peer_communication;
+#[path = "integration/progressive_streaming_broken_test.rs"]
+mod progressive_streaming_broken_test;
 #[path = "integration/progressive_streaming_test.rs"]
 mod progressive_streaming_test;
 #[path = "integration/remux_pipeline.rs"]
