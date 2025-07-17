@@ -4,6 +4,7 @@
 //! peer management system for streaming performance.
 
 pub mod chunk_server;
+pub mod direct_stream;
 pub mod download_manager;
 pub mod ffmpeg;
 pub mod mp4_parser;
