@@ -20,6 +20,8 @@ mod dev_simulation;
 mod engine_integration;
 #[path = "integration/mp4_validation.rs"]
 mod mp4_validation;
+#[path = "integration/progressive_remuxing_test.rs"]
+mod progressive_remuxing_test;
 
 #[path = "integration/peer_communication.rs"]
 mod peer_communication;

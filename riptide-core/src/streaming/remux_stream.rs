@@ -90,10 +90,13 @@ impl RemuxStreamProducer {
     /// This task runs independently, reading chunks from the piece provider
     /// and writing them to FFmpeg's stdin. It handles piece availability
     /// gracefully by retrying when data isn't ready yet.
-    fn spawn_input_pump(
+    fn spawn_input_pump<W>(
         provider: Arc<dyn PieceProvider>,
-        mut stdin: tokio::process::ChildStdin,
-    ) -> tokio::task::JoinHandle<()> {
+        mut stdin: W,
+    ) -> tokio::task::JoinHandle<()>
+    where
+        W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
         tokio::spawn(async move {
             let mut offset = 0u64;
             let file_size = provider.size().await;
@@ -140,7 +143,10 @@ impl RemuxStreamProducer {
     ///
     /// This prevents the stderr buffer from filling up and blocking FFmpeg,
     /// while also providing visibility into any conversion issues.
-    fn spawn_stderr_reader(mut stderr: tokio::process::ChildStderr) -> tokio::task::JoinHandle<()> {
+    fn spawn_stderr_reader<R>(mut stderr: R) -> tokio::task::JoinHandle<()>
+    where
+        R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    {
         tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -338,6 +344,138 @@ mod tests {
         let producer = RemuxStreamProducer::new(provider, "mkv".to_string());
 
         assert_eq!(producer.source_format, "mkv");
+    }
+
+    #[tokio::test]
+    async fn test_spawn_input_pump_completes() {
+        // Create small test data
+        let data = Bytes::from(vec![0u8; 512]);
+        let provider = Arc::new(MockPieceProvider::new(data));
+
+        // Create a pipe for testing
+        let (reader, writer) = tokio::io::duplex(1024);
+
+        // Spawn the input pump
+        let handle = RemuxStreamProducer::spawn_input_pump(provider, writer);
+
+        // Collect all data from the reader
+        let mut output = Vec::new();
+        let mut reader = tokio::io::BufReader::new(reader);
+        tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut output)
+            .await
+            .unwrap();
+
+        // Wait for pump to complete
+        handle.await.unwrap();
+
+        // Verify all data was pumped
+        assert_eq!(output.len(), 512);
+        assert_eq!(output, vec![0u8; 512]);
+    }
+
+    // Mock provider that simulates pieces not being available initially
+    struct DelayedMockProvider {
+        data: Bytes,
+        delay_count: std::sync::atomic::AtomicU32,
+    }
+
+    impl DelayedMockProvider {
+        fn new(data: Bytes) -> Self {
+            Self {
+                data,
+                delay_count: std::sync::atomic::AtomicU32::new(0),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PieceProvider for DelayedMockProvider {
+        async fn read_at(&self, offset: u64, length: usize) -> Result<Bytes, PieceProviderError> {
+            // Simulate first two calls returning NotYetAvailable
+            if self
+                .delay_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                < 2
+            {
+                return Err(PieceProviderError::NotYetAvailable);
+            }
+
+            let file_size = self.data.len() as u64;
+            if offset + length as u64 > file_size {
+                return Err(PieceProviderError::InvalidRange {
+                    offset,
+                    length,
+                    file_size,
+                });
+            }
+
+            let start = offset as usize;
+            let end = start + length;
+            Ok(self.data.slice(start..end))
+        }
+
+        async fn size(&self) -> u64 {
+            self.data.len() as u64
+        }
+    }
+
+    #[tokio::test]
+    async fn test_input_pump_handles_not_yet_available() {
+        // Create test data with delayed availability
+        let data = Bytes::from(vec![42u8; 256]);
+        let provider = Arc::new(DelayedMockProvider::new(data));
+
+        // Create a pipe for testing
+        let (reader, writer) = tokio::io::duplex(1024);
+
+        // Spawn the input pump
+        let handle = RemuxStreamProducer::spawn_input_pump(provider, writer);
+
+        // Collect all data from the reader
+        let mut output = Vec::new();
+        let mut reader = tokio::io::BufReader::new(reader);
+        tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut output)
+            .await
+            .unwrap();
+
+        // Wait for pump to complete
+        handle.await.unwrap();
+
+        // Verify all data was eventually pumped despite initial unavailability
+        assert_eq!(output.len(), 256);
+        assert_eq!(output, vec![42u8; 256]);
+    }
+
+    #[tokio::test]
+    async fn test_stderr_reader() {
+        use tokio::io::AsyncWriteExt;
+
+        // Create a pipe for testing
+        let (reader, mut writer) = tokio::io::duplex(1024);
+
+        // Spawn the stderr reader
+        let handle = RemuxStreamProducer::spawn_stderr_reader(reader);
+
+        // Write some test error messages
+        writer
+            .write_all(b"[mp4 @ 0x1234] Warning: test warning\n")
+            .await
+            .unwrap();
+        writer
+            .write_all(b"[avi @ 0x5678] Error: test error\n")
+            .await
+            .unwrap();
+        writer.write_all(b"\n").await.unwrap(); // Empty line should be ignored
+        writer.write_all(b"Another error message\n").await.unwrap();
+
+        // Close the writer to signal EOF
+        drop(writer);
+
+        // Wait for reader to complete
+        handle.await.unwrap();
+
+        // The test passes if it completes without panic
+        // (actual logging would be captured by the tracing framework)
     }
 
     // Note: Full integration tests with actual FFmpeg would go in

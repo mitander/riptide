@@ -93,29 +93,28 @@ impl DirectStreamProducer {
                 let chunk_start = start + offset;
                 let chunk_size = std::cmp::min(CHUNK_SIZE as u64, end - chunk_start) as usize;
 
-                match provider.read_at(chunk_start, chunk_size).await {
-                    Ok(bytes) => {
-                        let bytes_len = bytes.len() as u64;
-                        Some((Ok(bytes), (provider, start, end, offset + bytes_len)))
+                // Retry loop for handling NotYetAvailable
+                loop {
+                    match provider.read_at(chunk_start, chunk_size).await {
+                        Ok(bytes) => {
+                            let bytes_len = bytes.len() as u64;
+                            return Some((Ok(bytes), (provider, start, end, offset + bytes_len)));
+                        }
+                        Err(PieceProviderError::NotYetAvailable) => {
+                            // Pieces not downloaded yet, wait and retry
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            continue;
+                        }
+                        Err(e) => {
+                            return Some((
+                                Err(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    e.to_string(),
+                                )),
+                                (provider, start, end, offset),
+                            ));
+                        }
                     }
-                    Err(PieceProviderError::NotYetAvailable) => {
-                        // For streaming, we convert this to an IO error
-                        // that will cause the client to retry
-                        Some((
-                            Err(std::io::Error::new(
-                                std::io::ErrorKind::WouldBlock,
-                                "Data not yet available",
-                            )),
-                            (provider, start, end, offset),
-                        ))
-                    }
-                    Err(e) => Some((
-                        Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            e.to_string(),
-                        )),
-                        (provider, start, end, offset),
-                    )),
                 }
             },
         )
