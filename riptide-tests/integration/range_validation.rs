@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use riptide_core::config::RiptideConfig;
 use riptide_core::storage::{DataError, DataResult, DataSource, RangeAvailability};
 use riptide_core::streaming::{
-    Ffmpeg, HttpStreaming, RemuxingOptions, RemuxingResult, StrategyError,
+    Ffmpeg, HttpStreaming, PieceProviderAdapter, RemuxingOptions, RemuxingResult, StreamingError,
 };
 use riptide_core::torrent::{InfoHash, TorrentEngineHandle};
 use tempfile::TempDir;

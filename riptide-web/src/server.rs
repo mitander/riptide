@@ -10,7 +10,8 @@ use axum::Router;
 use axum::extract::State;
 use riptide_core::config::RiptideConfig;
 use riptide_core::server_components::{ConversionProgress, ServerComponents};
-use riptide_core::storage::PieceDataSource;
+use riptide_core::storage::{DataSource, PieceDataSource};
+use riptide_core::streaming::PieceProviderAdapter;
 use riptide_core::torrent::{InfoHash, PieceStore, TorrentEngineHandle};
 use riptide_core::{FileLibrary, HttpStreaming, RuntimeMode};
 use riptide_search::MediaSearch;
@@ -54,8 +55,8 @@ pub struct AppState {
     pub media_search: MediaSearch,
     /// Cache of converted files by info hash
     pub conversion_cache: Arc<RwLock<HashMap<InfoHash, ConvertedFile>>>,
-    /// HTTP streaming service
-    pub http_streaming: Arc<HttpStreaming>,
+    /// Data source for torrent piece access
+    pub data_source: Arc<dyn DataSource>,
     /// When this server instance was started
     pub server_started_at: std::time::Instant,
 }
@@ -64,6 +65,25 @@ impl AppState {
     /// Get the torrent engine handle.
     pub fn engine(&self) -> &TorrentEngineHandle {
         self.services.engine()
+    }
+
+    /// Creates an HttpStreaming instance for the specified torrent.
+    ///
+    /// This method creates a new streaming session bound to a specific
+    /// torrent by wrapping the data source with a PieceProviderAdapter.
+    ///
+    /// # Errors
+    ///
+    /// - `StreamingError::FormatDetectionFailed` - Cannot read header or detect format
+    pub async fn create_http_streaming(
+        &self,
+        info_hash: InfoHash,
+    ) -> Result<HttpStreaming, riptide_core::StreamingError> {
+        let adapter = Arc::new(PieceProviderAdapter::new(
+            self.data_source.clone(),
+            info_hash,
+        ));
+        HttpStreaming::new(adapter).await
     }
 
     /// Get the file manager if available (Development mode only).
@@ -99,15 +119,11 @@ impl AppState {
         self.services.conversion_progress()
     }
 
-    /// Get the FFmpeg processor for remuxing operations.
+    // Get the FFmpeg processor for remuxing operations.
     // TODO: Implement ffmpeg processor access when available
     // pub fn ffmpeg(&self) -> &Arc<dyn FfmpegProcessor> {
     //     self.services.ffmpeg()
     // }
-    /// Get the streaming service.
-    pub fn http_streaming(&self) -> &Arc<HttpStreaming> {
-        &self.http_streaming
-    }
 }
 
 /// Starts the Riptide web server with the provided configuration and components.
@@ -131,20 +147,14 @@ pub async fn run_server(
 
     // Create streaming service components
     let piece_store = components.piece_store().unwrap();
-    let data_source = Arc::new(PieceDataSource::new(piece_store.clone(), Some(100)));
-
-    let http_streaming = Arc::new(HttpStreaming::new(
-        components.engine().clone(),
-        data_source,
-        Default::default(),
-        components.ffmpeg().clone(),
-    ));
+    let data_source: Arc<dyn DataSource> =
+        Arc::new(PieceDataSource::new(piece_store.clone(), Some(100)));
 
     let state = AppState {
         services: Arc::new(components),
         media_search,
         conversion_cache,
-        http_streaming,
+        data_source,
         server_started_at: std::time::Instant::now(),
     };
 

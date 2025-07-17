@@ -17,7 +17,7 @@ use crate::torrent::InfoHash;
 
 /// Errors that can occur during download management
 #[derive(Debug, Error)]
-pub enum DownloadManagerError {
+pub enum DownloaderError {
     /// Torrent engine is not available
     #[error("Torrent engine not available for {info_hash}")]
     EngineNotAvailable {
@@ -117,7 +117,7 @@ pub struct DownloadStats {
 
 /// Configuration for download manager behavior
 #[derive(Debug, Clone)]
-pub struct DownloadManagerConfig {
+pub struct DownloaderConfig {
     /// Maximum number of concurrent piece requests
     pub max_concurrent_requests: usize,
     /// Lookahead buffer size in pieces
@@ -134,7 +134,7 @@ pub struct DownloadManagerConfig {
     pub priority_adjustment_threshold: f64,
 }
 
-impl Default for DownloadManagerConfig {
+impl Default for DownloaderConfig {
     fn default() -> Self {
         Self {
             max_concurrent_requests: 8,
@@ -156,10 +156,10 @@ struct PieceRequest {
     last_attempt: Instant,
 }
 
-/// Manager for coordinating piece downloads based on streaming requirements
-pub struct DownloadManager {
+/// Coordinates piece downloads based on streaming requirements
+pub struct Downloader {
     info_hash: InfoHash,
-    config: DownloadManagerConfig,
+    config: DownloaderConfig,
     torrent_engine: Option<Arc<TorrentEngineHandle>>,
 
     /// Current streaming position in pieces
@@ -178,7 +178,7 @@ pub struct DownloadManager {
     shutdown_tx: watch::Sender<bool>,
 }
 
-impl DownloadManager {
+impl Downloader {
     /// Create new download manager for specified torrent
     ///
     /// # Arguments
@@ -187,7 +187,7 @@ impl DownloadManager {
     /// * `torrent_engine` - Handle to torrent engine (optional for testing)
     pub fn new(
         info_hash: InfoHash,
-        config: DownloadManagerConfig,
+        config: DownloaderConfig,
         torrent_engine: Option<Arc<TorrentEngineHandle>>,
     ) -> Self {
         let (shutdown_tx, _shutdown_rx) = watch::channel(false);
@@ -242,13 +242,14 @@ impl DownloadManager {
     /// Request piece download with specified priority
     ///
     /// # Errors
-    /// - `DownloadManagerError::Configuration` - If piece index is invalid
+    ///
+    /// - `DownloaderError::Configuration` - If piece index is invalid
     pub async fn request_piece(
         &self,
         piece_index: u32,
         priority: DownloadPriority,
         byte_offset: u64,
-    ) -> Result<(), DownloadManagerError> {
+    ) -> Result<(), DownloaderError> {
         // TODO: Validate piece index against torrent info
         // For now, we'll assume it's valid
 
@@ -290,9 +291,10 @@ impl DownloadManager {
     /// Process download queue and submit requests to torrent engine
     ///
     /// # Errors
-    /// - `DownloadManagerError::EngineNotAvailable` - If torrent engine is not available
-    /// - `DownloadManagerError::PieceRequestFailed` - If piece request fails
-    pub async fn process_download_queue(&self) -> Result<(), DownloadManagerError> {
+    ///
+    /// - `DownloaderError::EngineNotAvailable` - If torrent engine is not available
+    /// - `DownloaderError::PieceRequestFailed` - If piece request fails
+    pub async fn process_download_queue(&self) -> Result<(), DownloaderError> {
         let mut queue = self.request_queue.write().await;
         let mut in_flight = self.in_flight.write().await;
 
@@ -379,8 +381,9 @@ impl DownloadManager {
     /// Check for stalled downloads and handle recovery
     ///
     /// # Errors
-    /// - `DownloadManagerError::DownloadStalled` - If download has stalled
-    pub async fn check_stall_detection(&self) -> Result<(), DownloadManagerError> {
+    ///
+    /// - `DownloaderError::DownloadStalled` - If download has stalled
+    pub async fn check_stall_detection(&self) -> Result<(), DownloaderError> {
         let last_progress = *self.last_progress.read().await;
         let stall_duration = last_progress.elapsed();
 
@@ -397,7 +400,7 @@ impl DownloadManager {
             let mut in_flight = self.in_flight.write().await;
             in_flight.clear();
 
-            return Err(DownloadManagerError::DownloadStalled {
+            return Err(DownloaderError::DownloadStalled {
                 info_hash: self.info_hash,
                 duration: stall_duration,
             });
@@ -457,10 +460,7 @@ impl DownloadManager {
     }
 
     /// Submit piece request to torrent engine
-    async fn submit_piece_request(
-        &self,
-        request: &DownloadRequest,
-    ) -> Result<(), DownloadManagerError> {
+    async fn submit_piece_request(&self, request: &DownloadRequest) -> Result<(), DownloaderError> {
         // TODO: Implement actual torrent engine integration
         // For now, simulate the request
         debug!(
@@ -475,7 +475,7 @@ impl DownloadManager {
 
         // Simulate potential failure for testing
         if request.piece_index % 100 == 99 {
-            return Err(DownloadManagerError::PieceRequestFailed {
+            return Err(DownloaderError::PieceRequestFailed {
                 info_hash: self.info_hash,
                 piece_index: request.piece_index,
                 reason: "Simulated failure".to_string(),
@@ -490,11 +490,11 @@ impl DownloadManager {
 mod tests {
     use super::*;
 
-    fn create_test_manager() -> DownloadManager {
+    fn create_test_manager() -> Downloader {
         let info_hash = InfoHash::new([1u8; 20]);
-        let config = DownloadManagerConfig::default();
+        let config = DownloaderConfig::default();
 
-        DownloadManager::new(info_hash, config, None)
+        Downloader::new(info_hash, config, None)
     }
 
     #[tokio::test]
@@ -601,7 +601,7 @@ mod tests {
         let result = manager.check_stall_detection().await;
         assert!(matches!(
             result,
-            Err(DownloadManagerError::DownloadStalled { .. })
+            Err(DownloaderError::DownloadStalled { .. })
         ));
 
         let stats = manager.stats().await;

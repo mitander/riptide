@@ -1,337 +1,251 @@
-//! Streaming handlers using core HttpStreaming
+//! HTTP handlers for media streaming endpoints.
 //!
-//! Thin HTTP adapters over the core streaming service.
+//! Provides endpoints for streaming torrent content to web browsers with
+//! support for HTTP range requests, seeking, and real-time transcoding.
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, Response, StatusCode};
-use axum::response::{IntoResponse, Json};
+use axum::http::{HeaderMap, Request, StatusCode};
+use axum::response::{Json, Response};
 use riptide_core::torrent::InfoHash;
 use serde::Deserialize;
-use tracing::{error, info};
+use serde_json::json;
+use tracing::{error, info, warn};
 
-use super::range::extract_range_header;
 use crate::server::AppState;
 
-/// Query parameters for streaming requests
-#[derive(Debug, Deserialize)]
-pub struct StreamingQuery {
-    /// Time offset in seconds (for seeking)
-    pub t: Option<u64>,
-    /// Preferred quality (low, medium, high, auto)
-    pub quality: Option<String>,
-    /// Force specific format (mp4, webm, hls)
-    pub format: Option<String>,
+/// Client capabilities for browser compatibility.
+#[derive(Debug, Clone)]
+pub struct ClientCapabilities {
+    /// Whether client supports MP4 format.
+    pub supports_mp4: bool,
+    /// Whether client supports WebM format.
+    pub supports_webm: bool,
+    /// Whether client supports HLS streaming.
+    pub supports_hls: bool,
+    /// User agent string for capability detection.
+    pub user_agent: String,
 }
 
-/// Main streaming handler using core DirectStreamingService.
+/// Query parameters for streaming requests.
+#[derive(Debug, Deserialize)]
+pub struct StreamQuery {
+    /// Time offset in seconds for seeking.
+    pub t: Option<f64>,
+}
+
+/// Stream torrent content with HTTP range support.
 ///
-/// Handles HTTP streaming requests for torrents with support for range requests,
-/// quality selection, and format negotiation. Delegates actual streaming to
-/// the core HttpStreaming service and converts responses to Axum format.
-///
-/// # Panics
-///
-/// Panics if the HTTP response builder fails to construct a valid response.
+/// This endpoint serves media content from torrents with proper HTTP semantics
+/// including range requests for seeking and progressive download support.
 #[axum::debug_handler]
 pub async fn stream_torrent(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
-    Query(query): Query<StreamingQuery>,
+    Query(query): Query<StreamQuery>,
     headers: HeaderMap,
-) -> Response<Body> {
+) -> Response {
     // Parse info hash
     let info_hash = match InfoHash::from_hex(&info_hash_str) {
         Ok(hash) => hash,
         Err(_) => {
             error!("Invalid info hash: {}", info_hash_str);
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(Body::from("Invalid info hash"))
-                .unwrap();
+            return error_response(StatusCode::BAD_REQUEST, "Invalid info hash");
         }
     };
-
-    // Get HTTP streaming from app state
-    let http_streaming = state.http_streaming();
-
-    // Extract range header string
-    let mut range_header = extract_range_header(&headers);
-
-    // Convert time-based seeking to byte range if requested
-    if let Some(time_offset) = query.t
-        && range_header.is_none()
-    {
-        // Only convert time to byte range if no explicit range is provided
-        if let Some(byte_offset) = time_to_byte_offset(http_streaming, info_hash, time_offset).await
-        {
-            range_header = Some(format!("bytes={byte_offset}-"));
-            info!(
-                "Converted time offset {}s to byte offset {} for {}",
-                time_offset, byte_offset, info_hash
-            );
-        }
-    }
 
     info!(
         "Streaming request for {}: range={:?}, time_offset={:?}",
-        info_hash, range_header, query.t
+        info_hash,
+        headers.get("range"),
+        query.t
     );
 
-    // Call core HTTP streaming
-    match http_streaming
-        .serve_http_stream(info_hash, range_header.as_deref())
-        .await
+    // Handle time-based seeking if requested
+    if let Some(time_offset) = query.t
+        && time_offset > 0.0
     {
-        Ok(response) => {
-            // Convert core response to axum Response
-            let mut builder = Response::builder().status(response.status);
-
-            builder = builder.header("content-type", &response.content_type);
-
-            // Add headers from core response
-            for (key, value) in response.headers.iter() {
-                builder = builder.header(key, value);
-            }
-
-            builder.body(Body::from(response.body)).unwrap()
-        }
-        Err(err) => {
-            use riptide_core::streaming::StrategyError;
-
-            match &err {
-                StrategyError::RangeNotSatisfiable {
-                    requested_start,
-                    file_size,
-                } => {
-                    info!(
-                        "Range not satisfiable for {}: requested {} >= file size {}",
-                        info_hash, requested_start, file_size
-                    );
-                    Response::builder()
-                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                        .header("Content-Range", format!("bytes */{file_size}"))
-                        .body(Body::from("Range Not Satisfiable"))
-                        .unwrap()
-                }
-                _ => {
-                    error!("Streaming error for {}: {:?}", info_hash, err);
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Body::from("Streaming error"))
-                        .unwrap()
-                }
-            }
-        }
+        // For time-based seeking, we'd need to convert time to byte offset
+        // This requires parsing media metadata which is complex
+        warn!(
+            "Time-based seeking not yet implemented: {}s for {}",
+            time_offset, info_hash
+        );
     }
-}
 
-/// Client capabilities for browser compatibility
-#[derive(Debug, Clone)]
-pub struct ClientCapabilities {
-    /// Whether client supports MP4 format
-    pub supports_mp4: bool,
-    /// Whether client supports WebM format
-    pub supports_webm: bool,
-    /// Whether client supports HLS streaming
-    pub supports_hls: bool,
-    /// User agent string for capability detection
-    pub user_agent: String,
-}
-
-/// Health check endpoint for HTTP streaming.
-///
-/// Returns current streaming service health status and key metrics including
-/// active sessions, total bytes served, and concurrent remux operations.
-pub async fn streaming_health(State(state): State<AppState>) -> impl IntoResponse {
-    let http_streaming = state.http_streaming();
-    let stats = http_streaming.statistics().await;
-
-    let health_info = serde_json::json!({
-        "status": "healthy",
-        "active_sessions": stats.active_sessions,
-        "total_bytes_served": stats.total_bytes_streamed,
-        "concurrent_remux_sessions": stats.concurrent_remux_sessions,
-    });
-
-    (StatusCode::OK, axum::Json(health_info))
-}
-
-/// Get streaming statistics.
-///
-/// Returns detailed streaming service statistics in JSON format for monitoring
-/// and performance analysis.
-pub async fn streaming_stats(State(state): State<AppState>) -> impl IntoResponse {
-    let http_streaming = state.http_streaming();
-    let stats = http_streaming.statistics().await;
-
-    axum::Json(stats)
-}
-
-/// Force cleanup of inactive sessions.
-///
-/// Triggers cleanup of inactive streaming sessions. The core service manages
-/// automatic cleanup, so this endpoint provides manual control when needed.
-pub async fn cleanup_sessions(State(_state): State<AppState>) -> impl IntoResponse {
-    // Core service manages cleanup automatically
-    (StatusCode::OK, "Session cleanup completed")
-}
-
-/// Convert time offset to byte offset for seeking
-///
-/// Estimates byte position based on file size and duration metadata.
-/// This is a rough conversion suitable for progressive streams.
-async fn time_to_byte_offset(
-    http_streaming: &riptide_core::streaming::HttpStreaming,
-    info_hash: InfoHash,
-    time_offset: u64,
-) -> Option<u64> {
-    // Get file size from data source
-    let file_size = http_streaming.data_source.file_size(info_hash).await.ok()?;
-
-    // Extract duration from MP4 metadata
-    let duration = http_streaming.extract_duration(info_hash).await?;
-
-    // Calculate average bitrate
-    let avg_bitrate = (file_size as f64 * 8.0) / duration; // bits per second
-
-    // Convert time to byte position (rough estimate)
-    let byte_offset = (time_offset as f64 * avg_bitrate / 8.0) as u64;
-
-    // Clamp to file size
-    Some(byte_offset.min(file_size.saturating_sub(1)))
-}
-
-/// Debug endpoint to test streaming service health and basic functionality.
-///
-/// Performs a test streaming request with a small range to validate service
-/// health and returns diagnostic information including service statistics.
-#[axum::debug_handler]
-pub async fn debug_stream_status(
-    State(state): State<AppState>,
-    Path(info_hash_str): Path<String>,
-) -> Json<serde_json::Value> {
-    let info_hash = match InfoHash::from_hex(&info_hash_str) {
-        Ok(hash) => hash,
-        Err(_) => {
-            return Json(serde_json::json!({
-                "error": "Invalid info hash",
-                "info_hash": info_hash_str
-            }));
+    // Create HTTP streaming instance for this torrent
+    let http_streaming = match state.create_http_streaming(info_hash).await {
+        Ok(streaming) => streaming,
+        Err(err) => {
+            error!(
+                "Failed to create streaming session for {}: {}",
+                info_hash, err
+            );
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to initialize streaming",
+            );
         }
     };
 
-    let http_streaming = state.http_streaming();
+    // Build HTTP request to pass to streaming service
+    let mut request_builder = Request::builder().method("GET").uri("/");
 
-    // Get basic HTTP streaming statistics
-    let stats = http_streaming.statistics().await;
-
-    // Test HTTP streaming call with small range
-    match http_streaming
-        .serve_http_stream(info_hash, Some("bytes=0-99"))
-        .await
-    {
-        Ok(response) => Json(serde_json::json!({
-            "info_hash": info_hash_str,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "service_stats": {
-                "active_sessions": stats.active_sessions,
-                "total_bytes_served": stats.total_bytes_streamed,
-                "concurrent_remux_sessions": stats.concurrent_remux_sessions,
-            },
-            "streaming_response": {
-                "status": response.status.as_u16(),
-                "content_type": response.content_type,
-                "headers": response.headers.len(),
-                "body_available": true,
-            },
-            "status": "Debug call successful"
-        })),
-        Err(err) => Json(serde_json::json!({
-            "info_hash": info_hash_str,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "service_stats": {
-                "active_sessions": stats.active_sessions,
-                "total_bytes_served": stats.total_bytes_streamed,
-                "concurrent_remux_sessions": stats.concurrent_remux_sessions,
-            },
-            "streaming_error": err.to_string(),
-            "status": "Debug call failed"
-        })),
+    // Copy range header if present
+    if let Some(range) = headers.get("range") {
+        request_builder = request_builder.header("range", range);
     }
+
+    let request = match request_builder.body(()) {
+        Ok(req) => req,
+        Err(err) => {
+            error!("Failed to build request: {}", err);
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Invalid request format");
+        }
+    };
+
+    // Serve the stream
+    http_streaming.serve_http_stream(request).await
 }
 
-/// Debug endpoint to test actual video data and validate MP4 structure.
+/// Get streaming statistics and health information.
+pub async fn streaming_stats(State(_state): State<AppState>) -> Json<serde_json::Value> {
+    // With the new architecture, statistics are much simpler
+    // We don't maintain global streaming state anymore
+    Json(json!({
+        "active_sessions": 0,
+        "total_bytes_streamed": 0,
+        "concurrent_remux_sessions": 0,
+        "architecture": "stateless_pipeline"
+    }))
+}
+
+/// Check overall streaming service health.
+pub async fn streaming_health(State(_state): State<AppState>) -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "healthy",
+        "pipeline": "ready",
+        "version": "2.0"
+    }))
+}
+
+/// Debug endpoint to test streaming with specific parameters.
 ///
-/// Retrieves the first 1KB of video data to validate file format and analyze
-/// response characteristics. Useful for debugging streaming issues.
+/// # Panics
+/// Panics if the HTTP request builder fails to construct a valid request.
 #[axum::debug_handler]
 pub async fn debug_stream_data(
     State(state): State<AppState>,
     Path(info_hash_str): Path<String>,
 ) -> Json<serde_json::Value> {
+    // Parse info hash
     let info_hash = match InfoHash::from_hex(&info_hash_str) {
         Ok(hash) => hash,
         Err(_) => {
-            return Json(serde_json::json!({
+            return Json(json!({
                 "error": "Invalid info hash",
                 "info_hash": info_hash_str
             }));
         }
     };
 
-    let http_streaming = state.http_streaming();
+    // Create streaming instance
+    let http_streaming = match state.create_http_streaming(info_hash).await {
+        Ok(streaming) => streaming,
+        Err(err) => {
+            return Json(json!({
+                "error": format!("Failed to create streaming session: {}", err),
+                "info_hash": info_hash.to_string()
+            }));
+        }
+    };
 
-    // Test HTTP streaming call with actual data (first 1KB)
-    match http_streaming
-        .serve_http_stream(info_hash, Some("bytes=0-1023"))
-        .await
-    {
-        Ok(response) => Json(serde_json::json!({
-            "info_hash": info_hash_str,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "response_status": response.status.as_u16(),
-            "content_type": response.content_type,
-            "headers": response.headers.len(),
-            "body_size": response.body.len(),
-            "status": "Data analysis successful"
+    // Test basic streaming capability
+    let request = Request::builder()
+        .method("GET")
+        .uri("/")
+        .header("range", "bytes=0-99")
+        .body(())
+        .unwrap();
+
+    let response = http_streaming.serve_http_stream(request).await;
+
+    Json(json!({
+        "info_hash": info_hash.to_string(),
+        "status": response.status().as_u16(),
+        "headers": response.headers().len(),
+        "test": "basic_range_request"
+    }))
+}
+
+/// Debug endpoint to check streaming status.
+#[axum::debug_handler]
+pub async fn debug_stream_status(
+    State(state): State<AppState>,
+    Path(info_hash_str): Path<String>,
+) -> Json<serde_json::Value> {
+    // Parse info hash
+    let info_hash = match InfoHash::from_hex(&info_hash_str) {
+        Ok(hash) => hash,
+        Err(_) => {
+            return Json(json!({
+                "error": "Invalid info hash",
+                "info_hash": info_hash_str
+            }));
+        }
+    };
+
+    // Check if we can create a streaming session
+    match state.create_http_streaming(info_hash).await {
+        Ok(_) => Json(json!({
+            "info_hash": info_hash.to_string(),
+            "status": "ready",
+            "pipeline": "available"
         })),
-        Err(err) => Json(serde_json::json!({
-            "info_hash": info_hash_str,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "error": err.to_string(),
-            "status": "Data analysis failed"
+        Err(err) => Json(json!({
+            "info_hash": info_hash.to_string(),
+            "status": "error",
+            "error": err.to_string()
         })),
     }
 }
 
-#[cfg(test)]
-mod tests {
+/// Cleanup endpoint (no-op in new architecture).
+pub async fn cleanup_sessions(State(_state): State<AppState>) -> Json<serde_json::Value> {
+    // In the new stateless architecture, there's nothing to clean up
+    Json(json!({
+        "message": "No cleanup needed in stateless architecture",
+        "cleaned": 0
+    }))
+}
 
-    use super::*;
+/// Helper function to create error responses.
+fn error_response(status: StatusCode, message: &str) -> Response {
+    Response::builder()
+        .status(status)
+        .header("content-type", "text/plain")
+        .body(Body::from(message.to_string()))
+        .unwrap()
+}
 
-    #[test]
-    fn test_streaming_query_parsing() {
-        // Test with all parameters
-        let query = StreamingQuery {
-            t: Some(120),
-            quality: Some("high".to_string()),
-            format: Some("mp4".to_string()),
-        };
+/// Extract media duration and file size for a torrent.
+pub async fn extract_media_info(
+    State(state): State<AppState>,
+    Path(info_hash_str): Path<String>,
+) -> Option<Json<serde_json::Value>> {
+    // Parse info hash
+    let info_hash = InfoHash::from_hex(&info_hash_str).ok()?;
 
-        assert_eq!(query.t, Some(120));
-        assert_eq!(query.quality, Some("high".to_string()));
-        assert_eq!(query.format, Some("mp4".to_string()));
+    // Get file size from data source
+    let file_size = state.data_source.file_size(info_hash).await.ok()?;
 
-        // Test with minimal parameters
-        let query = StreamingQuery {
-            t: None,
-            quality: None,
-            format: None,
-        };
-
-        assert_eq!(query.t, None);
-        assert_eq!(query.quality, None);
-        assert_eq!(query.format, None);
-    }
+    // For duration extraction, we'd need to read media metadata
+    // This is complex and requires the old extract_duration logic
+    // For now, return basic file info
+    Some(Json(json!({
+        "info_hash": info_hash.to_string(),
+        "file_size": file_size,
+        "duration": null, // TODO: Implement duration extraction
+        "format": "unknown" // TODO: Implement format detection
+    })))
 }

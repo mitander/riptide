@@ -161,13 +161,8 @@ async fn check_streaming_readiness(
         }
     };
 
-    // Check remux streaming readiness - make this less strict initially
-    let remux_ready = state
-        .http_streaming
-        .check_stream_readiness(info_hash)
-        .await
-        .map(|status| status.readiness == riptide_core::streaming::StreamReadiness::Ready)
-        .unwrap_or(false);
+    // Check streaming readiness with new architecture
+    let stream_ready = state.create_http_streaming(info_hash).await.is_ok();
 
     // More realistic buffer requirements for early streaming
     const MIN_BUFFER_SIZE: u64 = 2 * 1024 * 1024; // 2MB minimum buffer (reduced from 5MB)
@@ -179,25 +174,19 @@ async fn check_streaming_readiness(
     let has_good_health = buffer_status.buffer_health >= MIN_BUFFER_HEALTH;
     let has_sufficient_duration = buffer_status.buffer_duration >= MIN_BUFFER_DURATION;
 
-    // For remux streaming, remux readiness is the primary requirement
-    // Buffer requirements are less critical since we're serving from transcoded file
-    let stream_ready = if remux_ready {
-        // If remux is ready, we can stream regardless of original buffer status
-        true
-    } else {
-        // If remux isn't ready, fall back to buffer requirements
-        has_sufficient_buffer && (has_good_health || has_sufficient_duration)
-    };
+    // With new architecture, combine streaming availability with buffer status
+    let final_ready =
+        stream_ready && (has_sufficient_buffer && (has_good_health || has_sufficient_duration));
 
-    if stream_ready {
+    if final_ready {
         ReadinessResult::Ready
     } else {
         // Provide specific feedback about what's missing
         let mut missing_reasons = Vec::new();
 
-        // Metadata is always required for proper streaming
-        if !remux_ready {
-            missing_reasons.push("Preparing stream metadata".to_string());
+        // Check what's missing
+        if !stream_ready {
+            missing_reasons.push("Preparing stream pipeline".to_string());
         }
 
         if !has_sufficient_buffer {

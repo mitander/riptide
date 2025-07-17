@@ -73,7 +73,7 @@ fn create_mock_avi_data() -> Bytes {
     data.extend_from_slice(&[0x38, 0x00, 0x00, 0x00]); // header size
 
     // Add some dummy header data
-    data.extend_from_slice(&vec![0x00; 56]);
+    data.extend_from_slice(&[0x00; 56]);
 
     // Add some dummy content
     data.extend_from_slice(&vec![0x00; 16384]); // 16KB of content
@@ -158,8 +158,7 @@ async fn test_remux_streaming_mkv() {
 
     // Try to read first chunk within timeout
     let result = timeout(Duration::from_secs(5), async {
-        let first_chunk = axum::body::to_bytes(response_body, 1024).await;
-        first_chunk
+        axum::body::to_bytes(response_body, 1024).await
     })
     .await;
 
@@ -230,8 +229,7 @@ async fn test_streaming_performance() {
     let first_byte_time = start.elapsed();
     assert!(
         first_byte_time < Duration::from_millis(10),
-        "First byte took {:?}",
-        first_byte_time
+        "First byte took {first_byte_time:?}"
     );
 
     // Stream entire body
@@ -245,8 +243,7 @@ async fn test_streaming_performance() {
     // Should be able to stream 10MB in under 100ms from memory
     assert!(
         total_time < Duration::from_millis(100),
-        "Streaming took {:?}",
-        total_time
+        "Streaming took {total_time:?}"
     );
 }
 
@@ -283,7 +280,7 @@ async fn test_concurrent_streaming_requests() {
             let start = i * 100;
             let end = start + 99;
             let request = Request::builder()
-                .header("Range", format!("bytes={}-{}", start, end))
+                .header("Range", format!("bytes={start}-{end}"))
                 .body(())
                 .unwrap();
 

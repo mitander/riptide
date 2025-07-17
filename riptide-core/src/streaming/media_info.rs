@@ -6,7 +6,83 @@
 
 use thiserror::Error;
 
-use crate::streaming::remux::types::ContainerFormat;
+/// Container format for video files.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ContainerFormat {
+    /// MPEG-4 Part 14 container (.mp4)
+    Mp4,
+    /// Matroska Video container (.mkv)
+    Mkv,
+    /// Audio Video Interleave container (.avi)
+    Avi,
+    /// QuickTime movie container (.mov)
+    Mov,
+    /// WebM container (.webm)
+    WebM,
+    /// Container format could not be determined
+    Unknown,
+}
+
+/// Errors that can occur during streaming operations.
+#[derive(Debug, Error)]
+pub enum StreamingError {
+    /// Container format is not supported for streaming.
+    #[error("Container format not supported: {format}")]
+    UnsupportedFormat {
+        /// Name of the unsupported container format.
+        format: String,
+    },
+
+    /// Failed to automatically detect container format from file headers.
+    #[error("Failed to detect container format from headers")]
+    FormatDetectionFailed,
+
+    /// Stream is not ready for serving content.
+    #[error("Streaming not ready: {reason}")]
+    StreamingNotReady {
+        /// Specific reason why streaming is not ready.
+        reason: String,
+    },
+
+    /// HTTP range request is invalid or out of bounds.
+    #[error("Invalid range request: {range:?}")]
+    InvalidRange {
+        /// The invalid byte range that was requested.
+        range: std::ops::Range<u64>,
+    },
+
+    /// Underlying I/O operation failed.
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    /// Requested torrent session does not exist.
+    #[error("Torrent not found")]
+    TorrentNotFound,
+
+    /// Source file format is not supported for streaming.
+    #[error("Unsupported source format")]
+    UnsupportedSource,
+
+    /// FFmpeg process encountered an error.
+    #[error("FFmpeg error: {reason}")]
+    FfmpegError {
+        /// Error message from FFmpeg process.
+        reason: String,
+    },
+
+    /// I/O error occurred during a specific operation.
+    #[error("IO error during {operation}: {source}")]
+    IoErrorWithOperation {
+        /// Description of the operation that failed.
+        operation: String,
+        /// The underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// Result type for streaming operations.
+pub type StreamingResult<T> = Result<T, StreamingError>;
 
 /// Errors that can occur during media format detection.
 #[derive(Debug, Error)]

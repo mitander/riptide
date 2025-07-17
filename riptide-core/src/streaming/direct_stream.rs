@@ -107,10 +107,7 @@ impl DirectStreamProducer {
                         }
                         Err(e) => {
                             return Some((
-                                Err(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    e.to_string(),
-                                )),
+                                Err(std::io::Error::other(e.to_string())),
                                 (provider, start, end, offset),
                             ));
                         }
@@ -141,7 +138,7 @@ impl StreamProducer for DirectStreamProducer {
                         StatusCode::RANGE_NOT_SATISFIABLE,
                         [(
                             header::CONTENT_RANGE,
-                            HeaderValue::from_str(&format!("bytes */{}", file_size))
+                            HeaderValue::from_str(&format!("bytes */{file_size}"))
                                 .unwrap_or_else(|_| HeaderValue::from_static("bytes */0")),
                         )],
                     )
@@ -162,7 +159,7 @@ impl StreamProducer for DirectStreamProducer {
                     .header(header::CONTENT_LENGTH, length.to_string())
                     .header(
                         header::CONTENT_RANGE,
-                        format!("bytes {}-{}/{}", start, end, file_size),
+                        format!("bytes {start}-{end}/{file_size}"),
                     )
                     .header(header::ACCEPT_RANGES, "bytes")
                     .header(header::CACHE_CONTROL, "public, max-age=3600")
