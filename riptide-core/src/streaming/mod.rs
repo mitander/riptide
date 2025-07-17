@@ -7,6 +7,7 @@ pub mod chunk_server;
 pub mod direct_stream;
 pub mod download_manager;
 pub mod ffmpeg;
+pub mod media_info;
 pub mod mp4_parser;
 pub mod mp4_validation;
 pub mod performance_tests;
@@ -23,7 +24,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
+pub use direct_stream::DirectStreamProducer;
 pub use ffmpeg::{Ffmpeg, ProductionFfmpeg, RemuxingOptions, RemuxingResult, SimulationFfmpeg};
+pub use media_info::{MediaInfo, detect_container_format, extension, mime_type, requires_remuxing};
 pub use mp4_parser::extract_duration_from_media;
 pub use piece_reader::{
     PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
@@ -38,6 +41,8 @@ pub use remux::{
     RemuxStreamStrategy, Remuxer, StrategyError, StreamData, StreamHandle, StreamReadiness,
     StreamingError, StreamingResult, StreamingStatus, StreamingStrategy,
 };
+pub use remux_stream::RemuxStreamProducer;
+pub use traits::{PieceProvider, StreamProducer};
 
 use crate::config::RiptideConfig;
 use crate::engine::TorrentEngineHandle;
@@ -462,9 +467,132 @@ pub struct StreamingStats {
     pub concurrent_remux_sessions: usize,
 }
 
+/// Creates the appropriate stream producer based on media format detection.
+///
+/// This factory function examines the first few bytes of the media file to
+/// determine its container format and returns either a DirectStreamProducer
+/// for browser-compatible formats (MP4, WebM) or a RemuxStreamProducer for
+/// formats that require conversion (MKV, AVI, MOV, etc.).
+///
+/// # Errors
+///
+/// - `StreamingError::DataSource` - If reading the header fails
+/// - `StreamingError::InvalidFormat` - If the format cannot be detected
+pub async fn create_stream_producer(
+    provider: Arc<dyn PieceProvider>,
+) -> StreamingResult<Arc<dyn StreamProducer>> {
+    // Read header bytes for format detection
+    const HEADER_SIZE: usize = 64;
+    let header_data = provider
+        .read_at(0, HEADER_SIZE)
+        .await
+        .map_err(|_| StreamingError::FormatDetectionFailed)?;
+
+    // Detect container format
+    let format =
+        detect_container_format(&header_data).map_err(|_| StreamingError::FormatDetectionFailed)?;
+
+    // Create appropriate producer based on format
+    let producer: Arc<dyn StreamProducer> = if requires_remuxing(&format) {
+        Arc::new(RemuxStreamProducer::new(
+            provider,
+            extension(&format).to_string(),
+        ))
+    } else {
+        Arc::new(DirectStreamProducer::new(
+            provider,
+            mime_type(&format).to_string(),
+        ))
+    };
+
+    Ok(producer)
+}
+
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
+
     use super::*;
+
+    // Mock provider for testing
+    struct TestPieceProvider {
+        data: Bytes,
+    }
+
+    impl TestPieceProvider {
+        fn new(data: Bytes) -> Self {
+            Self { data }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PieceProvider for TestPieceProvider {
+        async fn read_at(
+            &self,
+            offset: u64,
+            length: usize,
+        ) -> Result<Bytes, traits::PieceProviderError> {
+            let end = std::cmp::min(offset + length as u64, self.data.len() as u64);
+            Ok(self.data.slice(offset as usize..end as usize))
+        }
+
+        async fn size(&self) -> u64 {
+            self.data.len() as u64
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_stream_producer_mp4() {
+        // Create MP4 header
+        let mut mp4_data = vec![
+            0x00, 0x00, 0x00, 0x20, // box size
+            b'f', b't', b'y', b'p', // box type
+            b'i', b's', b'o', b'm', // major brand
+        ];
+        mp4_data.extend_from_slice(&[0x00; 52]); // padding to 64 bytes
+
+        let provider = Arc::new(TestPieceProvider::new(Bytes::from(mp4_data)));
+        let producer = create_stream_producer(provider).await.unwrap();
+
+        // Should create DirectStreamProducer for MP4
+        // We can't directly check the type, but we can verify it works
+        let request = axum::http::Request::builder().body(()).unwrap();
+        let response = producer.produce_stream(request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get("content-type").unwrap(), "video/mp4");
+    }
+
+    #[tokio::test]
+    async fn test_create_stream_producer_mkv() {
+        // Create MKV header (EBML)
+        let mut mkv_data = vec![
+            0x1A, 0x45, 0xDF, 0xA3, // EBML magic
+        ];
+        mkv_data.extend_from_slice(&[0x00; 60]); // padding to 64 bytes
+
+        let provider = Arc::new(TestPieceProvider::new(Bytes::from(mkv_data)));
+        let producer = create_stream_producer(provider).await.unwrap();
+
+        // Should create RemuxStreamProducer for MKV
+        let request = axum::http::Request::builder().body(()).unwrap();
+        let response = producer.produce_stream(request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        // RemuxStreamProducer always outputs MP4
+        assert_eq!(response.headers().get("content-type").unwrap(), "video/mp4");
+    }
+
+    #[tokio::test]
+    async fn test_create_stream_producer_insufficient_data() {
+        // Create provider with too little data
+        let provider = Arc::new(TestPieceProvider::new(Bytes::from(vec![0x00; 8])));
+        let result = create_stream_producer(provider).await;
+
+        // Should fail with format detection error
+        match result {
+            Err(StreamingError::FormatDetectionFailed) => {}
+            _ => panic!("Expected FormatDetectionFailed error"),
+        }
+    }
 
     #[test]
     fn test_parse_range_header_suffix_range() {
