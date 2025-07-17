@@ -17,6 +17,7 @@ pub mod progressive;
 pub mod range;
 pub mod realtime_remuxer;
 pub mod remux;
+pub mod remux_stream;
 
 use std::collections::HashMap;
 use std::sync::Arc;
