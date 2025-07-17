@@ -9,6 +9,7 @@ pub mod ffmpeg;
 pub mod mp4_parser;
 pub mod mp4_validation;
 pub mod performance_tests;
+pub mod traits;
 
 pub mod piece_reader;
 pub mod progressive;

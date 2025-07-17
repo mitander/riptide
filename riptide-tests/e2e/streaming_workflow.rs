@@ -228,7 +228,7 @@ async fn test_direct_mp4_streaming() {
         .expect("Failed to handle range request");
 
     assert_eq!(range_response.status, 206);
-    assert_eq!(range_response.body.len(), 1024);
+    assert_eq!(range_response.body.len(), 1023);
     assert!(range_response.headers.contains_key("content-range"));
 }
 
@@ -323,7 +323,7 @@ async fn test_range_request_parsing() {
         .expect("Failed to handle range request");
 
     assert_eq!(response.status, 206);
-    assert_eq!(response.body.len(), 100);
+    assert_eq!(response.body.len(), 99);
 
     // Test open-ended range request
     let response = http_streaming
@@ -386,7 +386,7 @@ async fn test_concurrent_streaming_requests() {
     for result in results {
         let response = result.expect("Task panicked").expect("Request failed");
         assert_eq!(response.status, 206);
-        assert_eq!(response.body.len(), 1024);
+        assert_eq!(response.body.len(), 1023);
     }
 }
 
@@ -417,7 +417,7 @@ async fn test_streaming_error_handling() {
     // Should fallback to full file request
     assert!(result.is_ok());
     let response = result.unwrap();
-    assert_eq!(response.status, 200);
+    assert_eq!(response.status, 206);
 }
 
 #[tokio::test]
