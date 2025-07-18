@@ -33,26 +33,6 @@ fn create_mock_mp4_data() -> Bytes {
     Bytes::from(data)
 }
 
-/// Creates a mock MKV file header (simplified).
-fn create_mock_mkv_data() -> Bytes {
-    let mut data = Vec::new();
-
-    // EBML header
-    data.extend_from_slice(&[0x1A, 0x45, 0xDF, 0xA3]); // EBML ID
-    data.extend_from_slice(&[0x93]); // size (19 bytes)
-    data.extend_from_slice(&[0x42, 0x86, 0x81, 0x01]); // EBMLVersion
-    data.extend_from_slice(&[0x42, 0xF7, 0x81, 0x01]); // EBMLReadVersion
-    data.extend_from_slice(&[0x42, 0xF2, 0x81, 0x04]); // EBMLMaxIDLength
-    data.extend_from_slice(&[0x42, 0xF3, 0x81, 0x08]); // EBMLMaxSizeLength
-    data.extend_from_slice(&[0x42, 0x82, 0x88]); // DocType
-    data.extend_from_slice(b"matroska");
-
-    // Add some dummy content
-    data.extend_from_slice(&vec![0x00; 10240]); // 10KB of content
-
-    Bytes::from(data)
-}
-
 /// Creates a mock AVI file header (simplified).
 #[allow(dead_code)]
 fn create_mock_avi_data() -> Bytes {
@@ -142,7 +122,15 @@ async fn test_remux_streaming_mkv() {
         return;
     }
 
-    let mkv_data = create_mock_mkv_data();
+    // Load real MKV test file
+    let test_file_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../test_movies/test_mkv.mkv");
+    let mkv_data = match tokio::fs::read(test_file_path).await {
+        Ok(bytes) => Bytes::from(bytes),
+        Err(_) => {
+            eprintln!("Skipping test: test_mkv.mkv not found at {test_file_path}");
+            return;
+        }
+    };
     let provider = Arc::new(MockPieceProvider::new(mkv_data));
     let producer = RemuxStreamProducer::new(provider, "mkv".to_string());
 

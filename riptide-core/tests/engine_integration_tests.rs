@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use riptide_core::config::RiptideConfig;
+#[cfg(any(test, feature = "test-utils"))]
 use riptide_core::engine::{MockPeers, MockTracker, TorrentEngineHandle, spawn_torrent_engine};
 use riptide_core::torrent::parsing::types::TorrentMetadata;
 use riptide_core::torrent::{InfoHash, TorrentError};

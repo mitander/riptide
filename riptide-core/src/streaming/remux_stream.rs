@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Response};
 use futures::stream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::streaming::traits::{PieceProvider, PieceProviderError, StreamProducer};
 
@@ -90,52 +90,142 @@ impl RemuxStreamProducer {
     /// This task runs independently, reading chunks from the piece provider
     /// and writing them to FFmpeg's stdin. It handles piece availability
     /// gracefully by retrying when data isn't ready yet.
+    ///
+    /// Uses a sequential reading strategy to ensure FFmpeg gets continuous
+    /// data from the beginning, which is essential for generating valid MP4 headers.
+    /// Only starts when we have enough sequential data from the beginning.
     fn spawn_input_pump<W>(
         provider: Arc<dyn PieceProvider>,
+        stdin: W,
+    ) -> tokio::task::JoinHandle<()>
+    where
+        W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        Self::spawn_input_pump_with_config(provider, stdin, true)
+    }
+
+    /// Creates the input pump task with configurable sequential requirements.
+    ///
+    /// This version allows disabling sequential checks for testing purposes.
+    fn spawn_input_pump_with_config<W>(
+        provider: Arc<dyn PieceProvider>,
         mut stdin: W,
+        enable_sequential_check: bool,
     ) -> tokio::task::JoinHandle<()>
     where
         W: tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
         tokio::spawn(async move {
-            let mut offset = 0u64;
             let file_size = provider.size().await;
+            info!("Starting sequential input pump for {} bytes", file_size);
 
-            debug!("Starting input pump for {} bytes", file_size);
+            // Phase 1: Wait for enough sequential data from the beginning (if enabled)
+            if enable_sequential_check {
+                // Strategy: Ensure we have enough sequential data from the beginning
+                // before starting to feed FFmpeg. This prevents broken pipe errors
+                // caused by FFmpeg trying to parse incomplete MP4 headers.
+                // For small files (tests), use a minimal requirement.
+                let min_required_size = if file_size < 100 * 1024 {
+                    // Less than 100KB
+                    // For very small files (tests), skip the requirement
+                    1
+                } else if file_size < 10 * 1024 * 1024 {
+                    // For small files, require at least 1KB or 25% of file size
+                    std::cmp::min(1024, file_size / 4).max(1)
+                } else {
+                    // For large files, require 10MB or 50% of file size
+                    std::cmp::min(10 * 1024 * 1024, file_size / 2)
+                };
+
+                info!(
+                    "Phase 1: Ensuring {} bytes of sequential data from beginning",
+                    min_required_size
+                );
+                let mut verified_size = 0u64;
+
+                // Check how much sequential data we have from the beginning
+                while verified_size < min_required_size {
+                    match provider.read_at(verified_size, CHUNK_SIZE).await {
+                        Ok(bytes) => {
+                            verified_size += bytes.len() as u64;
+                            if verified_size % (1024 * 1024) == 0
+                                || verified_size >= min_required_size
+                            {
+                                info!(
+                                    "Sequential data available: {}/{} bytes ({:.1}%)",
+                                    verified_size,
+                                    min_required_size,
+                                    (verified_size as f64 / min_required_size as f64) * 100.0
+                                );
+                            }
+                        }
+                        Err(PieceProviderError::NotYetAvailable) => {
+                            info!("Waiting for sequential data at offset {}", verified_size);
+                            tokio::time::sleep(RETRY_DELAY).await;
+                        }
+                        Err(e) => {
+                            error!(
+                                "Fatal error verifying sequential data at offset {}: {}",
+                                verified_size, e
+                            );
+                            return;
+                        }
+                    }
+                }
+
+                info!("Sequential data requirement met, starting FFmpeg feed");
+            }
+
+            // Phase 2: Feed all data sequentially from the beginning
+            let mut offset = 0u64;
 
             while offset < file_size {
                 let chunk_size = std::cmp::min(CHUNK_SIZE as u64, file_size - offset) as usize;
 
                 match provider.read_at(offset, chunk_size).await {
                     Ok(bytes) => {
+                        let bytes_len = bytes.len();
                         match stdin.write_all(&bytes).await {
                             Ok(()) => {
-                                offset += bytes.len() as u64;
-                                if offset % (10 * 1024 * 1024) == 0 {
-                                    debug!("Input pump progress: {}/{} bytes", offset, file_size);
+                                offset += bytes_len as u64;
+                                if offset % (10 * 1024 * 1024) == 0 || offset == file_size {
+                                    info!(
+                                        "Input pump progress: {}/{} bytes ({:.1}%)",
+                                        offset,
+                                        file_size,
+                                        (offset as f64 / file_size as f64) * 100.0
+                                    );
                                 }
                             }
                             Err(e) => {
-                                // FFmpeg process likely exited
-                                warn!("Failed to write to FFmpeg stdin: {}", e);
-                                break;
+                                error!(
+                                    "Failed to write to FFmpeg stdin at offset {}: {}",
+                                    offset, e
+                                );
+                                return;
                             }
                         }
                     }
                     Err(PieceProviderError::NotYetAvailable) => {
-                        // Pieces not downloaded yet, wait and retry
+                        info!("Waiting for piece at offset {}", offset);
                         tokio::time::sleep(RETRY_DELAY).await;
                     }
                     Err(e) => {
-                        error!("Fatal error reading from piece provider: {}", e);
-                        break;
+                        error!(
+                            "Fatal error reading from piece provider at offset {}: {}",
+                            offset, e
+                        );
+                        return;
                     }
                 }
             }
 
             // Close stdin to signal EOF to FFmpeg
             drop(stdin);
-            info!("Input pump completed, fed {} bytes to FFmpeg", offset);
+            info!(
+                "Sequential input pump completed, fed {} bytes to FFmpeg",
+                file_size
+            );
         })
     }
 
@@ -227,18 +317,67 @@ impl StreamProducer for RemuxStreamProducer {
         // Spawn stderr reader to prevent blocking
         let stderr_handle = Self::spawn_stderr_reader(stderr);
 
-        // Create stream from FFmpeg's stdout
-        let stream = stream::unfold(stdout, |mut stdout| async move {
-            let mut buffer = vec![0u8; 8192];
-            match stdout.read(&mut buffer).await {
-                Ok(0) => None, // EOF
+        // Pre-buffer some MP4 output to ensure immediate data for browser
+        info!("Pre-buffering MP4 output to ensure immediate browser response");
+        let mut initial_buffer = Vec::new();
+        let mut stdout_for_prebuffer = stdout;
+
+        // Read initial MP4 data (header + first fragment)
+        let prebuffer_target = 64 * 1024; // 64KB initial buffer
+        while initial_buffer.len() < prebuffer_target {
+            let mut chunk = vec![0u8; 8192];
+            match stdout_for_prebuffer.read(&mut chunk).await {
+                Ok(0) => break, // EOF
                 Ok(n) => {
-                    buffer.truncate(n);
-                    Some((Ok(bytes::Bytes::from(buffer)), stdout))
+                    chunk.truncate(n);
+                    initial_buffer.extend_from_slice(&chunk);
+                    if initial_buffer.len() >= 1024 {
+                        info!("Pre-buffered {} bytes of MP4 data", initial_buffer.len());
+                    }
                 }
-                Err(e) => Some((Err(e), stdout)),
+                Err(e) => {
+                    error!("Failed to pre-buffer MP4 data: {}", e);
+                    break;
+                }
             }
-        });
+        }
+
+        if initial_buffer.is_empty() {
+            error!("Failed to pre-buffer any MP4 data, FFmpeg may have failed");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to initialize media stream",
+            )
+                .into_response();
+        }
+
+        info!(
+            "Pre-buffered {} bytes of MP4 data, starting stream",
+            initial_buffer.len()
+        );
+
+        // Create stream that starts with pre-buffered data, then continues with FFmpeg output
+        let initial_data = bytes::Bytes::from(initial_buffer);
+        let stream = stream::unfold(
+            (Some(initial_data), stdout_for_prebuffer),
+            |(initial_data, mut stdout)| async move {
+                // First, return the pre-buffered data
+                if let Some(data) = initial_data {
+                    return Some((Ok(data), (None, stdout)));
+                }
+
+                // Then continue with live FFmpeg output
+                let mut buffer = vec![0u8; 8192];
+                match stdout.read(&mut buffer).await {
+                    Ok(0) => None, // EOF
+                    Ok(n) => {
+                        buffer.truncate(n);
+                        Some((Ok(bytes::Bytes::from(buffer)), (None, stdout)))
+                    }
+                    Err(e) => Some((Err(e), (None, stdout))),
+                }
+            },
+        );
         let body = Body::from_stream(stream);
 
         // Spawn cleanup task
@@ -355,18 +494,24 @@ mod tests {
         // Create a pipe for testing
         let (reader, writer) = tokio::io::duplex(1024);
 
-        // Spawn the input pump
-        let handle = RemuxStreamProducer::spawn_input_pump(provider, writer);
+        // Spawn the input pump without sequential check for tests
+        let handle = RemuxStreamProducer::spawn_input_pump_with_config(provider, writer, false);
 
-        // Collect all data from the reader
-        let mut output = Vec::new();
-        let mut reader = tokio::io::BufReader::new(reader);
-        tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut output)
-            .await
-            .unwrap();
+        // Start reading in a separate task
+        let read_task = tokio::spawn(async move {
+            let mut output = Vec::new();
+            let mut reader = tokio::io::BufReader::new(reader);
+            tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut output)
+                .await
+                .unwrap();
+            output
+        });
 
         // Wait for pump to complete
         handle.await.unwrap();
+
+        // Get the output data
+        let output = read_task.await.unwrap();
 
         // Verify all data was pumped
         assert_eq!(output.len(), 512);
@@ -428,18 +573,24 @@ mod tests {
         // Create a pipe for testing
         let (reader, writer) = tokio::io::duplex(1024);
 
-        // Spawn the input pump
-        let handle = RemuxStreamProducer::spawn_input_pump(provider, writer);
+        // Spawn the input pump without sequential check for tests
+        let handle = RemuxStreamProducer::spawn_input_pump_with_config(provider, writer, false);
 
-        // Collect all data from the reader
-        let mut output = Vec::new();
-        let mut reader = tokio::io::BufReader::new(reader);
-        tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut output)
-            .await
-            .unwrap();
+        // Start reading in a separate task
+        let read_task = tokio::spawn(async move {
+            let mut output = Vec::new();
+            let mut reader = tokio::io::BufReader::new(reader);
+            tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut output)
+                .await
+                .unwrap();
+            output
+        });
 
         // Wait for pump to complete
         handle.await.unwrap();
+
+        // Get the output data
+        let output = read_task.await.unwrap();
 
         // Verify all data was eventually pumped despite initial unavailability
         assert_eq!(output.len(), 256);

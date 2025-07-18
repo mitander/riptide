@@ -101,7 +101,7 @@ async fn test_progressive_streaming_broken_behavior() {
         "Target implementation should require minimal download"
     );
 
-    println!("✅ Issue documented. See TODO_PROGRESSIVE_STREAMING_REDESIGN.md");
+    println!("Issue documented. See TODO_PROGRESSIVE_STREAMING_REDESIGN.md");
 }
 
 /// Test showing the timeline difference between current and expected behavior
@@ -148,7 +148,7 @@ async fn test_progressive_streaming_timeline_comparison() {
         "Expected significant improvement in startup time"
     );
 
-    println!("✅ Timeline comparison shows massive improvement potential");
+    println!("Timeline comparison shows massive improvement potential");
 }
 
 /// Test documenting the architectural components that need to be built
@@ -219,7 +219,7 @@ async fn test_progressive_streaming_architecture_requirements() {
 
     assert!(missing_count > 0, "Architecture redesign required");
 
-    println!("✅ Architecture requirements documented");
+    println!("Architecture requirements documented");
 }
 
 // Helper structs for documentation

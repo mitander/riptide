@@ -18,19 +18,23 @@ mod avi_ffmpeg_duration_test;
 mod dev_simulation;
 #[path = "integration/engine_integration.rs"]
 mod engine_integration;
-#[path = "integration/mp4_validation.rs"]
-mod mp4_validation;
+
+#[path = "integration/debug_remux_test.rs"]
+mod debug_remux_test;
+#[path = "integration/development_mode_debug.rs"]
+mod development_mode_debug;
+#[path = "integration/ffmpeg_validation_test.rs"]
+mod ffmpeg_validation_test;
 #[path = "integration/progressive_remuxing_test.rs"]
 mod progressive_remuxing_test;
+#[path = "integration/smart_header_footer_test.rs"]
+mod smart_header_footer_test;
 
 #[path = "integration/peer_communication.rs"]
 mod peer_communication;
 // TODO: Fix API compatibility after streaming redesign
 // #[path = "integration/progressive_streaming_broken_test.rs"]
 // mod progressive_streaming_broken_test;
-
-#[path = "integration/sim_streaming_integration.rs"]
-mod sim_streaming_integration;
 
 #[path = "integration/torrent_integration.rs"]
 mod torrent_integration;

@@ -286,6 +286,80 @@
                 border-radius: 4px;
                 cursor: pointer;
             }
+
+            .streaming-status {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 400px;
+                background: #1a1a2e;
+                border-radius: 8px;
+                color: white;
+                text-align: center;
+            }
+
+            .streaming-loader {
+                max-width: 400px;
+                padding: 2rem;
+            }
+
+            .spinner {
+                width: 60px;
+                height: 60px;
+                border: 4px solid #333;
+                border-top: 4px solid #00d4aa;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 1rem;
+            }
+
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+
+            .streaming-loader h3 {
+                margin-bottom: 1rem;
+                color: #00d4aa;
+            }
+
+            .streaming-loader p {
+                margin: 0.5rem 0;
+                color: #ccc;
+            }
+
+            .streaming-loader .progress-bar {
+                margin: 1rem 0;
+                height: 8px;
+                background: #333;
+                border-radius: 4px;
+                overflow: hidden;
+            }
+
+            .streaming-loader .progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #00d4aa, #00b894);
+                transition: width 0.3s ease;
+            }
+
+            .streaming-error {
+                text-align: center;
+                color: #ff6b6b;
+            }
+
+            .streaming-error h3 {
+                margin-bottom: 1rem;
+            }
+
+            .streaming-error button {
+                margin-top: 1rem;
+                background: #ff6b6b;
+                color: white;
+                border: none;
+                padding: 0.5rem 1rem;
+                border-radius: 4px;
+                cursor: pointer;
+            }
         </style>
     </head>
     <body>
@@ -686,12 +760,24 @@
                 });
 
             // Streaming functions
-            function streamTorrent(infoHash, name) {
+            async function streamTorrent(infoHash, name) {
+                // Create loading player immediately
                 const playerHtml = `
                 <div class="video-player" id="video-player">
                     <div class="video-container">
                         <button class="close-player" onclick="closePlayer()">Close</button>
-                        <video controls autoplay>
+                        <div id="streaming-status" class="streaming-status">
+                            <div class="streaming-loader">
+                                <div class="spinner"></div>
+                                <h3>Preparing Stream</h3>
+                                <p id="streaming-message">Checking streaming readiness...</p>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="streaming-progress" style="width: 0%"></div>
+                                </div>
+                                <p id="streaming-details">This may take a few moments for the first stream.</p>
+                            </div>
+                        </div>
+                        <video id="video-element" controls style="display: none;">
                             <source src="/stream/${infoHash}" type="video/mp4">
                             Your browser does not support the video tag.
                         </video>
@@ -700,6 +786,99 @@
                 </div>
             `;
                 document.body.insertAdjacentHTML("beforeend", playerHtml);
+                
+                // Start polling for streaming readiness
+                pollStreamingReadiness(infoHash);
+            }
+
+            async function pollStreamingReadiness(infoHash) {
+                const statusElement = document.getElementById('streaming-status');
+                const videoElement = document.getElementById('video-element');
+                const messageElement = document.getElementById('streaming-message');
+                const progressElement = document.getElementById('streaming-progress');
+                const detailsElement = document.getElementById('streaming-details');
+                
+                let pollCount = 0;
+                const maxPolls = 120; // 2 minutes maximum
+                
+                const poll = async () => {
+                    try {
+                        const response = await fetch(`/stream/${infoHash}/ready`);
+                        const data = await response.json();
+                        
+                        pollCount++;
+                        
+                        // Update progress bar
+                        const progress = (data.progress || 0) * 100;
+                        progressElement.style.width = `${progress}%`;
+                        
+                        // Update message
+                        messageElement.textContent = data.message;
+                        
+                        // Update details with technical info
+                        if (data.requires_remuxing) {
+                            detailsElement.textContent = `Converting ${data.container_format} to MP4 for streaming compatibility`;
+                        } else {
+                            detailsElement.textContent = `Direct streaming of ${data.container_format} format`;
+                        }
+                        
+                        if (data.ready) {
+                            // Stream is ready! Show video player
+                            statusElement.style.display = 'none';
+                            videoElement.style.display = 'block';
+                            videoElement.play();
+                            
+                            // Add event listeners for better error handling
+                            videoElement.addEventListener('error', (e) => {
+                                console.error('Video error:', e);
+                                showStreamingError('Video playback error. Please try again.');
+                            });
+                            
+                            videoElement.addEventListener('loadstart', () => {
+                                console.log('Video loading started');
+                            });
+                            
+                            videoElement.addEventListener('canplay', () => {
+                                console.log('Video can start playing');
+                            });
+                            
+                            // Handle HTTP errors (like 202 Accepted)
+                            videoElement.addEventListener('loadedmetadata', () => {
+                                console.log('Video metadata loaded successfully');
+                            });
+                            
+                            // If video fails to load, it might be a 202 response
+                            videoElement.addEventListener('stalled', () => {
+                                console.log('Video stalled - might be waiting for readiness');
+                            });
+                            
+                        } else if (pollCount >= maxPolls) {
+                            // Timeout
+                            showStreamingError('Streaming preparation timed out. Please try again later.');
+                        } else {
+                            // Continue polling
+                            setTimeout(poll, 1000);
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error checking streaming readiness:', error);
+                        showStreamingError('Error preparing stream. Please try again.');
+                    }
+                };
+                
+                // Start polling
+                poll();
+            }
+            
+            function showStreamingError(message) {
+                const statusElement = document.getElementById('streaming-status');
+                statusElement.innerHTML = `
+                    <div class="streaming-error">
+                        <h3>Streaming Error</h3>
+                        <p>${message}</p>
+                        <button onclick="closePlayer()">Close</button>
+                    </div>
+                `;
             }
 
             function closePlayer() {

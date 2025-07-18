@@ -34,20 +34,20 @@ riptide-core:
   - TcpPeerCoordinator    → Production TCP peer connections and message handling
   - TrackerCoordinator    → Real HTTP/UDP tracker communication
   - Storage Layer         → File organization, reflink/CoW support, piece verification
-  - Streaming Service     → Direct streaming, range requests, bandwidth control
+  - Streaming Pipeline    → Stateless streaming with deep module boundaries
+  - PieceProvider trait   → File-like interface over torrent storage
+  - StreamProducer trait  → HTTP response generator for media content
+  - DirectStreamProducer  → Pass-through for MP4/WebM with range support
+  - RemuxStreamProducer   → Real-time FFmpeg remuxing with input pump
+  - HttpStreaming facade  → Format detection and producer selection
   - TorrentCreator        → File-to-torrent conversion with piece splitting and hashing
-  - FileReconstructor     → Full file assembly from pieces for remuxing
-  - PieceBasedStreamReader → Direct byte-range reading from piece store
-  - ContainerDetector     → Media format identification (MP4, MKV, AVI, etc.)
-  - FfmpegProcessor       → Trait-based FFmpeg integration for remuxing
 
 riptide-web:
   - Web Server            → Axum-based HTTP server with template rendering
-  - HttpStreamingService  → Two-phase streaming coordinator with caching
   - API Handlers          → RESTful API for torrent management and streaming
   - Template Engine       → Server-side rendering with external template files
   - Static Files          → Asset serving for CSS, JavaScript, images
-  - StreamingStrategy     → Direct vs Remux-and-Cache decision logic
+  - PieceProviderAdapter  → Bridge between DataSource and streaming pipeline
 
 riptide-search:
   - Media Search      → Torrent discovery via search providers
@@ -220,29 +220,46 @@ pub struct PieceReconstructionService {
 
 **Implementation**: Try reflink → hard link → move. No complex content-addressing.
 
-### 5. Streaming Strategy
+### 5. Streaming Architecture
 
-**Choice**: Two-phase streaming strategy based on container format compatibility.
+**Choice**: Stateless pipeline with deep module boundaries and real-time processing.
 
-**Phase 1 - Direct Streaming (MP4/WebM)**:
+**Architecture**: `DataSource -> StreamProducer -> HTTP Response`
 
-- Serve byte ranges directly from piece store
+**Core Abstractions**:
+
+```rust
+// File-like interface over torrent storage
+pub trait PieceProvider: Send + Sync {
+    async fn read_at(&self, offset: u64, length: usize) -> Result<Bytes, PieceProviderError>;
+    async fn size(&self) -> u64;
+}
+
+// HTTP response generator for media content
+pub trait StreamProducer: Send + Sync {
+    async fn produce_stream(&self, request: Request<()>) -> Response;
+}
+```
+
+**Direct Streaming (MP4/WebM)**:
+
+- `DirectStreamProducer` serves byte ranges directly from `PieceProvider`
+- Full HTTP range request support for seeking
 - Zero processing overhead
-- Instant seeking via HTTP range requests
 
-**Phase 2 - Remux-and-Cache (MKV/AVI/MOV)**:
+**Real-time Remuxing (MKV/AVI/MOV)**:
 
-1. **Check Cache**: Look for pre-remuxed MP4 in `/tmp/riptide-remux-cache/{info_hash}.mp4`
-2. **Serve from Cache**: If exists, serve ranges from cached MP4 (same as direct streaming)
-3. **Full Reconstruction**: If not cached:
-   - Verify all pieces available via `FileReconstructor`
-   - Return HTTP 425 (Too Early) if incomplete
-   - Reconstruct entire file from pieces
-   - Remux to MP4 with `-movflags faststart`
-   - Cache result for future requests
-4. **Client Polling**: Frontend polls until 200/206 response indicates stream ready
+- `RemuxStreamProducer` uses FFmpeg input pump pattern
+- Streams data to FFmpeg stdin as pieces become available
+- Natural backpressure through pipe blocking
+- Pre-buffers 64KB of MP4 output before sending HTTP response
 
-**Rationale**: Non-streamable formats (MKV/AVI) cannot be partially remuxed - they require the complete file for reliable conversion. The two-phase approach ensures reliable streaming while maintaining performance through caching.
+**Benefits**:
+
+- Complete decoupling between BitTorrent and streaming layers
+- Testable design via `MockPieceProvider`
+- Real-time processing without batch operations
+- Duration preservation validated via ffprobe
 
 ### 6. Database Design
 
@@ -263,28 +280,38 @@ CREATE TABLE movies (
 
 ## Critical Components
 
-### Two-Phase Streaming Architecture
+### Streaming Pipeline Architecture
 
 ```rust
-pub struct HttpStreamingService {
-    file_assembler: Arc<dyn FileAssembler>,
-    piece_store: Arc<dyn PieceStore>,
-    ffmpeg_processor: Box<dyn FfmpegProcessor>,
-    // Cached remuxed files in /tmp/riptide-remux-cache/
+// Stateless streaming facade
+pub struct HttpStreaming {
+    producer: Arc<dyn StreamProducer>,
+}
+
+// Format detection and producer selection
+impl HttpStreaming {
+    pub async fn new(provider: Arc<dyn PieceProvider>) -> StreamingResult<Self> {
+        let format = detect_container_format(&header_data)?;
+        let producer: Arc<dyn StreamProducer> = if requires_remuxing(&format) {
+            Arc::new(RemuxStreamProducer::new(provider, extension(&format).to_string()))
+        } else {
+            Arc::new(DirectStreamProducer::new(provider, mime_type(&format).to_string()))
+        };
+        Ok(Self { producer })
+    }
 }
 ```
 
 **Direct Streaming (MP4/WebM)**:
 
-- `PieceBasedStreamReader` serves ranges directly from piece store
-- Zero processing overhead, instant seeking
+- `DirectStreamProducer` serves ranges directly from `PieceProvider`
+- Full HTTP range request support, instant seeking
 
-**Remux-and-Cache (MKV/AVI)**:
+**Real-time Remuxing (MKV/AVI)**:
 
-- `FileReconstructor` assembles complete file from pieces
-- FFmpeg remuxes to MP4 with `-movflags faststart`
-- Result cached to avoid repeated processing
-- Client polls with HTTP 425 (Too Early) until ready
+- `RemuxStreamProducer` uses FFmpeg input pump pattern
+- Streams data as pieces become available
+- No caching - compute on demand
 
 ### Streaming Piece Picker
 
@@ -331,14 +358,14 @@ Kill switch if VPN disconnects during torrent activity.
 
 ### Phase 2: Streaming **COMPLETE**
 
-- ✓ HTTP streaming service with range request support
-- ✓ Two-phase streaming strategy (direct vs remux-and-cache)
-- ✓ Container format detection (MP4, WebM, MKV, AVI)
-- ✓ Full file reconstruction from pieces (`FileReconstructor`)
-- ✓ FFmpeg integration for remuxing non-streamable formats
-- ✓ Intelligent caching of remuxed files
-- ✓ Client-side retry logic with progress indication
-- ✓ Piece-based streaming for browser-compatible formats
+- ✓ Stateless streaming pipeline with deep module boundaries
+- ✓ PieceProvider and StreamProducer trait abstractions
+- ✓ DirectStreamProducer for MP4/WebM with HTTP range support
+- ✓ RemuxStreamProducer with FFmpeg input pump pattern
+- ✓ HttpStreaming facade with automatic format detection
+- ✓ PieceProviderAdapter bridging DataSource to streaming pipeline
+- ✓ Real-time processing with natural backpressure
+- ✓ Duration preservation validated via ffprobe testing
 
 ### Phase 3: Web UI Enhancement
 

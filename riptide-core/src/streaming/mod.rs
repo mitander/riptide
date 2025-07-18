@@ -6,14 +6,9 @@
 //! (HTTP response generator for media content).
 
 pub mod direct_stream;
-pub mod download_manager;
 pub mod ffmpeg;
 pub mod media_info;
-pub mod mp4_parser;
-pub mod mp4_validation;
-pub mod performance_tests;
 pub mod piece_provider_adapter;
-pub mod piece_reader;
 pub mod range;
 pub mod remux_stream;
 pub mod traits;
@@ -31,14 +26,8 @@ pub use media_info::{
     ContainerFormat, MediaInfo, MediaInfoError, StreamingError, StreamingResult,
     detect_container_format, extension, mime_type, requires_remuxing,
 };
-// Media parsing utilities
-pub use mp4_parser::extract_duration_from_media;
 // DataSource to PieceProvider adapter
 pub use piece_provider_adapter::PieceProviderAdapter;
-// Legacy piece reader support
-pub use piece_reader::{
-    PieceBasedStreamReader, PieceReaderError, create_piece_reader_from_trait_object,
-};
 // HTTP range support
 pub use range::{ContentInfo, Range, RangeRequest, RangeResponse};
 pub use remux_stream::RemuxStreamProducer;

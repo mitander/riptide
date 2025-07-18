@@ -73,6 +73,56 @@ pub async fn stream_torrent(
         );
     }
 
+    // Wait for streaming readiness before proceeding
+    info!("Checking streaming readiness for {}", info_hash);
+
+    // Poll for readiness with a reasonable timeout
+    let max_wait_time = std::time::Duration::from_secs(30); // 30 second timeout
+    let poll_interval = std::time::Duration::from_millis(500); // Check every 500ms
+    let start_time = std::time::Instant::now();
+
+    loop {
+        let readiness = crate::handlers::streaming_readiness::streaming_readiness_handler(
+            State(state.clone()),
+            Path(info_hash_str.clone()),
+        )
+        .await;
+
+        match readiness {
+            Ok(readiness_response) => {
+                if readiness_response.0.ready {
+                    info!("Streaming ready for {}", info_hash);
+                    break;
+                }
+
+                // Log progress
+                if let Some(progress) = readiness_response.0.progress {
+                    info!(
+                        "Streaming preparation: {:.1}% - {}",
+                        progress * 100.0,
+                        readiness_response.0.message
+                    );
+                }
+            }
+            Err(status_code) => {
+                error!("Failed to check streaming readiness: {:?}", status_code);
+                return error_response(status_code, "Failed to check streaming readiness");
+            }
+        }
+
+        // Check timeout
+        if start_time.elapsed() > max_wait_time {
+            error!("Streaming preparation timed out for {}", info_hash);
+            return error_response(
+                StatusCode::REQUEST_TIMEOUT,
+                "Streaming preparation timed out",
+            );
+        }
+
+        // Wait before next check
+        tokio::time::sleep(poll_interval).await;
+    }
+
     // Create HTTP streaming instance for this torrent
     let http_streaming = match state.create_http_streaming(info_hash).await {
         Ok(streaming) => streaming,
